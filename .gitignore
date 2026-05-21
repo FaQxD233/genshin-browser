@@ -1,0 +1,12 @@
+bin/
+obj/
+.vs/
+publish/
+dist/
+*.user
+*.suo
+*.cache
+*.pdb
+
+# Local app data and runtime output are not source-controlled
+*.log

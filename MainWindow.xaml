@@ -1,0 +1,19 @@
+<Window x:Class="GenshinBrowser.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="Genshin Browser"
+        Width="520"
+        Height="860"
+        MinWidth="240"
+        MinHeight="160"
+        Background="#0F1116"
+        Foreground="#F4F6FB"
+        WindowStartupLocation="Manual">
+  <Grid>
+    <wv2:WebView2 x:Name="BrowserView" />
+  </Grid>
+</Window>
