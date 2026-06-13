@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 using GenshinBrowser.Windows;
@@ -10,8 +11,6 @@ namespace GenshinBrowser;
 
 public partial class MainWindow : Window
 {
-    private const string DefaultUrl = "https://search.bilibili.com/all?keyword=%E5%8E%9F%E7%A5%9E%20%E6%94%BB%E7%95%A5";
-
     private readonly SettingsService _settingsService;
     private readonly HistoryService _historyService;
     private readonly FavoritesService _favoritesService;
@@ -24,6 +23,7 @@ public partial class MainWindow : Window
     private string _currentAddress = string.Empty;
     private string _statusMessage = "正在初始化浏览器...";
     private ControlWindow? _controlWindow;
+    private CancellationTokenSource? _settingsSaveCts;
 
     public MainWindow()
     {
@@ -65,11 +65,11 @@ public partial class MainWindow : Window
         UpdateControlWindowVisibility();
         RefreshControlWindow();
 
+        await InitializeBrowserAsync();
+
         _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
         _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
-        _keyboardHookService.Start();
-
-        await InitializeBrowserAsync();
+        StartKeyboardHook();
     }
 
     private async Task InitializeBrowserAsync()
@@ -85,8 +85,9 @@ public partial class MainWindow : Window
             BrowserView.CoreWebView2.Settings.AreDevToolsEnabled = true;
             BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
             BrowserView.CoreWebView2.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
+            BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
 
-            var startUrl = string.IsNullOrWhiteSpace(_settings.LastUrl) ? DefaultUrl : _settings.LastUrl;
+            var startUrl = GetStartupUrl(_settings.LastUrl);
             _currentAddress = startUrl;
             BrowserView.CoreWebView2.Navigate(startUrl);
             SetStatusMessage("浏览器已就绪，登录态和缓存将自动保留。");
@@ -107,16 +108,22 @@ public partial class MainWindow : Window
             return;
         }
 
-        var url = BrowserView.Source?.ToString() ?? BrowserView.CoreWebView2.Source;
-        _currentAddress = url;
-        _settings.LastUrl = url;
-        await _settingsService.SaveAsync(_settings);
+        try
+        {
+            // 地址已经在 SourceChanged 中更新，这里只处理导航完成后的任务
+            if (e.IsSuccess)
+            {
+                var title = BrowserView.CoreWebView2.DocumentTitle;
+                await _historyService.AddEntryAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
+            }
 
-        var title = BrowserView.CoreWebView2.DocumentTitle;
-        await _historyService.AddEntryAsync(url, string.IsNullOrWhiteSpace(title) ? url : title);
-
-        SetStatusMessage(e.IsSuccess ? "页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。" : $"加载失败: {e.WebErrorStatus}");
-        RefreshControlWindow();
+            SetStatusMessage(e.IsSuccess ? "页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。" : $"加载失败: {e.WebErrorStatus}");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"记录页面状态失败: {ex.Message}");
+        }
     }
 
     private void BrowserView_OnDocumentTitleChanged(object? sender, object e)
@@ -124,20 +131,56 @@ public partial class MainWindow : Window
         UpdateWindowTitle();
     }
 
+    private void BrowserView_OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
+    {
+        // 当页面 URL 改变时（包括用户点击链接、重定向等），立即更新地址栏
+        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var newUrl = BrowserView.CoreWebView2.Source;
+            if (_currentAddress != newUrl)
+            {
+                _currentAddress = newUrl;
+                _settings.LastUrl = newUrl;
+                QueueSettingsSave(); // 异步保存配置
+                RefreshControlWindow(); // 立即刷新控制窗口的地址栏
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"地址更新失败: {ex.Message}");
+        }
+    }
+
     private void KeyboardHookService_OnKPressed(object? sender, EventArgs e)
     {
-        _ = Dispatcher.InvokeAsync(ToggleVideoPlaybackAsync);
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(() => _ = ToggleVideoPlaybackAsync());
     }
 
     private void KeyboardHookService_OnModeTogglePressed(object? sender, EventArgs e)
     {
-        Dispatcher.Invoke(ToggleWindowMode);
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(ToggleWindowMode);
     }
 
     public async Task ToggleVideoPlaybackAsync()
     {
-        if (BrowserView.CoreWebView2 is null)
+        if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
+            SetStatusMessage("浏览器尚未就绪。");
             return;
         }
 
@@ -194,17 +237,30 @@ public partial class MainWindow : Window
         UpdateControlWindowVisibility();
         RefreshControlWindow();
         UpdateWindowTitle();
-        _ = _settingsService.SaveAsync(_settings);
+        QueueSettingsSave();
     }
 
     public void NavigateHome()
     {
-        NavigateTo(DefaultUrl);
+        NavigateTo(AppConfig.Browser.DefaultUrl);
     }
 
     public void ReloadPage()
     {
-        BrowserView.Reload();
+        if (BrowserView.CoreWebView2 is null)
+        {
+            SetStatusMessage("浏览器尚未就绪。");
+            return;
+        }
+
+        try
+        {
+            BrowserView.Reload();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"刷新失败: {ex.Message}");
+        }
     }
 
     public async Task AddCurrentPageToFavoritesAsync()
@@ -214,22 +270,64 @@ public partial class MainWindow : Window
             return;
         }
 
-        var title = BrowserView.CoreWebView2?.DocumentTitle;
-        await _favoritesService.AddOrUpdateAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
-        SetStatusMessage("已收藏当前页面。");
-        RefreshControlWindow();
+        try
+        {
+            var title = BrowserView.CoreWebView2?.DocumentTitle;
+            await _favoritesService.AddOrUpdateAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
+            SetStatusMessage("已收藏当前页面。");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"收藏失败: {ex.Message}");
+        }
     }
 
     public async Task RemoveFavoriteAsync(string url)
     {
-        await _favoritesService.RemoveAsync(url);
-        SetStatusMessage("已取消收藏。");
-        RefreshControlWindow();
+        try
+        {
+            await _favoritesService.RemoveAsync(url);
+            SetStatusMessage("已取消收藏。");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"取消收藏失败: {ex.Message}");
+        }
     }
 
     public bool IsFavorite(string url)
     {
         return !string.IsNullOrWhiteSpace(url) && _favoritesService.Contains(url);
+    }
+
+    public async Task ClearHistoryAsync()
+    {
+        try
+        {
+            await _historyService.ClearAllAsync();
+            SetStatusMessage("已清空浏览历史。");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"清空历史失败: {ex.Message}");
+        }
+    }
+
+    public async Task RemoveHistoryEntryAsync(string url)
+    {
+        try
+        {
+            await _historyService.RemoveAsync(url);
+            SetStatusMessage("已从历史记录中移除。");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"移除失败: {ex.Message}");
+        }
     }
 
     public void SaveControlWindowBounds(double left, double top, double width, double height)
@@ -238,10 +336,10 @@ public partial class MainWindow : Window
         _settings.ControlWindowTop = top;
         _settings.ControlWindowWidth = width;
         _settings.ControlWindowHeight = height;
-        _ = _settingsService.SaveAsync(_settings);
+        QueueSettingsSave();
     }
 
-    public void RestoreControlWindowBounds(Window controlWindow)
+    public bool RestoreControlWindowBounds(Window controlWindow)
     {
         if (_settings.ControlWindowWidth > 0)
         {
@@ -253,11 +351,16 @@ public partial class MainWindow : Window
             controlWindow.Height = _settings.ControlWindowHeight;
         }
 
+        var restoredPosition = false;
         if (_settings.ControlWindowLeft >= 0 && _settings.ControlWindowTop >= 0)
         {
             controlWindow.Left = _settings.ControlWindowLeft;
             controlWindow.Top = _settings.ControlWindowTop;
+            restoredPosition = true;
         }
+
+        WindowBoundsHelper.ClampToWorkArea(controlWindow);
+        return restoredPosition;
     }
 
     public void NavigateTo(string? input)
@@ -267,27 +370,67 @@ public partial class MainWindow : Window
             return;
         }
 
-        var target = input.Trim();
-        if (!Uri.TryCreate(target, UriKind.Absolute, out _))
+        var target = BuildNavigationTarget(input);
+        if (target is null)
         {
-            target = $"https://{target}";
+            SetStatusMessage("只支持打开 http/https 页面。");
+            return;
         }
 
-        BrowserView.CoreWebView2.Navigate(target);
+        try
+        {
+            BrowserView.CoreWebView2.Navigate(target);
+            _currentAddress = target;
+            SetStatusMessage($"正在打开: {target}");
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            SetStatusMessage($"打开失败: {ex.Message}");
+        }
     }
 
     private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {
         _isShuttingDown = true;
-        SaveWindowBounds();
+
+        // 立即停止键盘钩子
         _keyboardHookService.Dispose();
 
+        // 取消待处理的保存操作
+        _settingsSaveCts?.Cancel();
+        _settingsSaveCts?.Dispose();
+
+        // 立即关闭控制窗口（不等待保存）
         if (_controlWindow is not null)
         {
             _controlWindow.AllowClose = true;
-            _controlWindow.SaveWindowBounds();
             _controlWindow.Close();
         }
+
+        // 保存窗口位置到内存
+        SaveWindowBounds();
+
+        // 异步清理 WebView2 和保存配置（不阻塞关闭）
+        Dispatcher.BeginInvoke(async () =>
+        {
+            try
+            {
+                // 取消事件订阅
+                if (BrowserView.CoreWebView2 is not null)
+                {
+                    BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
+                    BrowserView.CoreWebView2.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
+                }
+
+                // 后台保存配置
+                await _settingsService.SaveAsync(_settings).ConfigureAwait(false);
+            }
+            catch
+            {
+                // 关闭时忽略错误
+            }
+        }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
@@ -313,6 +456,7 @@ public partial class MainWindow : Window
 
         Left = _settings.WindowLeft;
         Top = _settings.WindowTop;
+        WindowBoundsHelper.ClampToWorkArea(this);
     }
 
     private void SaveWindowBounds()
@@ -326,6 +470,125 @@ public partial class MainWindow : Window
         _settings.WindowTop = Top;
         _settings.WindowWidth = Width;
         _settings.WindowHeight = Height;
+    }
+
+    private void StartKeyboardHook()
+    {
+        if (!_keyboardHookService.Start(out var errorCode))
+        {
+            SetStatusMessage($"全局热键安装失败，Win32 错误码: {errorCode}。控制面板按钮仍可使用。");
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            await _settingsService.SaveAsync(_settings);
+        }
+        catch (Exception ex)
+        {
+            if (!_isShuttingDown)
+            {
+                SetStatusMessage($"保存设置失败: {ex.Message}");
+            }
+        }
+    }
+
+    private void QueueSettingsSave()
+    {
+        _settingsSaveCts?.Cancel();
+        _settingsSaveCts?.Dispose();  // 修复：正确释放资源
+        _settingsSaveCts = new CancellationTokenSource();
+        _ = SaveSettingsDebouncedAsync(_settingsSaveCts.Token);
+    }
+
+    private async Task SaveSettingsDebouncedAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AppConfig.Ui.SettingsSaveDebounceMs, cancellationToken).ConfigureAwait(false);
+            await SaveSettingsAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 被新的保存请求取消，这是预期行为
+        }
+    }
+
+    private static string GetStartupUrl(string savedUrl)
+    {
+        if (Uri.TryCreate(savedUrl?.Trim(), UriKind.Absolute, out var uri) && IsHttpOrHttps(uri))
+        {
+            return uri.ToString();
+        }
+
+        return AppConfig.Browser.DefaultUrl;
+    }
+
+    private static string? BuildNavigationTarget(string? input)
+    {
+        var target = input?.Trim();
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(target, UriKind.Absolute, out var absoluteUri))
+        {
+            if (IsHttpOrHttps(absoluteUri))
+            {
+                return absoluteUri.ToString();
+            }
+
+            if (target.Contains("://", StringComparison.Ordinal))
+            {
+                return null;
+            }
+        }
+
+        if (LooksLikeWebAddress(target))
+        {
+            var hasHttpScheme = target.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || target.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            var prefixedTarget = hasHttpScheme ? target : $"https://{target}";
+
+            if (Uri.TryCreate(prefixedTarget, UriKind.Absolute, out var uri) && IsHttpOrHttps(uri))
+            {
+                return uri.ToString();
+            }
+        }
+
+        return $"https://search.bilibili.com/all?keyword={Uri.EscapeDataString(target)}";
+    }
+
+    private static bool IsHttpOrHttps(Uri uri)
+    {
+        return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
+    }
+
+    private static bool LooksLikeWebAddress(string input)
+    {
+        if (input.Any(char.IsWhiteSpace))
+        {
+            return false;
+        }
+
+        var separatorIndex = input.IndexOfAny(new[] { '/', '?', '#' });
+        var hostPart = separatorIndex >= 0 ? input[..separatorIndex] : input;
+        if (string.IsNullOrWhiteSpace(hostPart))
+        {
+            return false;
+        }
+
+        var colonIndex = hostPart.LastIndexOf(':');
+        if (colonIndex > 0 && hostPart.IndexOf(':') == colonIndex)
+        {
+            hostPart = hostPart[..colonIndex];
+        }
+
+        return hostPart.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || (hostPart.Contains('.', StringComparison.Ordinal) && Uri.CheckHostName(hostPart) != UriHostNameType.Unknown);
     }
 
     private void UpdateControlWindowVisibility()

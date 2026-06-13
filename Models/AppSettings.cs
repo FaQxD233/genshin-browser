@@ -10,15 +10,15 @@ public sealed class AppSettings
 
     public double WindowTop { get; set; } = 100;
 
-    public double WindowWidth { get; set; } = 520;
+    public double WindowWidth { get; set; } = 648;
 
-    public double WindowHeight { get; set; } = 860;
+    public double WindowHeight { get; set; } = 400;
 
     public double ControlWindowLeft { get; set; } = -1;
 
     public double ControlWindowTop { get; set; } = -1;
 
-    public double ControlWindowWidth { get; set; } = 320;
+    public double ControlWindowWidth { get; set; } = 640;
 
-    public double ControlWindowHeight { get; set; } = 420;
+    public double ControlWindowHeight { get; set; } = 853;
 }

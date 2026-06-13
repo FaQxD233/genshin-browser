@@ -7,10 +7,15 @@ public sealed class KeyboardHookService : IDisposable
 {
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
+    private const int WmKeyUp = 0x0101;
+    private const int WmSysKeyDown = 0x0104;
+    private const int WmSysKeyUp = 0x0105;
     private const int VkK = 0x4B;
     private const int VkF8 = 0x77;
 
     private readonly LowLevelKeyboardProc _proc;
+    private readonly HashSet<int> _pressedKeys = new();
+    private readonly object _keyStateLock = new();
     private IntPtr _hookId = IntPtr.Zero;
     private bool _isDisposed;
 
@@ -23,14 +28,23 @@ public sealed class KeyboardHookService : IDisposable
 
     public event EventHandler? ModeTogglePressed;
 
-    public void Start()
+    public bool Start(out int errorCode)
     {
+        errorCode = 0;
+
         if (_hookId != IntPtr.Zero)
         {
-            return;
+            return true;
         }
 
         _hookId = SetHook(_proc);
+        if (_hookId != IntPtr.Zero)
+        {
+            return true;
+        }
+
+        errorCode = Marshal.GetLastWin32Error();
+        return false;
     }
 
     public void Dispose()
@@ -46,6 +60,11 @@ public sealed class KeyboardHookService : IDisposable
             _hookId = IntPtr.Zero;
         }
 
+        lock (_keyStateLock)
+        {
+            _pressedKeys.Clear();
+        }
+
         _isDisposed = true;
         GC.SuppressFinalize(this);
     }
@@ -59,20 +78,49 @@ public sealed class KeyboardHookService : IDisposable
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && wParam == (IntPtr)WmKeyDown)
+        if (nCode >= 0)
         {
             var vkCode = Marshal.ReadInt32(lParam);
-            if (vkCode == VkK)
+
+            if (wParam == (IntPtr)WmKeyUp || wParam == (IntPtr)WmSysKeyUp)
             {
-                KPressed?.Invoke(this, EventArgs.Empty);
+                lock (_keyStateLock)
+                {
+                    _pressedKeys.Remove(vkCode);
+                }
             }
-            else if (vkCode == VkF8)
+            else if (wParam == (IntPtr)WmKeyDown || wParam == (IntPtr)WmSysKeyDown)
             {
-                ModeTogglePressed?.Invoke(this, EventArgs.Empty);
+                var isFirstKeyDown = false;
+                lock (_keyStateLock)
+                {
+                    isFirstKeyDown = _pressedKeys.Add(vkCode);
+                }
+
+                if (isFirstKeyDown && vkCode == VkK)
+                {
+                    Raise(KPressed);
+                }
+                else if (isFirstKeyDown && vkCode == VkF8)
+                {
+                    Raise(ModeTogglePressed);
+                }
             }
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    private void Raise(EventHandler? handler)
+    {
+        try
+        {
+            handler?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // The low-level hook must never be broken by a subscriber exception.
+        }
     }
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
