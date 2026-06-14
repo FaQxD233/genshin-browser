@@ -42,13 +42,15 @@ jobs:
           $version = "dev-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         }
 
-        $info = @"
-Genshin Browser - Windows x64 自包含版本
-版本: $version
-编译时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-提交: ${{ github.sha }}
-分支: ${{ github.ref_name }}
-"@
+        $buildTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        $commitSha = "${{ github.sha }}"
+        $branchName = "${{ github.ref_name }}"
+
+        $info = "Genshin Browser - Windows x64 自包含版本`n"
+        $info += "版本: $version`n"
+        $info += "编译时间: $buildTime`n"
+        $info += "提交: $commitSha`n"
+        $info += "分支: $branchName"
 
         $info | Out-File -FilePath dist/win-x64-self-contained/VERSION.txt -Encoding UTF8
         Write-Host "版本信息已生成:"
