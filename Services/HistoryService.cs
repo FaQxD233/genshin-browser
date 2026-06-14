@@ -5,7 +5,7 @@ using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
 
-public sealed class HistoryService
+public sealed class HistoryService : IDisposable
 {
     private readonly string _historyPath;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -42,7 +42,7 @@ public sealed class HistoryService
 
             if (_entries.Count > AppConfig.Data.MaxHistoryEntries)
             {
-                _entries = _entries.Take(AppConfig.Data.MaxHistoryEntries).ToList();
+                _entries.RemoveRange(AppConfig.Data.MaxHistoryEntries, _entries.Count - AppConfig.Data.MaxHistoryEntries);
             }
 
             snapshot = _entries.ToList();
@@ -73,6 +73,11 @@ public sealed class HistoryService
         }
 
         await SaveAsync(snapshot).ConfigureAwait(false);
+    }
+
+    public void Dispose()
+    {
+        _saveGate.Dispose();
     }
 
     private void LoadFromDisk()

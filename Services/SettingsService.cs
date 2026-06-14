@@ -4,7 +4,7 @@ using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
 
-public sealed class SettingsService
+public sealed class SettingsService : IDisposable
 {
     private readonly string _settingsPath;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -59,5 +59,10 @@ public sealed class SettingsService
         {
             _saveGate.Release();
         }
+    }
+
+    public void Dispose()
+    {
+        _saveGate.Dispose();
     }
 }

@@ -5,7 +5,7 @@ using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
 
-public sealed class FavoritesService
+public sealed class FavoritesService : IDisposable
 {
     private readonly string _favoritesPath;
     private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
@@ -42,7 +42,7 @@ public sealed class FavoritesService
 
             if (_entries.Count > AppConfig.Data.MaxFavoriteEntries)
             {
-                _entries = _entries.Take(AppConfig.Data.MaxFavoriteEntries).ToList();
+                _entries.RemoveRange(AppConfig.Data.MaxFavoriteEntries, _entries.Count - AppConfig.Data.MaxFavoriteEntries);
             }
 
             snapshot = _entries.ToList();
@@ -69,6 +69,11 @@ public sealed class FavoritesService
         {
             return _entries.Any(item => string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    public void Dispose()
+    {
+        _saveGate.Dispose();
     }
 
     private void LoadFromDisk()

@@ -110,11 +110,12 @@ public partial class MainWindow : Window
 
         try
         {
-            // 地址已经在 SourceChanged 中更新，这里只处理导航完成后的任务
+            // 使用当前 Source 而不是 _currentAddress，避免竞态条件
             if (e.IsSuccess)
             {
+                var currentUrl = BrowserView.CoreWebView2.Source;
                 var title = BrowserView.CoreWebView2.DocumentTitle;
-                await _historyService.AddEntryAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
+                await _historyService.AddEntryAsync(currentUrl, string.IsNullOrWhiteSpace(title) ? currentUrl : title);
             }
 
             SetStatusMessage(e.IsSuccess ? "页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。" : $"加载失败: {e.WebErrorStatus}");
@@ -401,6 +402,10 @@ public partial class MainWindow : Window
         _settingsSaveCts?.Cancel();
         _settingsSaveCts?.Dispose();
 
+        // 取消事件订阅
+        LocationChanged -= MainWindow_OnLocationOrSizeChanged;
+        SizeChanged -= MainWindow_OnLocationOrSizeChanged;
+
         // 立即关闭控制窗口（不等待保存）
         if (_controlWindow is not null)
         {
@@ -421,10 +426,16 @@ public partial class MainWindow : Window
                 {
                     BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
                     BrowserView.CoreWebView2.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
+                    BrowserView.CoreWebView2.SourceChanged -= BrowserView_OnSourceChanged;
                 }
 
                 // 后台保存配置
                 await _settingsService.SaveAsync(_settings).ConfigureAwait(false);
+
+                // 释放服务资源
+                _settingsService.Dispose();
+                _historyService.Dispose();
+                _favoritesService.Dispose();
             }
             catch
             {
@@ -497,9 +508,12 @@ public partial class MainWindow : Window
 
     private void QueueSettingsSave()
     {
-        _settingsSaveCts?.Cancel();
-        _settingsSaveCts?.Dispose();  // 修复：正确释放资源
+        var oldCts = _settingsSaveCts;
         _settingsSaveCts = new CancellationTokenSource();
+
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
         _ = SaveSettingsDebouncedAsync(_settingsSaveCts.Token);
     }
 

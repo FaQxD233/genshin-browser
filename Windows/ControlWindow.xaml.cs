@@ -20,6 +20,11 @@ public partial class ControlWindow : Window
     private readonly List<FavoriteItemViewModel> _allFavoriteItems = new();
     private bool _hasUserMovedWindow;
     private bool _isRestoringBounds;
+    private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
+
+    // 缓存 Brush 实例，避免重复创建
+    private static readonly SolidColorBrush PlaceholderBrush = new(AppConfig.Ui.PlaceholderTextColor);
+    private static readonly SolidColorBrush ActiveBrush = new(AppConfig.Ui.ActiveTextColor);
 
     public ControlWindow(MainWindow browserWindow)
     {
@@ -36,20 +41,19 @@ public partial class ControlWindow : Window
         // 地址栏占位符逻辑
         AddressBarTextBox.GotFocus += AddressBarTextBox_GotFocus;
         AddressBarTextBox.LostFocus += AddressBarTextBox_LostFocus;
-        AddressBarTextBox.TextChanged += AddressBarTextBox_TextChanged;
         AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-        AddressBarTextBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
+        AddressBarTextBox.Foreground = PlaceholderBrush;
 
         // 搜索框占位符
         FavoriteSearchBox.GotFocus += SearchBox_GotFocus;
         FavoriteSearchBox.LostFocus += SearchBox_LostFocus;
         FavoriteSearchBox.Text = AppConfig.Ui.SearchPlaceholder;
-        FavoriteSearchBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
+        FavoriteSearchBox.Foreground = PlaceholderBrush;
 
         HistorySearchBox.GotFocus += SearchBox_GotFocus;
         HistorySearchBox.LostFocus += SearchBox_LostFocus;
         HistorySearchBox.Text = AppConfig.Ui.SearchPlaceholder;
-        HistorySearchBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
+        HistorySearchBox.Foreground = PlaceholderBrush;
 
         // 启用平滑滚动
         EnableSmoothScrolling(HistoryListBox);
@@ -60,6 +64,13 @@ public partial class ControlWindow : Window
 
     public void RefreshFromBrowser()
     {
+        // 确保在 UI 线程上执行
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(RefreshFromBrowser);
+            return;
+        }
+
         ModeTextBlock.Text = _browserWindow.CurrentMode == WindowMode.Fixed ? "📌 固定模式" : "🔓 自由模式";
         ToggleModeButton.Content = _browserWindow.CurrentMode == WindowMode.Fixed ? "🔓" : "📌";
         ToggleModeButton.ToolTip = _browserWindow.CurrentMode == WindowMode.Fixed ? "解锁窗口" : "固定窗口";
@@ -77,12 +88,12 @@ public partial class ControlWindow : Window
             if (string.IsNullOrWhiteSpace(_browserWindow.CurrentAddress))
             {
                 AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-                AddressBarTextBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
+                AddressBarTextBox.Foreground = PlaceholderBrush;
             }
             else
             {
                 AddressBarTextBox.Text = _browserWindow.CurrentAddress;
-                AddressBarTextBox.Foreground = new SolidColorBrush(AppConfig.Ui.ActiveTextColor);
+                AddressBarTextBox.Foreground = ActiveBrush;
             }
         }
 
@@ -168,6 +179,19 @@ public partial class ControlWindow : Window
             return;
         }
 
+        // 清理事件订阅
+        LocationChanged -= ControlWindow_OnLocationOrSizeChanged;
+        SizeChanged -= ControlWindow_OnLocationOrSizeChanged;
+        AddressBarTextBox.GotFocus -= AddressBarTextBox_GotFocus;
+        AddressBarTextBox.LostFocus -= AddressBarTextBox_LostFocus;
+        FavoriteSearchBox.GotFocus -= SearchBox_GotFocus;
+        FavoriteSearchBox.LostFocus -= SearchBox_LostFocus;
+        HistorySearchBox.GotFocus -= SearchBox_GotFocus;
+        HistorySearchBox.LostFocus -= SearchBox_LostFocus;
+
+        // 停止防抖计时器
+        _boundsDebounceTimer?.Stop();
+
         base.OnClosing(e);
     }
 
@@ -221,7 +245,7 @@ public partial class ControlWindow : Window
         if (AddressBarTextBox.Text == AppConfig.Ui.AddressBarPlaceholder)
         {
             AddressBarTextBox.Text = string.Empty;
-            AddressBarTextBox.Foreground = new SolidColorBrush(AppConfig.Ui.ActiveTextColor);
+            AddressBarTextBox.Foreground = ActiveBrush;
         }
     }
 
@@ -230,18 +254,7 @@ public partial class ControlWindow : Window
         if (string.IsNullOrWhiteSpace(AddressBarTextBox.Text))
         {
             AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-            AddressBarTextBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
-        }
-    }
-
-    private void AddressBarTextBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        // 用户手动输入时，导航到新地址
-        if (AddressBarTextBox.IsKeyboardFocusWithin &&
-            !string.IsNullOrWhiteSpace(AddressBarTextBox.Text) &&
-            AddressBarTextBox.Text != AppConfig.Ui.AddressBarPlaceholder)
-        {
-            // 这里不做实时导航，等用户按 Enter 或点击打开按钮
+            AddressBarTextBox.Foreground = PlaceholderBrush;
         }
     }
 
@@ -306,7 +319,7 @@ public partial class ControlWindow : Window
         if (textBox.Text == AppConfig.Ui.SearchPlaceholder)
         {
             textBox.Text = string.Empty;
-            textBox.Foreground = new SolidColorBrush(AppConfig.Ui.ActiveTextColor);
+            textBox.Foreground = ActiveBrush;
         }
     }
 
@@ -316,7 +329,7 @@ public partial class ControlWindow : Window
         if (string.IsNullOrWhiteSpace(textBox.Text))
         {
             textBox.Text = AppConfig.Ui.SearchPlaceholder;
-            textBox.Foreground = new SolidColorBrush(AppConfig.Ui.PlaceholderTextColor);
+            textBox.Foreground = PlaceholderBrush;
         }
     }
 
@@ -374,19 +387,22 @@ public partial class ControlWindow : Window
 
     private void SyncObservableCollection<T>(ObservableCollection<T> target, IList<T> source)
     {
+        var sourceSet = new HashSet<T>(source);
+
         // 移除不在源列表中的项
         for (int i = target.Count - 1; i >= 0; i--)
         {
-            if (!source.Contains(target[i]))
+            if (!sourceSet.Contains(target[i]))
             {
                 target.RemoveAt(i);
             }
         }
 
-        // 添加源列表中的新项
+        // 添加新项（保持顺序）
+        var targetSet = new HashSet<T>(target);
         foreach (var item in source)
         {
-            if (!target.Contains(item))
+            if (!targetSet.Contains(item))
             {
                 target.Add(item);
             }
@@ -507,10 +523,22 @@ public partial class ControlWindow : Window
         }
 
         _hasUserMovedWindow = true;
-        SaveWindowBounds();
+
+        // 使用防抖机制，避免频繁保存
+        _boundsDebounceTimer?.Stop();
+        _boundsDebounceTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(200)
+        };
+        _boundsDebounceTimer.Tick += (s, args) =>
+        {
+            _boundsDebounceTimer.Stop();
+            SaveWindowBounds();
+        };
+        _boundsDebounceTimer.Start();
     }
 
-    private sealed class HistoryItemViewModel
+    private sealed class HistoryItemViewModel : IEquatable<HistoryItemViewModel>
     {
         public HistoryItemViewModel(HistoryEntry item)
         {
@@ -522,9 +550,18 @@ public partial class ControlWindow : Window
         public string Url { get; }
         public string Title { get; }
         public string TimeDisplay { get; }
+
+        public bool Equals(HistoryItemViewModel? other)
+        {
+            return other != null && Url == other.Url;
+        }
+
+        public override bool Equals(object? obj) => Equals(obj as HistoryItemViewModel);
+
+        public override int GetHashCode() => Url.GetHashCode();
     }
 
-    private sealed class FavoriteItemViewModel
+    private sealed class FavoriteItemViewModel : IEquatable<FavoriteItemViewModel>
     {
         public FavoriteItemViewModel(FavoriteEntry item)
         {
@@ -536,5 +573,14 @@ public partial class ControlWindow : Window
         public string Url { get; }
         public string Title { get; }
         public string TimeDisplay { get; }
+
+        public bool Equals(FavoriteItemViewModel? other)
+        {
+            return other != null && Url == other.Url;
+        }
+
+        public override bool Equals(object? obj) => Equals(obj as FavoriteItemViewModel);
+
+        public override int GetHashCode() => Url.GetHashCode();
     }
 }
