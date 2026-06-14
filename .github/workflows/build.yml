@@ -1,0 +1,102 @@
+name: Build Genshin Browser
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      version:
+        description: '版本号 (可选，例如: v0.2.1)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout 代码
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: 还原依赖
+      run: dotnet restore GenshinBrowser.csproj
+
+    - name: 编译 win-x64 自包含版本
+      run: |
+        dotnet publish GenshinBrowser.csproj `
+          -c Release `
+          -r win-x64 `
+          --self-contained true `
+          -p:PublishSingleFile=false `
+          -p:PublishTrimmed=false `
+          -o dist/win-x64-self-contained
+
+    - name: 生成版本信息文件
+      shell: pwsh
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          $version = "dev-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        }
+
+        $info = @"
+Genshin Browser - Windows x64 自包含版本
+版本: $version
+编译时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+提交: ${{ github.sha }}
+分支: ${{ github.ref_name }}
+"@
+
+        $info | Out-File -FilePath dist/win-x64-self-contained/VERSION.txt -Encoding UTF8
+        Write-Host "版本信息已生成:"
+        Write-Host $info
+
+    - name: 打包构建产物
+      shell: pwsh
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          $version = "dev-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        }
+
+        $zipName = "GenshinBrowser-$version-win-x64.zip"
+        Compress-Archive -Path dist/win-x64-self-contained/* -DestinationPath $zipName
+        Write-Host "已打包到: $zipName"
+
+        # 输出文件大小
+        $size = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
+        Write-Host "压缩包大小: $size MB"
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: GenshinBrowser-win-x64-self-contained
+        path: |
+          dist/win-x64-self-contained/*
+          !dist/win-x64-self-contained/*.pdb
+        retention-days: 90
+
+    - name: 上传压缩包
+      uses: actions/upload-artifact@v4
+      with:
+        name: GenshinBrowser-Release-Package
+        path: GenshinBrowser-*.zip
+        retention-days: 90
+
+    - name: 构建摘要
+      shell: pwsh
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          $version = "dev-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        }
+
+        Write-Host "✅ 构建完成！"
+        Write-Host "📦 版本: $version"
+        Write-Host "🔗 下载: 请在 Actions 的 Artifacts 中下载"
+        Write-Host ""
+        Write-Host "包含文件:"
+        Get-ChildItem dist/win-x64-self-contained -File | Select-Object Name, @{Name='Size (KB)';Expression={[math]::Round($_.Length/1KB,2)}} | Format-Table
