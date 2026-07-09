@@ -37,6 +37,5 @@ try {
 
 # 3. Copy auxiliary files
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $outputPath "README.txt") -Force
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot "install.ps1") -Destination (Join-Path $outputPath "install.ps1") -Force
 
 "Publish completed: $outputPath"

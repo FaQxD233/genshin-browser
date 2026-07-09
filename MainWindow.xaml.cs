@@ -175,6 +175,7 @@ public partial class MainWindow : Window, IControlBrowser
         UpdateControlWindowVisibility();
         RefreshControlWindow();
 
+        await EnsureWebView2RuntimeAsync();
         await InitializeBrowserAsync();
 
         _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
@@ -195,6 +196,46 @@ public partial class MainWindow : Window, IControlBrowser
     private void App_OnActivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = true;
 
     private void App_OnDeactivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = false;
+
+    private bool IsWebView2RuntimeInstalled()
+    {
+        try
+        {
+            return !string.IsNullOrEmpty(CoreWebView2Environment.GetAvailableBrowserVersionString());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task EnsureWebView2RuntimeAsync()
+    {
+        if (IsWebView2RuntimeInstalled())
+            return;
+
+        var bootstrapperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MicrosoftEdgeWebview2Setup.exe");
+        if (!File.Exists(bootstrapperPath))
+        {
+            var msg = "未检测到 WebView2 Runtime（浏览器核心组件），且未找到自动安装程序。\n\n" +
+                      "请手动下载安装：https://developer.microsoft.com/microsoft-edge/webview2/";
+            throw new InvalidOperationException(msg);
+        }
+
+        _statusMessage = "正在安装 WebView2 Runtime...";
+        BrowserStateChanged?.Invoke(this, EventArgs.Empty);
+        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = bootstrapperPath,
+            Arguments = "/silent",
+            UseShellExecute = true
+        }) ?? throw new InvalidOperationException("无法启动 WebView2 安装程序。");
+
+        await process.WaitForExitAsync();
+
+        if (!IsWebView2RuntimeInstalled())
+            throw new InvalidOperationException("WebView2 Runtime 自动安装失败，请手动安装。");
+    }
 
     private async Task InitializeBrowserAsync()
     {

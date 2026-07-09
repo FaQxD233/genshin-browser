@@ -53,8 +53,6 @@ jobs:
         Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
         $size = [math]::Round((Get-Item $out).Length / 1KB, 1)
         Write-Host "下载完成: $size KB"
-        # 复制辅助文件
-        Copy-Item -LiteralPath "release/install.ps1" -Destination "dist/win-x64-self-contained/install.ps1" -Force
         Copy-Item -LiteralPath "release/README.txt" -Destination "dist/win-x64-self-contained/README.txt" -Force
 
     - name: 生成版本信息文件
@@ -113,14 +111,9 @@ jobs:
 
            ### 📦 下载说明
 
-           下载 `GenshinBrowser-${{ github.event.inputs.version }}-win-x64.zip`
+           下载 `GenshinBrowser-${{ github.event.inputs.version }}-win-x64.zip`，解压后运行 `GenshinBrowser.exe`
 
-           **快速启动（推荐）:**
-           解压后右键 `install.ps1` → 使用 PowerShell 运行，自动安装 WebView2 Runtime 并启动应用
-
-           **手动启动:**
-           1. 运行 `MicrosoftEdgeWebview2Setup.exe`（静默安装 WebView2 Runtime，无界面）
-           2. 运行 `GenshinBrowser.exe`
+           首次启动时，如果系统未安装 WebView2 Runtime，应用会自动静默安装。
 
            **系统要求:**
            - Windows 10/11

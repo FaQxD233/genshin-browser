@@ -1,12 +1,8 @@
 Genshin Browser Portable Release
 
-How to run (recommended):
-1. Run install.ps1 (right-click → Run with PowerShell).
-   It will automatically install WebView2 Runtime if needed, then launch the app.
-
-How to run (manual):
-1. Run MicrosoftEdgeWebview2Setup.exe first (silent install, no UI shown).
-2. Run GenshinBrowser.exe.
+How to run:
+1. Run GenshinBrowser.exe.
+2. If WebView2 Runtime is not installed, the app will automatically install it.
 3. Windows will request administrator permission on startup.
 
 Global hotkeys:
@@ -19,4 +15,3 @@ Notes:
 - Error logs are stored under:
   %LocalAppData%\GenshinBrowser\logs\
 - This build is self-contained, so .NET does not need to be installed separately.
-- WebView2 Runtime is bundled as bootstrapper and installed automatically on first run.
