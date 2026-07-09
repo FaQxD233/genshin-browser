@@ -21,8 +21,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private string _favoriteToggleText = "收藏当前页";
     private string _favoriteToggleIcon = "\uE735";
     private bool _isCurrentFavorite;
-    private string _favoriteSearchText = string.Empty;
-    private string _historySearchText = string.Empty;
+    private string _searchText = string.Empty;
+    private bool _isFavoritesTab = true;
     private string _toastMessage = string.Empty;
     private bool _isToastVisible;
     private Visibility _toastVisibility = Visibility.Collapsed;
@@ -48,9 +48,22 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RecordToggleModeKeyCommand = new RelayCommand(StartRecordingToggleModeKey);
         RecordTogglePlaybackKeyCommand = new RelayCommand(StartRecordingTogglePlaybackKey);
 
+        ZoomInCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor + 0.1, 0.25, 5.0));
+        ZoomOutCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor - 0.1, 0.25, 5.0));
+        ResetZoomCommand = new RelayCommand(() => _browser.ZoomFactor = 1.0);
+        RestoreDefaultSettingsCommand = new RelayCommand(RestoreDefaults);
+        CancelDownloadCommand = new RelayCommand(parameter => CancelDownload(parameter));
+        OpenDownloadFileCommand = new RelayCommand(parameter => OpenDownloadFile(parameter));
+        OpenDownloadFolderCommand = new RelayCommand(parameter => OpenDownloadFolder(parameter));
+        ClearFinishedDownloadsCommand = new RelayCommand(_browser.ClearFinishedDownloads);
+
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         _toastTimer.Tick += ToastTimer_OnTick;
         _browser.BrowserStateChanged += Browser_OnBrowserStateChanged;
+        _browser.ZoomChanged += Browser_OnZoomChanged;
+        _browser.DownloadsChanged += Browser_OnDownloadsChanged;
+        _browser.Downloads.CollectionChanged += Downloads_CollectionChanged;
+        UpdateDownloadsBadge();
     }
 
     public ObservableCollection<ControlItemViewModel> HistoryItems { get; } = new();
@@ -92,6 +105,22 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand RecordToggleModeKeyCommand { get; }
 
     public RelayCommand RecordTogglePlaybackKeyCommand { get; }
+
+    public RelayCommand ZoomInCommand { get; }
+
+    public RelayCommand ZoomOutCommand { get; }
+
+    public RelayCommand ResetZoomCommand { get; }
+
+    public RelayCommand RestoreDefaultSettingsCommand { get; }
+
+    public RelayCommand CancelDownloadCommand { get; }
+
+    public RelayCommand OpenDownloadFileCommand { get; }
+
+    public RelayCommand OpenDownloadFolderCommand { get; }
+
+    public RelayCommand ClearFinishedDownloadsCommand { get; }
 
     public string ModeText
     {
@@ -147,41 +176,69 @@ public sealed class ControlWindowViewModel : ViewModelBase
         private set => SetProperty(ref _canGoForward, value);
     }
 
-    public string FavoriteSearchText
+    /// <summary>
+    /// 合并后的全局搜索文本，根据当前 Tab 搜索收藏或历史。
+    /// </summary>
+    public string SearchText
     {
-        get => _favoriteSearchText;
+        get => _searchText;
         set
         {
-            if (SetProperty(ref _favoriteSearchText, NormalizeSearch(value)))
+            if (SetProperty(ref _searchText, NormalizeSearch(value)))
             {
                 FilterFavorites();
-                OnPropertyChanged(nameof(FavoritesEmptyText));
-            }
-        }
-    }
-
-    public string HistorySearchText
-    {
-        get => _historySearchText;
-        set
-        {
-            if (SetProperty(ref _historySearchText, NormalizeSearch(value)))
-            {
                 FilterHistory();
+                OnPropertyChanged(nameof(FavoritesEmptyText));
                 OnPropertyChanged(nameof(HistoryEmptyText));
             }
         }
     }
 
     /// <summary>
+    /// 当前是否显示收藏夹 Tab（默认 true）。
+    /// </summary>
+    public bool IsFavoritesTab
+    {
+        get => _isFavoritesTab;
+        set
+        {
+            if (SetProperty(ref _isFavoritesTab, value))
+            {
+                OnPropertyChanged(nameof(IsHistoryTab));
+            }
+        }
+    }
+
+    /// <summary>
+    /// 当前是否显示浏览记录 Tab（与 IsFavoritesTab 互斥）。
+    /// </summary>
+    public bool IsHistoryTab
+    {
+        get => !_isFavoritesTab;
+        set => IsFavoritesTab = !value;
+    }
+
+    /// <summary>
+    /// 帮助图标的悬浮提示文本。
+    /// </summary>
+    public string HelpTooltip =>
+        "快捷键参考\n" +
+        "K — 播放 / 暂停\n" +
+        "F8 — 切换窗口模式\n" +
+        "Ctrl+F — 页面内查找\n" +
+        "Ctrl+= / - — 放大 / 缩小\n" +
+        "Ctrl+0 — 重置缩放\n" +
+        "Ctrl+L — 聚焦地址栏";
+
+    /// <summary>
     /// 收藏列表为空时的提示文案（区分「无数据」与「搜索无结果」）。
     /// </summary>
-    public string FavoritesEmptyText => string.IsNullOrEmpty(FavoriteSearchText) ? "暂无收藏" : "未找到匹配项";
+    public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText) ? "暂无收藏" : "未找到匹配项";
 
     /// <summary>
     /// 历史列表为空时的提示文案。
     /// </summary>
-    public string HistoryEmptyText => string.IsNullOrEmpty(HistorySearchText) ? "暂无浏览记录" : "未找到匹配项";
+    public string HistoryEmptyText => string.IsNullOrEmpty(SearchText) ? "暂无浏览记录" : "未找到匹配项";
 
     public string ToastMessage
     {
@@ -200,6 +257,54 @@ public sealed class ControlWindowViewModel : ViewModelBase
         get => _toastVisibility;
         private set => SetProperty(ref _toastVisibility, value);
     }
+
+    private bool _isSettingsExpanded;
+
+    /// <summary>
+    /// 浮窗设置 Expander 的展开状态（双向绑定）。
+    /// </summary>
+    public bool IsSettingsExpanded
+    {
+        get => _isSettingsExpanded;
+        set => SetProperty(ref _isSettingsExpanded, value);
+    }
+
+    private bool _isDownloadsExpanded;
+
+    /// <summary>
+    /// 下载管理 Expander 的展开状态（双向绑定）。
+    /// </summary>
+    public bool IsDownloadsExpanded
+    {
+        get => _isDownloadsExpanded;
+        set => SetProperty(ref _isDownloadsExpanded, value);
+    }
+
+    /// <summary>
+    /// 当前页面缩放百分比文本，如 "120%"。
+    /// </summary>
+    public string ZoomPercentageText => $"{Math.Round(_browser.ZoomFactor * 100)}%";
+
+    /// <summary>
+    /// 下载列表，直接转发自浏览器宿主。
+    /// </summary>
+    public ObservableCollection<DownloadItem> Downloads => _browser.Downloads;
+
+    /// <summary>
+    /// 下载面板标题处的角标文本（进行中数量）。
+    /// </summary>
+    public string DownloadsBadgeText
+    {
+        get => _downloadsBadgeText;
+        private set => SetProperty(ref _downloadsBadgeText, value);
+    }
+
+    private string _downloadsBadgeText = string.Empty;
+
+    /// <summary>
+    /// 下载列表为空时的提示文案。
+    /// </summary>
+    public string DownloadsEmptyText => Downloads.Count == 0 ? "暂无下载任务" : string.Empty;
 
     public void RefreshFromBrowser()
     {
@@ -230,11 +335,15 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         GoBackCommand.RaiseCanExecuteChanged();
         GoForwardCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(ZoomPercentageText));
     }
 
     public void Dispose()
     {
         _browser.BrowserStateChanged -= Browser_OnBrowserStateChanged;
+        _browser.ZoomChanged -= Browser_OnZoomChanged;
+        _browser.DownloadsChanged -= Browser_OnDownloadsChanged;
+        _browser.Downloads.CollectionChanged -= Downloads_CollectionChanged;
         _toastTimer.Stop();
         _toastTimer.Tick -= ToastTimer_OnTick;
     }
@@ -298,14 +407,73 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private void Browser_OnBrowserStateChanged(object? sender, EventArgs e) => RefreshFromBrowser();
 
+    private void Browser_OnZoomChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(ZoomPercentageText));
+    }
+
+    private void Browser_OnDownloadsChanged(object? sender, EventArgs e)
+    {
+        UpdateDownloadsBadge();
+        OnPropertyChanged(nameof(DownloadsEmptyText));
+    }
+
+    private void Downloads_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // 新增下载时自动展开下载面板，便于用户查看进度
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add && _browser.Downloads.Count > 0)
+        {
+            IsDownloadsExpanded = true;
+        }
+        UpdateDownloadsBadge();
+        OnPropertyChanged(nameof(DownloadsEmptyText));
+    }
+
+    private void UpdateDownloadsBadge()
+    {
+        var inProgress = _browser.Downloads.Count(item => item.State == DownloadState.InProgress);
+        DownloadsBadgeText = inProgress > 0 ? $"({inProgress})" : string.Empty;
+    }
+
+    private void RestoreDefaults()
+    {
+        _browser.RestoreDefaultSettings();
+        RefreshFromBrowser();
+        ShowToast("已恢复默认设置");
+    }
+
+    private void CancelDownload(object? parameter)
+    {
+        if (parameter is DownloadItem item)
+        {
+            _browser.CancelDownload(item);
+        }
+    }
+
+    private void OpenDownloadFile(object? parameter)
+    {
+        if (parameter is DownloadItem item)
+        {
+            _browser.OpenDownloadFile(item);
+        }
+    }
+
+    private void OpenDownloadFolder(object? parameter)
+    {
+        if (parameter is DownloadItem item)
+        {
+            _browser.OpenDownloadFolder(item);
+        }
+    }
+
     private void FilterFavorites()
     {
-        SyncObservableCollection(FavoriteItems, FilterItems(_allFavoriteItems, FavoriteSearchText));
+        SyncObservableCollection(FavoriteItems, FilterItems(_allFavoriteItems, SearchText));
     }
 
     private void FilterHistory()
     {
-        SyncObservableCollection(HistoryItems, FilterItems(_allHistoryItems, HistorySearchText));
+        SyncObservableCollection(HistoryItems, FilterItems(_allHistoryItems, SearchText));
     }
 
     private static IReadOnlyList<ControlItemViewModel> FilterItems(IReadOnlyList<ControlItemViewModel> items, string searchText)

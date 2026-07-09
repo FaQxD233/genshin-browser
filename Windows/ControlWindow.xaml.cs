@@ -18,9 +18,6 @@ public partial class ControlWindow : Window
     private bool _isRestoringBounds;
     private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
 
-    private static readonly SolidColorBrush PlaceholderBrush = new(AppConfig.Ui.PlaceholderTextColor);
-    private static readonly SolidColorBrush ActiveBrush = new(AppConfig.Ui.ActiveTextColor);
-
     public ControlWindow(IControlBrowser browser)
     {
         InitializeComponent();
@@ -39,21 +36,6 @@ public partial class ControlWindow : Window
         Loaded += ControlWindow_OnLoaded;
         LocationChanged += ControlWindow_OnLocationOrSizeChanged;
         SizeChanged += ControlWindow_OnLocationOrSizeChanged;
-
-        AddressBarTextBox.GotFocus += AddressBarTextBox_GotFocus;
-        AddressBarTextBox.LostFocus += AddressBarTextBox_LostFocus;
-        AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-        AddressBarTextBox.Foreground = PlaceholderBrush;
-
-        FavoriteSearchBox.GotFocus += SearchBox_GotFocus;
-        FavoriteSearchBox.LostFocus += SearchBox_LostFocus;
-        FavoriteSearchBox.Text = AppConfig.Ui.SearchPlaceholder;
-        FavoriteSearchBox.Foreground = PlaceholderBrush;
-
-        HistorySearchBox.GotFocus += SearchBox_GotFocus;
-        HistorySearchBox.LostFocus += SearchBox_LostFocus;
-        HistorySearchBox.Text = AppConfig.Ui.SearchPlaceholder;
-        HistorySearchBox.Foreground = PlaceholderBrush;
 
         EnableSmoothScrolling(HistoryListBox);
         EnableSmoothScrolling(FavoritesListBox);
@@ -143,12 +125,6 @@ public partial class ControlWindow : Window
 
         LocationChanged -= ControlWindow_OnLocationOrSizeChanged;
         SizeChanged -= ControlWindow_OnLocationOrSizeChanged;
-        AddressBarTextBox.GotFocus -= AddressBarTextBox_GotFocus;
-        AddressBarTextBox.LostFocus -= AddressBarTextBox_LostFocus;
-        FavoriteSearchBox.GotFocus -= SearchBox_GotFocus;
-        FavoriteSearchBox.LostFocus -= SearchBox_LostFocus;
-        HistorySearchBox.GotFocus -= SearchBox_GotFocus;
-        HistorySearchBox.LostFocus -= SearchBox_LostFocus;
         _boundsDebounceTimer?.Stop();
         if (_boundsDebounceTimer is not null)
         {
@@ -159,35 +135,25 @@ public partial class ControlWindow : Window
         base.OnClosing(e);
     }
 
-    private void AddressBarTextBox_GotFocus(object sender, RoutedEventArgs e)
-    {
-        if (AddressBarTextBox.Text == AppConfig.Ui.AddressBarPlaceholder)
-        {
-            AddressBarTextBox.Text = string.Empty;
-            AddressBarTextBox.Foreground = ActiveBrush;
-        }
-    }
-
-    private void AddressBarTextBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(AddressBarTextBox.Text))
-        {
-            AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-            AddressBarTextBox.Foreground = PlaceholderBrush;
-        }
-    }
-
     private void EnableSmoothScrolling(System.Windows.Controls.ListBox listBox)
     {
-        listBox.Loaded += (_, _) =>
+        listBox.Loaded += (_, _) => TryAttachSmoothScroll(listBox);
+        listBox.IsVisibleChanged += (_, _) => TryAttachSmoothScroll(listBox);
+    }
+
+    private void TryAttachSmoothScroll(System.Windows.Controls.ListBox listBox)
+    {
+        if (!listBox.IsVisible || VisualTreeHelper.GetChildrenCount(listBox) == 0)
         {
-            if (VisualTreeHelper.GetChild(listBox, 0) is Border loadedBorder &&
-                loadedBorder.Child is ScrollViewer scrollViewer)
-            {
-                scrollViewer.PreviewMouseWheel -= SmoothScrollViewer_PreviewMouseWheel;
-                scrollViewer.PreviewMouseWheel += SmoothScrollViewer_PreviewMouseWheel;
-            }
-        };
+            return;
+        }
+
+        if (VisualTreeHelper.GetChild(listBox, 0) is Border loadedBorder &&
+            loadedBorder.Child is ScrollViewer scrollViewer)
+        {
+            scrollViewer.PreviewMouseWheel -= SmoothScrollViewer_PreviewMouseWheel;
+            scrollViewer.PreviewMouseWheel += SmoothScrollViewer_PreviewMouseWheel;
+        }
     }
 
     private void SmoothScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -222,39 +188,29 @@ public partial class ControlWindow : Window
         e.Handled = true;
     }
 
-    private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
-    {
-        var textBox = (System.Windows.Controls.TextBox)sender;
-        if (textBox.Text == AppConfig.Ui.SearchPlaceholder)
-        {
-            textBox.Text = string.Empty;
-            textBox.Foreground = ActiveBrush;
-        }
-    }
-
-    private void SearchBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        var textBox = (System.Windows.Controls.TextBox)sender;
-        if (string.IsNullOrWhiteSpace(textBox.Text))
-        {
-            textBox.Text = AppConfig.Ui.SearchPlaceholder;
-            textBox.Foreground = PlaceholderBrush;
-        }
-    }
-
-    private void FavoriteSearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         if (_viewModel is not null)
         {
-            _viewModel.FavoriteSearchText = FavoriteSearchBox.Text;
+            _viewModel.SearchText = SearchBox.Text;
         }
     }
 
-    private void HistorySearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    private void SettingsButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_viewModel is not null)
+        _viewModel.IsSettingsExpanded = !_viewModel.IsSettingsExpanded;
+        if (_viewModel.IsSettingsExpanded)
         {
-            _viewModel.HistorySearchText = HistorySearchBox.Text;
+            _viewModel.IsDownloadsExpanded = false;
+        }
+    }
+
+    private void DownloadsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsDownloadsExpanded = !_viewModel.IsDownloadsExpanded;
+        if (_viewModel.IsDownloadsExpanded)
+        {
+            _viewModel.IsSettingsExpanded = false;
         }
     }
 
@@ -380,17 +336,13 @@ public partial class ControlWindow : Window
         SaveWindowBounds();
     }
 
+    /// <summary>
+    /// 仅设置地址栏文本，占位符由 <see cref="Services.Placeholder"/> 附加属性通过 Adorner 渲染。
+    /// 当地址为空时，文本被清空，Adorner 会自动显示提示文字。
+    /// </summary>
     private void SetAddressText(string address)
     {
-        if (string.IsNullOrWhiteSpace(address))
-        {
-            AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-            AddressBarTextBox.Foreground = PlaceholderBrush;
-            return;
-        }
-
-        AddressBarTextBox.Text = address;
-        AddressBarTextBox.Foreground = ActiveBrush;
+        AddressBarTextBox.Text = string.IsNullOrWhiteSpace(address) ? string.Empty : address;
     }
 
     protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
@@ -399,7 +351,7 @@ public partial class ControlWindow : Window
         {
             e.Handled = true;
             var key = e.Key == Key.System ? e.SystemKey : e.Key;
-            
+
             if (key == Key.LeftCtrl || key == Key.RightCtrl ||
                 key == Key.LeftAlt || key == Key.RightAlt ||
                 key == Key.LeftShift || key == Key.RightShift ||
@@ -409,14 +361,22 @@ public partial class ControlWindow : Window
                 _viewModel.UpdateRecordingModifiers(modifiers);
                 return;
             }
-            
+
             var finalModifiers = Keyboard.Modifiers;
             _viewModel.FinishRecordingKey(key, finalModifiers);
+            return;
         }
-        else
+
+        // Ctrl+L 聚焦地址栏并全选
+        if (e.Key == Key.L && Keyboard.Modifiers == ModifierKeys.Control)
         {
-            base.OnPreviewKeyDown(e);
+            e.Handled = true;
+            AddressBarTextBox.Focus();
+            AddressBarTextBox.SelectAll();
+            return;
         }
+
+        base.OnPreviewKeyDown(e);
     }
 
     protected override void OnPreviewKeyUp(System.Windows.Input.KeyEventArgs e)
@@ -438,10 +398,5 @@ public partial class ControlWindow : Window
         {
             base.OnPreviewKeyUp(e);
         }
-    }
-
-    private void SettingsButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
     }
 }

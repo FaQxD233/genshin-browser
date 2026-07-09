@@ -1,7 +1,7 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Input;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
@@ -9,6 +9,7 @@ using GenshinBrowser.Services;
 using GenshinBrowser.Windows;
 using Microsoft.Web.WebView2.Core;
 using Application = System.Windows.Application;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace GenshinBrowser;
 
@@ -19,6 +20,7 @@ public partial class MainWindow : Window, IControlBrowser
     private readonly FavoritesService _favoritesService;
     private readonly WindowModeService _windowModeService;
     private readonly KeyboardHookService _keyboardHookService;
+    private readonly DownloadsService _downloadsService = new();
 
     private AppSettings _settings = new();
     private bool _browserReady;
@@ -29,7 +31,14 @@ public partial class MainWindow : Window, IControlBrowser
     private ControlWindow? _controlWindow;
     private CancellationTokenSource? _settingsSaveCts;
 
+    // 最大化状态：透明无边框窗口不能用 WindowState.Maximized（会覆盖任务栏），
+    // 这里用手工记录工作区矩形并保存还原前的边界。
+    private bool _isMaximized;
+    private Rect _savedBounds;
+
     public event EventHandler? BrowserStateChanged;
+    public event EventHandler? ZoomChanged;
+    public event EventHandler? DownloadsChanged;
 
     public MainWindow()
     {
@@ -49,8 +58,20 @@ public partial class MainWindow : Window, IControlBrowser
         DragBar.MouseLeftButtonDown += (_, e) =>
         {
             if (e.Source is System.Windows.Controls.Button) return;
+            if (e.ClickCount >= 2)
+            {
+                ToggleMaximize();
+                return;
+            }
+            if (_isMaximized)
+            {
+                // 最大化时拖动标题栏 → 还原并跟随鼠标
+                RestoreFromMaximizeOnDrag(e);
+                return;
+            }
             DragMove();
         };
+        PreviewKeyDown += MainWindow_OnPreviewKeyDown;
         LocationChanged += MainWindow_OnLocationOrSizeChanged;
         SizeChanged += MainWindow_OnLocationOrSizeChanged;
     }
@@ -126,6 +147,14 @@ public partial class MainWindow : Window, IControlBrowser
             }
         }
     }
+
+    public double ZoomFactor
+    {
+        get => BrowserView.ZoomFactor;
+        set => SetZoom(value);
+    }
+
+    public ObservableCollection<DownloadItem> Downloads => _downloadsService.Downloads;
 
     public string CurrentAddress => _currentAddress;
 
@@ -264,6 +293,7 @@ public partial class MainWindow : Window, IControlBrowser
             BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
             BrowserView.CoreWebView2.NewWindowRequested += BrowserView_OnNewWindowRequested;
             BrowserView.CoreWebView2.HistoryChanged += BrowserView_OnHistoryChanged;
+            BrowserView.CoreWebView2.DownloadStarting += BrowserView_OnDownloadStarting;
 
             var startUrl = GetStartupUrl(_settings.LastUrl);
             _currentAddress = startUrl;
@@ -357,6 +387,104 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void BrowserView_OnHistoryChanged(object? sender, object e)
     {
+        RefreshControlWindow();
+    }
+
+    private void MainWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            return;
+        }
+
+        // Ctrl+= / Ctrl+(numpad +)：放大
+        if (e.Key == Key.OemPlus || e.Key == Key.Add)
+        {
+            e.Handled = true;
+            ZoomBy(0.1);
+        }
+        // Ctrl+- / Ctrl-(numpad -)：缩小
+        else if (e.Key == Key.OemMinus || e.Key == Key.Subtract)
+        {
+            e.Handled = true;
+            ZoomBy(-0.1);
+        }
+        // Ctrl+0 / Ctrl+(numpad 0)：重置缩放
+        else if (e.Key == Key.D0 || e.Key == Key.NumPad0)
+        {
+            e.Handled = true;
+            SetZoom(1.0);
+        }
+    }
+
+    private void BrowserView_OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
+    {
+        try
+        {
+            var operation = e.DownloadOperation;
+            var filePath = e.ResultFilePath ?? string.Empty;
+            var fileName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(filePath) : "下载文件";
+
+            var item = new DownloadItem
+            {
+                FileName = fileName,
+                FilePath = filePath,
+                TotalBytes = operation.TotalBytesToReceive > 0 ? (long)operation.TotalBytesToReceive : 0,
+                ReceivedBytes = (long)operation.BytesReceived,
+            };
+
+            _downloadsService.Track(item, operation);
+
+            operation.BytesReceivedChanged += (_, _) => OnDownloadProgress(item, operation);
+            operation.StateChanged += (_, _) => OnDownloadStateChanged(item, operation);
+
+            SetStatusMessage($"开始下载: {item.FileName}");
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+            RefreshControlWindow();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "DownloadStarting");
+        }
+    }
+
+    private void OnDownloadProgress(DownloadItem item, CoreWebView2DownloadOperation operation)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => OnDownloadProgress(item, operation));
+            return;
+        }
+
+        item.ReceivedBytes = (long)operation.BytesReceived;
+        if (operation.TotalBytesToReceive > 0)
+        {
+            item.TotalBytes = (long)operation.TotalBytesToReceive;
+        }
+        DownloadsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnDownloadStateChanged(DownloadItem item, CoreWebView2DownloadOperation operation)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => OnDownloadStateChanged(item, operation));
+            return;
+        }
+
+        switch (operation.State)
+        {
+            case CoreWebView2DownloadState.Completed:
+                _downloadsService.MarkCompleted(item);
+                SetStatusMessage($"下载完成: {item.FileName}");
+                break;
+            case CoreWebView2DownloadState.Interrupted:
+                _downloadsService.MarkInterrupted(item);
+                SetStatusMessage($"下载中断: {item.FileName}");
+                break;
+        }
+
+        DownloadsChanged?.Invoke(this, EventArgs.Empty);
         RefreshControlWindow();
     }
 
@@ -602,6 +730,94 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    public void RestoreDefaultSettings()
+    {
+        WindowOpacity = 1.0;
+        ApplyWindowOpacity(1.0);
+        ToggleModeKey = Key.F8;
+        ToggleModeModifiers = ModifierKeys.None;
+        TogglePlaybackKey = Key.K;
+        TogglePlaybackModifiers = ModifierKeys.None;
+        SetZoom(1.0);
+        QueueSettingsSave();
+    }
+
+    public void CancelDownload(DownloadItem item)
+    {
+        if (_downloadsService.TryCancel(item))
+        {
+            SetStatusMessage($"已取消下载: {item.FileName}");
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+            RefreshControlWindow();
+        }
+    }
+
+    public void OpenDownloadFile(DownloadItem item)
+    {
+        if (!_downloadsService.OpenFile(item))
+        {
+            SetStatusMessage("无法打开文件，可能已被移动或删除。");
+            RefreshControlWindow();
+        }
+    }
+
+    public void OpenDownloadFolder(DownloadItem item)
+    {
+        if (!_downloadsService.OpenFolder(item))
+        {
+            SetStatusMessage("无法打开所在文件夹。");
+            RefreshControlWindow();
+        }
+    }
+
+    public void ClearFinishedDownloads()
+    {
+        _downloadsService.ClearFinished();
+        DownloadsChanged?.Invoke(this, EventArgs.Empty);
+        RefreshControlWindow();
+    }
+
+    private void MinButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaxButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    private void ToggleMaximize()
+    {
+        if (!_isMaximized)
+        {
+            _savedBounds = new Rect(Left, Top, Width, Height);
+            var work = SystemParameters.WorkArea;
+            Left = work.Left;
+            Top = work.Top;
+            Width = work.Width;
+            Height = work.Height;
+            _isMaximized = true;
+            MaxIcon.Text = "\uE73F";
+        }
+        else
+        {
+            Left = _savedBounds.Left;
+            Top = _savedBounds.Top;
+            Width = _savedBounds.Width;
+            Height = _savedBounds.Height;
+            _isMaximized = false;
+            MaxIcon.Text = "\uE740";
+        }
+    }
+
+    private void RestoreFromMaximizeOnDrag(MouseButtonEventArgs e)
+    {
+        // 拖动最大化窗口标题栏时还原窗口尺寸，并让窗口跟随鼠标
+        var work = SystemParameters.WorkArea;
+        var ratio = e.GetPosition(this).X / ActualWidth;
+        ToggleMaximize();
+        Left = e.GetPosition(null).X - _savedBounds.Width * ratio;
+        Top = e.GetPosition(null).Y - SystemParameters.CaptionHeight / 2.0;
+        Left = Math.Max(work.Left, Math.Min(Left, work.Right - Width));
+        Top = Math.Max(work.Top, Math.Min(Top, work.Bottom - Height));
+        DragMove();
+    }
+
     private void CloseButton_OnClick(object sender, RoutedEventArgs e) => Close();
 
     private async void MainWindow_OnClosing(object? sender, CancelEventArgs e)
@@ -651,7 +867,7 @@ public partial class MainWindow : Window, IControlBrowser
             _controlWindow.Close();
         }
 
-        // 保存窗口位置到内存
+        // 保存窗口位置到内存（最大化时保留还原前的边界）
         SaveWindowBounds();
 
         try
@@ -664,6 +880,7 @@ public partial class MainWindow : Window, IControlBrowser
                 BrowserView.CoreWebView2.SourceChanged -= BrowserView_OnSourceChanged;
                 BrowserView.CoreWebView2.NewWindowRequested -= BrowserView_OnNewWindowRequested;
                 BrowserView.CoreWebView2.HistoryChanged -= BrowserView_OnHistoryChanged;
+                BrowserView.CoreWebView2.DownloadStarting -= BrowserView_OnDownloadStarting;
             }
 
             // 异步保存配置，不阻塞 UI 线程，让 WebView2 能继续泵送消息
@@ -682,6 +899,12 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
     {
+        // 最大化期间不保存边界、不重排控制窗口
+        if (_isMaximized)
+        {
+            return;
+        }
+
         if (_settings.WindowMode == WindowMode.Free)
         {
             SaveWindowBounds();
@@ -708,7 +931,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void SaveWindowBounds()
     {
-        if (WindowState != WindowState.Normal)
+        if (WindowState != WindowState.Normal || _isMaximized)
         {
             return;
         }
@@ -895,5 +1118,24 @@ public partial class MainWindow : Window, IControlBrowser
         var clamped = Math.Clamp(opacity, 0.1, 1.0);
         ((FrameworkElement)BrowserView).Opacity = clamped;
         FileLogger.LogDebug($"ApplyWindowOpacity: opacity={opacity}, clamped={clamped}");
+    }
+
+    private void SetZoom(double factor)
+    {
+        if (BrowserView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        var clamped = Math.Clamp(factor, 0.25, 5.0);
+        BrowserView.ZoomFactor = clamped;
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+        SetStatusMessage($"缩放: {Math.Round(clamped * 100)}%");
+        RefreshControlWindow();
+    }
+
+    private void ZoomBy(double delta)
+    {
+        SetZoom(BrowserView.ZoomFactor + delta);
     }
 }

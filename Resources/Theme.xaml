@@ -126,6 +126,82 @@
     <Setter Property="Padding" Value="8"/>
   </Style>
 
+  <!-- 标题栏按钮：扁平无边框，悬停高亮 -->
+  <Style x:Key="TitleBarButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="0"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="TitleBarBtnChrome"
+                  Background="{TemplateBinding Background}"
+                  BorderThickness="0"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="TitleBarBtnChrome" Property="Background" Value="{StaticResource BackgroundHover}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="TitleBarBtnChrome" Property="Background" Value="{StaticResource BorderColor}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 标题栏关闭按钮：悬停红色 -->
+  <Style x:Key="TitleBarCloseButton" TargetType="Button" BasedOn="{StaticResource TitleBarButton}">
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{StaticResource AccentDanger}"/>
+        <Setter Property="Foreground" Value="White"/>
+      </Trigger>
+      <Trigger Property="IsPressed" Value="True">
+        <Setter Property="Background" Value="#B62324"/>
+        <Setter Property="Foreground" Value="White"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <!-- Tab 切换按钮：底部强调线 + 悬停高亮 -->
+  <Style x:Key="TabRadioButton" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{StaticResource TextTertiary}"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Padding" Value="14,6"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FontSize" Value="12"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Border x:Name="TabChrome"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="0,0,0,3"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="TabChrome" Property="Background" Value="{StaticResource BackgroundHover}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="TabChrome" Property="BorderBrush" Value="{StaticResource AccentPrimary}"/>
+              <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+              <Setter Property="FontWeight" Value="SemiBold"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="ModernTextBox" TargetType="TextBox">
     <Setter Property="Background" Value="{StaticResource BackgroundSecondary}"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -160,7 +236,7 @@
 
   <Style x:Key="SearchTextBox" TargetType="TextBox" BasedOn="{StaticResource ModernTextBox}">
     <Setter Property="FontSize" Value="12"/>
-    <Setter Property="Padding" Value="10,6"/>
+    <Setter Property="Padding" Value="11,6"/>
   </Style>
 
   <Style x:Key="ModernListBox" TargetType="ListBox">
@@ -175,22 +251,31 @@
   </Style>
 
   <Style x:Key="ModernListBoxItem" TargetType="ListBoxItem">
-    <Setter Property="Padding" Value="12,10"/>
+    <Setter Property="Padding" Value="12,8"/>
     <Setter Property="Margin" Value="0"/>
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
-    <Setter Property="BorderThickness" Value="0,0,0,1"/>
-    <Setter Property="BorderBrush" Value="{StaticResource ListDivider}"/>
+    <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListBoxItem">
-          <Border x:Name="ListItemChrome"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  Padding="{TemplateBinding Padding}">
-            <ContentPresenter/>
-          </Border>
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Border x:Name="ListItemChrome" Grid.Row="0"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="4"
+                    Margin="0,3"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter/>
+            </Border>
+            <!-- 极细分割线：白色 5% 透明，微弱划分条目边界 -->
+            <Border Grid.Row="1" Height="1" Background="#0DFFFFFF"/>
+          </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
               <Setter TargetName="ListItemChrome" Property="Background" Value="{StaticResource BackgroundPrimary}"/>
@@ -292,6 +377,99 @@
     </Grid>
   </DataTemplate>
 
+  <Style x:Key="ExpanderHeaderToggleButton" TargetType="ToggleButton">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="Background" Value="{StaticResource BackgroundTertiary}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <Border x:Name="HeaderChrome" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <ContentPresenter Grid.Column="0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+              <TextBlock x:Name="Arrow" Grid.Column="1" Style="{StaticResource Mdl2IconText}" Text="&#xE70D;" Foreground="{StaticResource TextSecondary}"/>
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="HeaderChrome" Property="Background" Value="{StaticResource BackgroundHover}"/>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Arrow" Property="Text" Value="&#xE70E;"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ModernExpander" TargetType="Expander">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+    <Setter Property="Background" Value="{StaticResource BackgroundSecondary}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="12,8"/>
+    <Setter Property="Margin" Value="{StaticResource PanelSpacing}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Expander">
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{StaticResource CornerRadiusSm}"
+                  ClipToBounds="True">
+            <DockPanel>
+              <ToggleButton x:Name="HeaderSite"
+                            DockPanel.Dock="Top"
+                            IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                            Style="{StaticResource ExpanderHeaderToggleButton}"
+                            Content="{TemplateBinding Header}"
+                            ContentTemplate="{TemplateBinding HeaderTemplate}"
+                            ContentTemplateSelector="{TemplateBinding HeaderTemplateSelector}"
+                            ContentStringFormat="{TemplateBinding HeaderStringFormat}"/>
+              <ContentPresenter x:Name="ExpandSite"
+                                ContentSource="Content"
+                                Visibility="Collapsed"
+                                Margin="{TemplateBinding Padding}"
+                                TextBlock.Foreground="{StaticResource TextPrimary}"/>
+            </DockPanel>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsExpanded" Value="True">
+              <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ModernProgressBar" TargetType="ProgressBar">
+    <Setter Property="Background" Value="{StaticResource BackgroundTertiary}"/>
+    <Setter Property="Foreground" Value="{StaticResource AccentPrimary}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Height" Value="6"/>
+    <Setter Property="Minimum" Value="0"/>
+    <Setter Property="Maximum" Value="1"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ProgressBar">
+          <Border Background="{TemplateBinding Background}" CornerRadius="3">
+            <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="3"/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <Style x:Key="ToastBorderStyle" TargetType="Border">
     <Setter Property="Opacity" Value="0"/>
     <Setter Property="RenderTransform">
@@ -317,6 +495,73 @@
             </Storyboard>
           </BeginStoryboard>
         </Trigger.ExitActions>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <!-- ==================== 暗黑模式滚动条：细滑块 + 透明轨道 ==================== -->
+  <Style x:Key="ThinScrollBarPageButton" TargetType="RepeatButton">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RepeatButton">
+          <Border Background="Transparent"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ThinScrollBarThumb" TargetType="Thumb">
+    <Setter Property="Background" Value="{StaticResource BackgroundHover}"/>
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Thumb">
+          <Border Background="{TemplateBinding Background}" CornerRadius="4" Margin="1"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="IsMouseOver" Value="True">
+        <Setter Property="Background" Value="{StaticResource BorderColor}"/>
+      </Trigger>
+    </Style.Triggers>
+  </Style>
+
+  <Style TargetType="ScrollBar">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Foreground" Value="{StaticResource BackgroundHover}"/>
+    <Setter Property="Width" Value="8"/>
+    <Setter Property="MinWidth" Value="8"/>
+    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ScrollBar">
+          <Grid Background="Transparent">
+            <Track x:Name="PART_Track" IsDirectionReversed="True">
+              <Track.DecreaseRepeatButton>
+                <RepeatButton Style="{StaticResource ThinScrollBarPageButton}" Command="ScrollBar.PageUpCommand"/>
+              </Track.DecreaseRepeatButton>
+              <Track.Thumb>
+                <Thumb Style="{StaticResource ThinScrollBarThumb}"/>
+              </Track.Thumb>
+              <Track.IncreaseRepeatButton>
+                <RepeatButton Style="{StaticResource ThinScrollBarPageButton}" Command="ScrollBar.PageDownCommand"/>
+              </Track.IncreaseRepeatButton>
+            </Track>
+          </Grid>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers>
+      <Trigger Property="Orientation" Value="Horizontal">
+        <Setter Property="Width" Value="Auto"/>
+        <Setter Property="Height" Value="8"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="8"/>
       </Trigger>
     </Style.Triggers>
   </Style>
