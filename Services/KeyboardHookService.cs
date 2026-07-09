@@ -116,8 +116,8 @@ public sealed class KeyboardHookService : IDisposable
 
                 if (isFirstKeyDown && vkCode == VkK)
                 {
-                    // 固定模式（游戏中）或应用处于前台时才触发，避免影响其它软件输入 k
-                    if (_isGamingMode || _isAppActive)
+                    // 固定模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入 k
+                    if (IsGameOrBrowserForeground())
                     {
                         Raise(KPressed);
                     }
@@ -130,6 +130,58 @@ public sealed class KeyboardHookService : IDisposable
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    private static readonly HashSet<string> NonGameProcessNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer", "taskmgr", "cmd", "powershell", "wt", "bash",
+        "chrome", "firefox", "msedge", "opera", "brave", "iexplore", "safari", "360se", "sogouexplorer",
+        "qq", "tim", "wechat", "discord", "feishu", "dingtalk", "slack", "teams", "telegram", "whatsapp", "line",
+        "notepad", "notepad++", "code", "devenv", "rider", "sublime_text",
+        "wps", "winword", "excel", "powerpnt"
+    };
+
+    private bool IsGameOrBrowserForeground()
+    {
+        var foregroundHWnd = GetForegroundWindow();
+        if (foregroundHWnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        GetWindowThreadProcessId(foregroundHWnd, out uint pid);
+        var currentPid = (uint)Process.GetCurrentProcess().Id;
+
+        // 1. 如果前台窗口是我们自己的进程，允许触发
+        if (pid == currentPid)
+        {
+            return true;
+        }
+
+        // 2. 如果处于固定模式（游戏模式），且前台窗口是非排他性进程（即可能是任意游戏），允许触发
+        if (_isGamingMode)
+        {
+            try
+            {
+                using var process = Process.GetProcessById((int)pid);
+                var processName = process.ProcessName;
+
+                // 排除已知的非游戏常用软件（如浏览器、聊天软件、文本编辑器等）
+                if (!NonGameProcessNames.Contains(processName))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // 如果无法获取进程信息（通常是高权限进程，比如管理员身份运行的游戏），
+                // 且当前正处于置顶固定模式下，我们默认将其视为游戏，允许触发。
+                // 这样即使用户以管理员运行了其他游戏，热键也能正常工作。
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Raise(EventHandler? handler)
@@ -145,6 +197,15 @@ public sealed class KeyboardHookService : IDisposable
     }
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
