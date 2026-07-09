@@ -44,6 +44,19 @@ jobs:
           -p:PublishTrimmed=false `
           -o dist/win-x64-self-contained
 
+    - name: 下载 WebView2 Evergreen Bootstrapper
+      shell: pwsh
+      run: |
+        $url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+        $out = "dist/win-x64-self-contained/MicrosoftEdgeWebview2Setup.exe"
+        Write-Host "正在下载 WebView2 Evergreen Bootstrapper..."
+        Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+        $size = [math]::Round((Get-Item $out).Length / 1KB, 1)
+        Write-Host "下载完成: $size KB"
+        # 复制辅助文件
+        Copy-Item -LiteralPath "release/install.ps1" -Destination "dist/win-x64-self-contained/install.ps1" -Force
+        Copy-Item -LiteralPath "release/README.txt" -Destination "dist/win-x64-self-contained/README.txt" -Force
+
     - name: 生成版本信息文件
       shell: pwsh
       run: |
@@ -98,13 +111,19 @@ jobs:
 
           专为 B 站原神攻略视频设计的 Windows 浮窗浏览器
 
-          ### 📦 下载说明
+           ### 📦 下载说明
 
-          下载 `GenshinBrowser-${{ github.event.inputs.version }}-win-x64.zip`，解压后运行 `GenshinBrowser.exe`
+           下载 `GenshinBrowser-${{ github.event.inputs.version }}-win-x64.zip`
 
-          **系统要求:**
-          - Windows 10/11
-          - Edge WebView2 Runtime (Windows 11 自带)
+           **快速启动（推荐）:**
+           解压后右键 `install.ps1` → 使用 PowerShell 运行，自动安装 WebView2 Runtime 并启动应用
+
+           **手动启动:**
+           1. 运行 `MicrosoftEdgeWebview2Setup.exe`（静默安装 WebView2 Runtime，无界面）
+           2. 运行 `GenshinBrowser.exe`
+
+           **系统要求:**
+           - Windows 10/11
 
           ### ✨ 核心功能
 
