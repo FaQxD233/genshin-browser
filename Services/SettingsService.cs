@@ -49,6 +49,11 @@ public sealed class SettingsService : IDisposable
             ControlWindowTop = settings.ControlWindowTop,
             ControlWindowWidth = settings.ControlWindowWidth,
             ControlWindowHeight = settings.ControlWindowHeight,
+            WindowOpacity = settings.WindowOpacity,
+            ToggleModeKey = settings.ToggleModeKey,
+            ToggleModeModifiers = settings.ToggleModeModifiers,
+            TogglePlaybackKey = settings.TogglePlaybackKey,
+            TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
         };
 
         await _saveGate.WaitAsync().ConfigureAwait(false);

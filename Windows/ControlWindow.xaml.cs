@@ -392,4 +392,56 @@ public partial class ControlWindow : Window
         AddressBarTextBox.Text = address;
         AddressBarTextBox.Foreground = ActiveBrush;
     }
+
+    protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        if (_viewModel.IsRecordingAnyKey)
+        {
+            e.Handled = true;
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            
+            if (key == Key.LeftCtrl || key == Key.RightCtrl ||
+                key == Key.LeftAlt || key == Key.RightAlt ||
+                key == Key.LeftShift || key == Key.RightShift ||
+                key == Key.LWin || key == Key.RWin)
+            {
+                var modifiers = Keyboard.Modifiers;
+                _viewModel.UpdateRecordingModifiers(modifiers);
+                return;
+            }
+            
+            var finalModifiers = Keyboard.Modifiers;
+            _viewModel.FinishRecordingKey(key, finalModifiers);
+        }
+        else
+        {
+            base.OnPreviewKeyDown(e);
+        }
+    }
+
+    protected override void OnPreviewKeyUp(System.Windows.Input.KeyEventArgs e)
+    {
+        if (_viewModel.IsRecordingAnyKey)
+        {
+            e.Handled = true;
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.LeftCtrl || key == Key.RightCtrl ||
+                key == Key.LeftAlt || key == Key.RightAlt ||
+                key == Key.LeftShift || key == Key.RightShift ||
+                key == Key.LWin || key == Key.RWin)
+            {
+                var modifiers = Keyboard.Modifiers;
+                _viewModel.UpdateRecordingModifiers(modifiers);
+            }
+        }
+        else
+        {
+            base.OnPreviewKeyUp(e);
+        }
+    }
+
+    private void SettingsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        SettingsPopup.IsOpen = !SettingsPopup.IsOpen;
+    }
 }

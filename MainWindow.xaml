@@ -4,16 +4,38 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="Genshin Browser"
         Width="648"
         Height="400"
         MinWidth="640"
         MinHeight="360"
-        Background="{StaticResource BackgroundPrimary}"
+        Background="Transparent"
         Foreground="{StaticResource TextPrimary}"
-        WindowStartupLocation="Manual">
-  <Grid>
-    <wv2:WebView2 x:Name="BrowserView" />
+        WindowStartupLocation="Manual"
+        AllowsTransparency="True"
+        WindowStyle="None">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome GlassFrameThickness="0" ResizeBorderThickness="6" CaptionHeight="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+  <Grid Background="Transparent">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="30" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <Border x:Name="DragBar" Grid.Row="0" Background="{StaticResource BackgroundTertiary}" Cursor="SizeAll">
+      <Grid>
+        <TextBlock Text="Genshin Browser" VerticalAlignment="Center" Margin="10,0,0,0"
+                   Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="SemiBold" />
+        <Button x:Name="CloseButton" HorizontalAlignment="Right" VerticalAlignment="Center"
+                Margin="0,0,6,0" Width="26" Height="22"
+                Style="{StaticResource IconButton}" Click="CloseButton_OnClick"
+                ToolTip="关闭">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8BB;" />
+        </Button>
+      </Grid>
+    </Border>
+    <wv2:WebView2CompositionControl Grid.Row="1" x:Name="BrowserView" />
   </Grid>
 </Window>

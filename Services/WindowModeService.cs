@@ -14,16 +14,17 @@ public sealed class WindowModeService
 
     public void ApplyMode(WindowMode mode)
     {
+        // 主窗口为无边框分层浮窗（AllowsTransparency=True + WindowStyle=None），
+        // 不能再将 WindowStyle 改回 SingleBorderWindow，否则会抛 InvalidOperationException。
+        // 两种模式均保持无边框，仅调整置顶与缩放策略。
         if (mode == WindowMode.Fixed)
         {
             _window.Topmost = true;
             _window.ResizeMode = ResizeMode.NoResize;
-            _window.WindowStyle = WindowStyle.SingleBorderWindow;
             return;
         }
 
         _window.Topmost = false;
         _window.ResizeMode = ResizeMode.CanResize;
-        _window.WindowStyle = WindowStyle.SingleBorderWindow;
     }
 }

@@ -2,7 +2,9 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using Application = System.Windows.Application;
+using GenshinBrowser.Services;
 
 namespace GenshinBrowser;
 
@@ -13,6 +15,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += App_OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += App_OnUnhandledException;
+
         _singleInstanceMutex = new Mutex(initiallyOwned: true, name: SingleInstanceMutexName, out var createdNew);
 
         // 已有实例在运行：激活它并退出当前进程
@@ -24,6 +29,24 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+    }
+
+    private static void App_OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        FileLogger.LogException(e.Exception, "App.DispatcherUnhandledException");
+        System.Windows.MessageBox.Show(
+            $"发生未处理异常：\n{e.Exception.GetType().Name}: {e.Exception.Message}\n\n详情已写入日志。",
+            "Genshin Browser 错误",
+            MessageBoxButton.OK);
+        e.Handled = true;
+    }
+
+    private static void App_OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+    {
+        if (e.ExceptionObject is Exception ex)
+        {
+            FileLogger.LogException(ex, "AppDomain.UnhandledException");
+        }
     }
 
     private static void ActivateExistingInstance()

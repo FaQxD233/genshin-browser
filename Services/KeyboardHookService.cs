@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Input;
 
 namespace GenshinBrowser.Services;
 
@@ -10,8 +11,35 @@ public sealed class KeyboardHookService : IDisposable
     private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
-    private const int VkK = 0x4B;
-    private const int VkF8 = 0x77;
+
+    private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
+    private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
+    private volatile ModifierKeys _toggleModeModifiers = ModifierKeys.None;
+    private volatile ModifierKeys _togglePlaybackModifiers = ModifierKeys.None;
+
+    public int ToggleModeVk
+    {
+        get => _toggleModeVk;
+        set => _toggleModeVk = value;
+    }
+
+    public int TogglePlaybackVk
+    {
+        get => _togglePlaybackVk;
+        set => _togglePlaybackVk = value;
+    }
+
+    public ModifierKeys ToggleModeModifiers
+    {
+        get => _toggleModeModifiers;
+        set => _toggleModeModifiers = value;
+    }
+
+    public ModifierKeys TogglePlaybackModifiers
+    {
+        get => _togglePlaybackModifiers;
+        set => _togglePlaybackModifiers = value;
+    }
 
     private readonly LowLevelKeyboardProc _proc;
     private readonly HashSet<int> _pressedKeys = new();
@@ -114,15 +142,15 @@ public sealed class KeyboardHookService : IDisposable
                     isFirstKeyDown = _pressedKeys.Add(vkCode);
                 }
 
-                if (isFirstKeyDown && vkCode == VkK)
+                if (isFirstKeyDown && vkCode == _togglePlaybackVk && IsModifierPressed(_togglePlaybackModifiers))
                 {
-                    // 固定模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入 k
+                    // 固定模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入
                     if (IsGameOrBrowserForeground())
                     {
                         Raise(KPressed);
                     }
                 }
-                else if (isFirstKeyDown && vkCode == VkF8)
+                else if (isFirstKeyDown && vkCode == _toggleModeVk && IsModifierPressed(_toggleModeModifiers))
                 {
                     Raise(ModeTogglePressed);
                 }
@@ -130,6 +158,33 @@ public sealed class KeyboardHookService : IDisposable
         }
 
         return CallNextHookEx(_hookId, nCode, wParam, lParam);
+    }
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    private const int VkControl = 0x11;
+    private const int VkMenu = 0x12; // Alt
+    private const int VkShift = 0x10;
+    private const int VkLwin = 0x5B;
+    private const int VkRwin = 0x5C;
+
+    private static bool IsModifierPressed(ModifierKeys modifiers)
+    {
+        var controlPressed = (GetAsyncKeyState(VkControl) & 0x8000) != 0;
+        var altPressed = (GetAsyncKeyState(VkMenu) & 0x8000) != 0;
+        var shiftPressed = (GetAsyncKeyState(VkShift) & 0x8000) != 0;
+        var winPressed = (GetAsyncKeyState(VkLwin) & 0x8000) != 0 || (GetAsyncKeyState(VkRwin) & 0x8000) != 0;
+
+        var expectedControl = modifiers.HasFlag(ModifierKeys.Control);
+        var expectedAlt = modifiers.HasFlag(ModifierKeys.Alt);
+        var expectedShift = modifiers.HasFlag(ModifierKeys.Shift);
+        var expectedWin = modifiers.HasFlag(ModifierKeys.Windows);
+
+        return controlPressed == expectedControl &&
+               altPressed == expectedAlt &&
+               shiftPressed == expectedShift &&
+               winPressed == expectedWin;
     }
 
     private static readonly HashSet<string> NonGameProcessNames = new(StringComparer.OrdinalIgnoreCase)

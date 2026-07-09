@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Threading;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
@@ -44,6 +45,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RemoveHistoryCommand = new AsyncRelayCommand(parameter => RemoveHistoryAsync(parameter));
         GoBackCommand = new RelayCommand(_browser.GoBack, () => _browser.CanGoBack);
         GoForwardCommand = new RelayCommand(_browser.GoForward, () => _browser.CanGoForward);
+        RecordToggleModeKeyCommand = new RelayCommand(StartRecordingToggleModeKey);
+        RecordTogglePlaybackKeyCommand = new RelayCommand(StartRecordingTogglePlaybackKey);
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         _toastTimer.Tick += ToastTimer_OnTick;
@@ -85,6 +88,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public AsyncRelayCommand RemoveFavoriteCommand { get; }
 
     public AsyncRelayCommand RemoveHistoryCommand { get; }
+
+    public RelayCommand RecordToggleModeKeyCommand { get; }
+
+    public RelayCommand RecordTogglePlaybackKeyCommand { get; }
 
     public string ModeText
     {
@@ -418,5 +425,166 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             ToastVisibility = Visibility.Collapsed;
         }
+    }
+
+    private bool _isRecordingToggleModeKey;
+    private bool _isRecordingTogglePlaybackKey;
+    private ModifierKeys _currentRecordingModifiers;
+
+    public double WindowOpacity
+    {
+        get => _browser.WindowOpacity;
+        set
+        {
+            if (Math.Abs(_browser.WindowOpacity - value) > 0.001)
+            {
+                _browser.WindowOpacity = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(OpacityPercentageText));
+            }
+        }
+    }
+
+    public string OpacityPercentageText => $"{Math.Round(_browser.WindowOpacity * 100)}%";
+
+    public bool IsRecordingAnyKey => _isRecordingToggleModeKey || _isRecordingTogglePlaybackKey;
+
+    public string ToggleModeKeyText
+    {
+        get
+        {
+            if (_isRecordingToggleModeKey)
+            {
+                return GetModifiersString(_currentRecordingModifiers) + "...";
+            }
+            return FormatHotkey(_browser.ToggleModeKey, _browser.ToggleModeModifiers);
+        }
+    }
+
+    public string TogglePlaybackKeyText
+    {
+        get
+        {
+            if (_isRecordingTogglePlaybackKey)
+            {
+                return GetModifiersString(_currentRecordingModifiers) + "...";
+            }
+            return FormatHotkey(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers);
+        }
+    }
+
+    private void StartRecordingToggleModeKey()
+    {
+        _isRecordingToggleModeKey = true;
+        _isRecordingTogglePlaybackKey = false;
+        _currentRecordingModifiers = ModifierKeys.None;
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        ShowToast("请按下“切换模式”快捷键（按 Esc 取消）");
+    }
+
+    private void StartRecordingTogglePlaybackKey()
+    {
+        _isRecordingTogglePlaybackKey = true;
+        _isRecordingToggleModeKey = false;
+        _currentRecordingModifiers = ModifierKeys.None;
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        ShowToast("请按下“视频播放”快捷键（按 Esc 取消）");
+    }
+
+    public void UpdateRecordingModifiers(ModifierKeys modifiers)
+    {
+        _currentRecordingModifiers = modifiers;
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+    }
+
+    public void FinishRecordingKey(Key key, ModifierKeys modifiers)
+    {
+        if (key == Key.Escape)
+        {
+            _isRecordingToggleModeKey = false;
+            _isRecordingTogglePlaybackKey = false;
+            _currentRecordingModifiers = ModifierKeys.None;
+            OnPropertyChanged(nameof(ToggleModeKeyText));
+            OnPropertyChanged(nameof(TogglePlaybackKeyText));
+            ShowToast("已取消录制。");
+            return;
+        }
+
+        if (_isRecordingToggleModeKey)
+        {
+            if (key == _browser.TogglePlaybackKey && modifiers == _browser.TogglePlaybackModifiers)
+            {
+                ShowToast("该快捷键已被视频播放占用！");
+            }
+            else
+            {
+                _browser.ToggleModeKey = key;
+                _browser.ToggleModeModifiers = modifiers;
+                ShowToast($"已将“切换模式”设为 {FormatHotkey(key, modifiers)}");
+            }
+            _isRecordingToggleModeKey = false;
+        }
+        else if (_isRecordingTogglePlaybackKey)
+        {
+            if (key == _browser.ToggleModeKey && modifiers == _browser.ToggleModeModifiers)
+            {
+                ShowToast("该快捷键已被切换模式占用！");
+            }
+            else
+            {
+                _browser.TogglePlaybackKey = key;
+                _browser.TogglePlaybackModifiers = modifiers;
+                ShowToast($"已将“视频播放”设为 {FormatHotkey(key, modifiers)}");
+            }
+            _isRecordingTogglePlaybackKey = false;
+        }
+
+        _currentRecordingModifiers = ModifierKeys.None;
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+    }
+
+    private static string GetModifiersString(ModifierKeys modifiers)
+    {
+        var parts = new List<string>();
+        if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
+        if (modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
+        if (modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
+        if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
+        if (parts.Count == 0) return string.Empty;
+        return string.Join(" + ", parts) + " + ";
+    }
+
+    private static string FormatHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == Key.None) return "未设置";
+        return GetModifiersString(modifiers) + GetKeyName(key);
+    }
+
+    private static string GetKeyName(Key key)
+    {
+        return key switch
+        {
+            Key.None => "无",
+            Key.OemPeriod => ".",
+            Key.OemComma => ",",
+            Key.OemQuestion => "/",
+            Key.OemPlus => "+",
+            Key.OemMinus => "-",
+            Key.D0 => "0",
+            Key.D1 => "1",
+            Key.D2 => "2",
+            Key.D3 => "3",
+            Key.D4 => "4",
+            Key.D5 => "5",
+            Key.D6 => "6",
+            Key.D7 => "7",
+            Key.D8 => "8",
+            Key.D9 => "9",
+            _ => key.ToString()
+        };
     }
 }

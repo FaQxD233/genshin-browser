@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
@@ -44,11 +46,86 @@ public partial class MainWindow : Window, IControlBrowser
 
         Loaded += MainWindow_OnLoaded;
         Closing += MainWindow_OnClosing;
+        DragBar.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.Source is System.Windows.Controls.Button) return;
+            DragMove();
+        };
         LocationChanged += MainWindow_OnLocationOrSizeChanged;
         SizeChanged += MainWindow_OnLocationOrSizeChanged;
     }
 
     public WindowMode CurrentMode => _settings.WindowMode;
+
+    public double WindowOpacity
+    {
+        get => _settings.WindowOpacity;
+        set
+        {
+            if (Math.Abs(_settings.WindowOpacity - value) > 0.001)
+            {
+                _settings.WindowOpacity = value;
+                ApplyWindowOpacity(value);
+                QueueSettingsSave();
+            }
+        }
+    }
+
+    public Key ToggleModeKey
+    {
+        get => _settings.ToggleModeKey;
+        set
+        {
+            if (_settings.ToggleModeKey != value)
+            {
+                _settings.ToggleModeKey = value;
+                _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(value);
+                QueueSettingsSave();
+            }
+        }
+    }
+
+    public ModifierKeys ToggleModeModifiers
+    {
+        get => _settings.ToggleModeModifiers;
+        set
+        {
+            if (_settings.ToggleModeModifiers != value)
+            {
+                _settings.ToggleModeModifiers = value;
+                _keyboardHookService.ToggleModeModifiers = value;
+                QueueSettingsSave();
+            }
+        }
+    }
+
+    public Key TogglePlaybackKey
+    {
+        get => _settings.TogglePlaybackKey;
+        set
+        {
+            if (_settings.TogglePlaybackKey != value)
+            {
+                _settings.TogglePlaybackKey = value;
+                _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(value);
+                QueueSettingsSave();
+            }
+        }
+    }
+
+    public ModifierKeys TogglePlaybackModifiers
+    {
+        get => _settings.TogglePlaybackModifiers;
+        set
+        {
+            if (_settings.TogglePlaybackModifiers != value)
+            {
+                _settings.TogglePlaybackModifiers = value;
+                _keyboardHookService.TogglePlaybackModifiers = value;
+                QueueSettingsSave();
+            }
+        }
+    }
 
     public string CurrentAddress => _currentAddress;
 
@@ -80,8 +157,16 @@ public partial class MainWindow : Window, IControlBrowser
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
         _settings = await _settingsService.LoadAsync();
         RestoreWindowBounds();
+
+        ApplyWindowOpacity(_settings.WindowOpacity);
+        _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
+        _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
+        _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey);
+        _keyboardHookService.TogglePlaybackModifiers = _settings.TogglePlaybackModifiers;
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateWindowTitle();
@@ -99,6 +184,12 @@ public partial class MainWindow : Window, IControlBrowser
         // 跟踪应用前台状态：自由模式下离开前台时禁用全局 K，避免影响其它软件输入
         Application.Current.Activated += App_OnActivated;
         Application.Current.Deactivated += App_OnDeactivated;
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "MainWindow_OnLoaded");
+            System.Windows.MessageBox.Show($"启动失败：\n{ex.GetType().Name}: {ex.Message}", "Genshin Browser", MessageBoxButton.OK);
+        }
     }
 
     private void App_OnActivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = true;
@@ -116,6 +207,17 @@ public partial class MainWindow : Window, IControlBrowser
             BrowserView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             BrowserView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             BrowserView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            BrowserView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+            ApplyWindowOpacity(_settings.WindowOpacity);
+
+            // 让网页自身的背景也透明，否则页面深色 CSS 背景（如 GitHub/B 站 dark 主题）
+            // 会盖住浮窗透明度，导致窗口看起来仍是黑色底色。仅覆盖背景，不影响布局。
+            const string transparentBackgroundScript =
+                "(() => { const s = document.createElement('style');" +
+                "s.textContent = 'html,body{background:transparent !important;}';" +
+                "document.head.appendChild(s); })();";
+            await BrowserView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(transparentBackgroundScript);
+
             BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
             BrowserView.CoreWebView2.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
             BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
@@ -125,6 +227,8 @@ public partial class MainWindow : Window, IControlBrowser
             var startUrl = GetStartupUrl(_settings.LastUrl);
             _currentAddress = startUrl;
             BrowserView.CoreWebView2.Navigate(startUrl);
+            // 对初始已加载的页面补执行一次（文档创建脚本只作用于之后的导航）
+            _ = BrowserView.CoreWebView2.ExecuteScriptAsync(transparentBackgroundScript);
             SetStatusMessage("浏览器已就绪，登录态和缓存将自动保留。");
             _browserReady = true;
             UpdateWindowTitle();
@@ -457,6 +561,8 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    private void CloseButton_OnClick(object sender, RoutedEventArgs e) => Close();
+
     private async void MainWindow_OnClosing(object? sender, CancelEventArgs e)
     {
         if (_isRealClose)
@@ -738,5 +844,15 @@ public partial class MainWindow : Window, IControlBrowser
             : $"{BrowserView.CoreWebView2.DocumentTitle} - Genshin Browser";
 
         Title = pageTitle;
+    }
+
+    private void ApplyWindowOpacity(double opacity)
+    {
+        // WebView2CompositionControl 将浏览器内容渲染进 WPF 视觉树（Image），
+        // 因此直接设置其 Opacity 即可让透明度对网页内容生效，无需操作 Win32 分层窗口。
+        // 该控件的 Opacity 被声明为隐藏的 get-only 属性，需转型到 FrameworkElement 设置。
+        var clamped = Math.Clamp(opacity, 0.1, 1.0);
+        ((FrameworkElement)BrowserView).Opacity = clamped;
+        FileLogger.LogDebug($"ApplyWindowOpacity: opacity={opacity}, clamped={clamped}");
     }
 }

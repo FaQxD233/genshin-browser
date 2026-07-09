@@ -60,9 +60,44 @@
             <Button Style="{StaticResource IconButton}" Margin="0,0,6,0" Command="{Binding TogglePlaybackCommand}" ToolTip="控制视频播放/暂停 (K)">
               <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE769;"/>
             </Button>
-            <Button Style="{StaticResource IconButton}" Command="{Binding NavigateHomeCommand}" ToolTip="返回原神攻略首页">
-              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE80F;"/>
+            <Button x:Name="SettingsButton" Style="{StaticResource IconButton}" Click="SettingsButton_OnClick" ToolTip="浮窗设置">
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;"/>
             </Button>
+            <Popup x:Name="SettingsPopup"
+                   PlacementTarget="{Binding ElementName=SettingsButton}"
+                   Placement="Bottom"
+                   HorizontalOffset="-264"
+                   VerticalOffset="4"
+                   AllowsTransparency="True"
+                   StaysOpen="False"
+                   PopupAnimation="Fade">
+              <Border Background="{StaticResource BackgroundTertiary}"
+                      BorderBrush="{StaticResource BorderColor}"
+                      BorderThickness="1"
+                      CornerRadius="{StaticResource CornerRadiusSm}"
+                      Padding="14,12"
+                      Width="300">
+                <StackPanel>
+                  <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" Text="浮窗设置" Margin="0,0,0,12" />
+
+                  <TextBlock Text="浮窗不透明度" Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,0,0,6"/>
+                  <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" MinWidth="36" />
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0" Value="{Binding WindowOpacity, Mode=TwoWay}" Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{Binding OpacityPercentageText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" FontSize="12" Margin="8,0,0,0"/>
+                  </Grid>
+
+                  <TextBlock Text="切换模式快捷键" Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                  <Button Content="{Binding ToggleModeKeyText}" Command="{Binding RecordToggleModeKeyCommand}" Style="{StaticResource ModernButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="0,0,0,10"/>
+
+                  <TextBlock Text="视频播放快捷键" Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                  <Button Content="{Binding TogglePlaybackKeyText}" Command="{Binding RecordTogglePlaybackKeyCommand}" Style="{StaticResource ModernButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                </StackPanel>
+              </Border>
+            </Popup>
           </StackPanel>
         </Grid>
       </Border>

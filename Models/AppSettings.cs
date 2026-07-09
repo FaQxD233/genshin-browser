@@ -1,3 +1,5 @@
+using System.Windows.Input;
+
 namespace GenshinBrowser.Models;
 
 public sealed class AppSettings
@@ -21,4 +23,14 @@ public sealed class AppSettings
     public double ControlWindowWidth { get; set; } = 640;
 
     public double ControlWindowHeight { get; set; } = 853;
+
+    public double WindowOpacity { get; set; } = 1.0;
+
+    public Key ToggleModeKey { get; set; } = Key.F8;
+
+    public ModifierKeys ToggleModeModifiers { get; set; } = ModifierKeys.None;
+
+    public Key TogglePlaybackKey { get; set; } = Key.K;
+
+    public ModifierKeys TogglePlaybackModifiers { get; set; } = ModifierKeys.None;
 }
