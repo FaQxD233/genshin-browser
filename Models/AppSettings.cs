@@ -4,7 +4,7 @@ public sealed class AppSettings
 {
     public string LastUrl { get; set; } = string.Empty;
 
-    public WindowMode WindowMode { get; set; } = WindowMode.Fixed;
+    public WindowMode WindowMode { get; set; } = WindowMode.Free;
 
     public double WindowLeft { get; set; } = 100;
 

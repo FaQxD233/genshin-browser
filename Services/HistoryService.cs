@@ -94,6 +94,7 @@ public sealed class HistoryService : IDisposable
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
+            FileLogger.LogException(ex, "Load history");
             // 文件损坏或无法访问，从空列表开始
             _entries = new List<HistoryEntry>();
         }
@@ -105,6 +106,11 @@ public sealed class HistoryService : IDisposable
         try
         {
             await JsonFileWriter.WriteAtomicAsync(_historyPath, snapshot, _jsonOptions).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            FileLogger.LogException(ex, "Save history");
+            throw;
         }
         finally
         {

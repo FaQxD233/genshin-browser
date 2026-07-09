@@ -29,6 +29,7 @@ public sealed class SettingsService : IDisposable
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
+            FileLogger.LogException(ex, "Load settings");
             // 文件损坏或无法访问，使用默认设置
             return new AppSettings();
         }
@@ -54,6 +55,11 @@ public sealed class SettingsService : IDisposable
         try
         {
             await JsonFileWriter.WriteAtomicAsync(_settingsPath, snapshot, _jsonOptions).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            FileLogger.LogException(ex, "Save settings");
+            throw;
         }
         finally
         {

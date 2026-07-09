@@ -10,8 +10,8 @@
         Height="400"
         MinWidth="640"
         MinHeight="360"
-        Background="#0F1116"
-        Foreground="#F4F6FB"
+        Background="{StaticResource BackgroundPrimary}"
+        Foreground="{StaticResource TextPrimary}"
         WindowStartupLocation="Manual">
   <Grid>
     <wv2:WebView2 x:Name="BrowserView" />

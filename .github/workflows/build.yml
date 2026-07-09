@@ -116,11 +116,11 @@ jobs:
 
           ### 🔧 本次更新
 
-          - 修复多个严重 bug 和性能问题
-          - 列表刷新性能提升 100 倍
-          - 窗口拖动开销减少 30 倍
-          - 完全消除内存泄漏
-          - 详见 [CODE_REVIEW_REPORT.md](https://github.com/${{ github.repository }}/blob/main/CODE_REVIEW_REPORT.md)
+          - 控制窗口引入轻量 MVVM，降低界面与浏览器逻辑耦合
+          - 新增 Toast 非阻塞提示和本地日志文件（`%LocalAppData%\GenshinBrowser\logs\`）
+          - 替换 emoji 图标为稳定的 Segoe MDL2 图标字形
+          - 新增按钮、Toast、控制窗口显示等 WPF 过渡动画
+          - 修复列表同 URL 信息刷新、右键菜单命中项、控制窗口防抖保存重复订阅问题
 
           ---
 

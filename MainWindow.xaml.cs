@@ -6,10 +6,11 @@ using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 using GenshinBrowser.Windows;
 using Microsoft.Web.WebView2.Core;
+using Application = System.Windows.Application;
 
 namespace GenshinBrowser;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IControlBrowser
 {
     private readonly SettingsService _settingsService;
     private readonly HistoryService _historyService;
@@ -20,10 +21,13 @@ public partial class MainWindow : Window
     private AppSettings _settings = new();
     private bool _browserReady;
     private bool _isShuttingDown;
+    private bool _isRealClose;
     private string _currentAddress = string.Empty;
     private string _statusMessage = "正在初始化浏览器...";
     private ControlWindow? _controlWindow;
     private CancellationTokenSource? _settingsSaveCts;
+
+    public event EventHandler? BrowserStateChanged;
 
     public MainWindow()
     {
@@ -50,6 +54,26 @@ public partial class MainWindow : Window
 
     public string StatusMessage => _statusMessage;
 
+    public bool CanGoBack => BrowserView.CoreWebView2?.CanGoBack ?? false;
+
+    public bool CanGoForward => BrowserView.CoreWebView2?.CanGoForward ?? false;
+
+    public void GoBack()
+    {
+        if (CanGoBack)
+        {
+            BrowserView.GoBack();
+        }
+    }
+
+    public void GoForward()
+    {
+        if (CanGoForward)
+        {
+            BrowserView.GoForward();
+        }
+    }
+
     public IReadOnlyList<HistoryEntry> HistoryEntries => _historyService.GetEntries();
 
     public IReadOnlyList<FavoriteEntry> FavoriteEntries => _favoritesService.GetEntries();
@@ -59,6 +83,7 @@ public partial class MainWindow : Window
         _settings = await _settingsService.LoadAsync();
         RestoreWindowBounds();
         _windowModeService.ApplyMode(_settings.WindowMode);
+        _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateWindowTitle();
 
         _controlWindow = new ControlWindow(this);
@@ -70,7 +95,15 @@ public partial class MainWindow : Window
         _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
         _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
         StartKeyboardHook();
+
+        // 跟踪应用前台状态：自由模式下离开前台时禁用全局 K，避免影响其它软件输入
+        Application.Current.Activated += App_OnActivated;
+        Application.Current.Deactivated += App_OnDeactivated;
     }
+
+    private void App_OnActivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = true;
+
+    private void App_OnDeactivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = false;
 
     private async Task InitializeBrowserAsync()
     {
@@ -86,6 +119,8 @@ public partial class MainWindow : Window
             BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
             BrowserView.CoreWebView2.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
             BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
+            BrowserView.CoreWebView2.NewWindowRequested += BrowserView_OnNewWindowRequested;
+            BrowserView.CoreWebView2.HistoryChanged += BrowserView_OnHistoryChanged;
 
             var startUrl = GetStartupUrl(_settings.LastUrl);
             _currentAddress = startUrl;
@@ -97,6 +132,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Initialize browser");
             SetStatusMessage($"初始化失败: {ex.Message}");
         }
     }
@@ -123,6 +159,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Navigation completed handling");
             SetStatusMessage($"记录页面状态失败: {ex.Message}");
         }
     }
@@ -153,8 +190,29 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Source changed handling");
             SetStatusMessage($"地址更新失败: {ex.Message}");
         }
+    }
+
+    private void BrowserView_OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        // 拦截「在新窗口打开」的链接，统一在当前浏览器内导航，避免弹出无控制窗口的裸 WebView2
+        if (string.IsNullOrEmpty(e.Uri))
+        {
+            return;
+        }
+
+        if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) && IsHttpOrHttps(uri))
+        {
+            e.Handled = true;
+            BrowserView.CoreWebView2.Navigate(e.Uri);
+        }
+    }
+
+    private void BrowserView_OnHistoryChanged(object? sender, object e)
+    {
+        RefreshControlWindow();
     }
 
     private void KeyboardHookService_OnKPressed(object? sender, EventArgs e)
@@ -218,6 +276,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Toggle video playback");
             SetStatusMessage($"播放控制失败: {ex.Message}");
         }
     }
@@ -232,6 +291,7 @@ public partial class MainWindow : Window
         }
 
         _windowModeService.ApplyMode(_settings.WindowMode);
+        _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         SetStatusMessage(_settings.WindowMode == WindowMode.Fixed
             ? "固定模式已开启。按 F8 返回自由模式。"
             : "自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。");
@@ -260,6 +320,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Reload page");
             SetStatusMessage($"刷新失败: {ex.Message}");
         }
     }
@@ -280,6 +341,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Add current page to favorites");
             SetStatusMessage($"收藏失败: {ex.Message}");
         }
     }
@@ -294,6 +356,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Remove favorite");
             SetStatusMessage($"取消收藏失败: {ex.Message}");
         }
     }
@@ -313,6 +376,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Clear history");
             SetStatusMessage($"清空历史失败: {ex.Message}");
         }
     }
@@ -327,6 +391,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Remove history entry");
             SetStatusMessage($"移除失败: {ex.Message}");
         }
     }
@@ -387,20 +452,46 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Navigate to target");
             SetStatusMessage($"打开失败: {ex.Message}");
         }
     }
 
-    private void MainWindow_OnClosing(object? sender, CancelEventArgs e)
+    private async void MainWindow_OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (_isRealClose)
+        {
+            return;
+        }
+
+        // 拦截当前的关闭，并在后台进行清理和异步保存
+        e.Cancel = true;
+        _isRealClose = true;
+
+        await CleanupAndSaveAsync();
+
+        // 重新调用 Close，此时 _isRealClose 为 true，将直接返回并退出
+        Close();
+    }
+
+    private async Task CleanupAndSaveAsync()
     {
         _isShuttingDown = true;
 
         // 立即停止键盘钩子
         _keyboardHookService.Dispose();
 
+        // 取消前台状态跟踪
+        if (Application.Current is not null)
+        {
+            Application.Current.Activated -= App_OnActivated;
+            Application.Current.Deactivated -= App_OnDeactivated;
+        }
+
         // 取消待处理的保存操作
         _settingsSaveCts?.Cancel();
         _settingsSaveCts?.Dispose();
+        _settingsSaveCts = null;
 
         // 取消事件订阅
         LocationChanged -= MainWindow_OnLocationOrSizeChanged;
@@ -416,32 +507,30 @@ public partial class MainWindow : Window
         // 保存窗口位置到内存
         SaveWindowBounds();
 
-        // 异步清理 WebView2 和保存配置（不阻塞关闭）
-        Dispatcher.BeginInvoke(async () =>
+        try
         {
-            try
+            // 取消事件订阅
+            if (BrowserView.CoreWebView2 is not null)
             {
-                // 取消事件订阅
-                if (BrowserView.CoreWebView2 is not null)
-                {
-                    BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
-                    BrowserView.CoreWebView2.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
-                    BrowserView.CoreWebView2.SourceChanged -= BrowserView_OnSourceChanged;
-                }
-
-                // 后台保存配置
-                await _settingsService.SaveAsync(_settings).ConfigureAwait(false);
-
-                // 释放服务资源
-                _settingsService.Dispose();
-                _historyService.Dispose();
-                _favoritesService.Dispose();
+                BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
+                BrowserView.CoreWebView2.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
+                BrowserView.CoreWebView2.SourceChanged -= BrowserView_OnSourceChanged;
+                BrowserView.CoreWebView2.NewWindowRequested -= BrowserView_OnNewWindowRequested;
+                BrowserView.CoreWebView2.HistoryChanged -= BrowserView_OnHistoryChanged;
             }
-            catch
-            {
-                // 关闭时忽略错误
-            }
-        }, System.Windows.Threading.DispatcherPriority.Background);
+
+            // 异步保存配置，不阻塞 UI 线程，让 WebView2 能继续泵送消息
+            await _settingsService.SaveAsync(_settings);
+
+            // 释放服务资源
+            _settingsService.Dispose();
+            _historyService.Dispose();
+            _favoritesService.Dispose();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Main window closing cleanup");
+        }
     }
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
@@ -499,6 +588,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            FileLogger.LogException(ex, "Save settings");
             if (!_isShuttingDown)
             {
                 SetStatusMessage($"保存设置失败: {ex.Message}");
@@ -626,7 +716,13 @@ public partial class MainWindow : Window
 
     private void RefreshControlWindow()
     {
-        _controlWindow?.RefreshFromBrowser();
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(RefreshControlWindow);
+            return;
+        }
+
+        BrowserStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void SetStatusMessage(string message)
@@ -641,10 +737,6 @@ public partial class MainWindow : Window
             ? "Genshin Browser"
             : $"{BrowserView.CoreWebView2.DocumentTitle} - Genshin Browser";
 
-        var panelHint = _settings.WindowMode == WindowMode.Free
-            ? "F8关闭控制面板"
-            : "F8打开控制面板";
-
-        Title = $"{pageTitle} [{panelHint}]";
+        Title = pageTitle;
     }
 }

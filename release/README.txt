@@ -12,5 +12,7 @@ Global hotkeys:
 Notes:
 - Login state, cache, history, and favorites are stored under:
   %LocalAppData%\GenshinBrowser\
+- Error logs are stored under:
+  %LocalAppData%\GenshinBrowser\logs\
 - This build is self-contained, so .NET does not need to be installed separately.
 - WebView2 Runtime is still required on the target machine.

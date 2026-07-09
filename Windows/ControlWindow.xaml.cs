@@ -1,50 +1,50 @@
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using GenshinBrowser.Constants;
-using GenshinBrowser.Models;
 using GenshinBrowser.Services;
-using GenshinBrowser.Utils;
+using GenshinBrowser.ViewModels;
 
 namespace GenshinBrowser.Windows;
 
 public partial class ControlWindow : Window
 {
-    private readonly MainWindow _browserWindow;
-    private readonly ObservableCollection<HistoryItemViewModel> _historyItems = new();
-    private readonly ObservableCollection<FavoriteItemViewModel> _favoriteItems = new();
-    private readonly List<HistoryItemViewModel> _allHistoryItems = new();
-    private readonly List<FavoriteItemViewModel> _allFavoriteItems = new();
+    private readonly IControlBrowser _browser;
+    private readonly Window _browserOwner;
+    private readonly ControlWindowViewModel _viewModel;
     private bool _hasUserMovedWindow;
     private bool _isRestoringBounds;
     private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
 
-    // 缓存 Brush 实例，避免重复创建
     private static readonly SolidColorBrush PlaceholderBrush = new(AppConfig.Ui.PlaceholderTextColor);
     private static readonly SolidColorBrush ActiveBrush = new(AppConfig.Ui.ActiveTextColor);
 
-    public ControlWindow(MainWindow browserWindow)
+    public ControlWindow(IControlBrowser browser)
     {
         InitializeComponent();
-        _browserWindow = browserWindow;
-        Owner = browserWindow;
-        HistoryListBox.ItemsSource = _historyItems;
-        FavoritesListBox.ItemsSource = _favoriteItems;
+        _browser = browser;
+        _browserOwner = browser as Window ?? throw new ArgumentException("Control browser must also be a WPF window.", nameof(browser));
+        _viewModel = new ControlWindowViewModel(browser)
+        {
+            ConfirmClear = () => ThemedMessageBox.ShowYesNo(
+                this,
+                "确定要清空所有浏览历史吗？此操作不可撤销。",
+                "确认清空") == MessageBoxResult.Yes,
+        };
+        DataContext = _viewModel;
+        Owner = _browserOwner;
 
         Loaded += ControlWindow_OnLoaded;
         LocationChanged += ControlWindow_OnLocationOrSizeChanged;
         SizeChanged += ControlWindow_OnLocationOrSizeChanged;
 
-        // 地址栏占位符逻辑
         AddressBarTextBox.GotFocus += AddressBarTextBox_GotFocus;
         AddressBarTextBox.LostFocus += AddressBarTextBox_LostFocus;
         AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
         AddressBarTextBox.Foreground = PlaceholderBrush;
 
-        // 搜索框占位符
         FavoriteSearchBox.GotFocus += SearchBox_GotFocus;
         FavoriteSearchBox.LostFocus += SearchBox_LostFocus;
         FavoriteSearchBox.Text = AppConfig.Ui.SearchPlaceholder;
@@ -55,7 +55,6 @@ public partial class ControlWindow : Window
         HistorySearchBox.Text = AppConfig.Ui.SearchPlaceholder;
         HistorySearchBox.Foreground = PlaceholderBrush;
 
-        // 启用平滑滚动
         EnableSmoothScrolling(HistoryListBox);
         EnableSmoothScrolling(FavoritesListBox);
     }
@@ -64,54 +63,17 @@ public partial class ControlWindow : Window
 
     public void RefreshFromBrowser()
     {
-        // 确保在 UI 线程上执行
         if (!Dispatcher.CheckAccess())
         {
             Dispatcher.Invoke(RefreshFromBrowser);
             return;
         }
 
-        ModeTextBlock.Text = _browserWindow.CurrentMode == WindowMode.Fixed ? "📌 固定模式" : "🔓 自由模式";
-        ToggleModeButton.Content = _browserWindow.CurrentMode == WindowMode.Fixed ? "🔓" : "📌";
-        ToggleModeButton.ToolTip = _browserWindow.CurrentMode == WindowMode.Fixed ? "解锁窗口" : "固定窗口";
-        StatusTextBlock.Text = _browserWindow.StatusMessage;
-
-        var isFavorite = _browserWindow.IsFavorite(_browserWindow.CurrentAddress);
-        FavoriteToggleButton.Content = isFavorite ? "⭐ 已收藏" : "☆ 收藏当前页";
-        FavoriteToggleButton.Style = isFavorite
-            ? (Style)FindResource("ModernButton")
-            : (Style)FindResource("PrimaryButton");
-
-        // 更新地址栏（保护占位符逻辑）
+        _viewModel.RefreshFromBrowser();
         if (!AddressBarTextBox.IsKeyboardFocusWithin)
         {
-            if (string.IsNullOrWhiteSpace(_browserWindow.CurrentAddress))
-            {
-                AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
-                AddressBarTextBox.Foreground = PlaceholderBrush;
-            }
-            else
-            {
-                AddressBarTextBox.Text = _browserWindow.CurrentAddress;
-                AddressBarTextBox.Foreground = ActiveBrush;
-            }
+            SetAddressText(_viewModel.CurrentAddress);
         }
-
-        // 刷新收藏夹
-        _allFavoriteItems.Clear();
-        foreach (var item in _browserWindow.FavoriteEntries)
-        {
-            _allFavoriteItems.Add(new FavoriteItemViewModel(item));
-        }
-        FilterFavorites(FavoriteSearchBox.Text);
-
-        // 刷新历史记录
-        _allHistoryItems.Clear();
-        foreach (var item in _browserWindow.HistoryEntries)
-        {
-            _allHistoryItems.Add(new HistoryItemViewModel(item));
-        }
-        FilterHistory(HistorySearchBox.Text);
     }
 
     public void ShowNearBrowserWindow()
@@ -121,13 +83,13 @@ public partial class ControlWindow : Window
             return;
         }
 
-        var workArea = WindowBoundsHelper.GetWorkArea(_browserWindow);
-        var preferredLeft = _browserWindow.Left + _browserWindow.Width + 12;
-        var preferredTop = _browserWindow.Top;
+        var workArea = WindowBoundsHelper.GetWorkArea(_browserOwner);
+        var preferredLeft = _browserOwner.Left + _browserOwner.Width + 12;
+        var preferredTop = _browserOwner.Top;
 
         if (preferredLeft + Width > workArea.Right - 8)
         {
-            preferredLeft = _browserWindow.Left - Width - 12;
+            preferredLeft = _browserOwner.Left - Width - 12;
         }
 
         if (preferredLeft < workArea.Left + 8)
@@ -166,7 +128,7 @@ public partial class ControlWindow : Window
             return;
         }
 
-        _browserWindow.SaveControlWindowBounds(Left, Top, Width, Height);
+        _browser.SaveControlWindowBounds(Left, Top, Width, Height);
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -179,7 +141,6 @@ public partial class ControlWindow : Window
             return;
         }
 
-        // 清理事件订阅
         LocationChanged -= ControlWindow_OnLocationOrSizeChanged;
         SizeChanged -= ControlWindow_OnLocationOrSizeChanged;
         AddressBarTextBox.GotFocus -= AddressBarTextBox_GotFocus;
@@ -188,56 +149,14 @@ public partial class ControlWindow : Window
         FavoriteSearchBox.LostFocus -= SearchBox_LostFocus;
         HistorySearchBox.GotFocus -= SearchBox_GotFocus;
         HistorySearchBox.LostFocus -= SearchBox_LostFocus;
-
-        // 停止防抖计时器
         _boundsDebounceTimer?.Stop();
+        if (_boundsDebounceTimer is not null)
+        {
+            _boundsDebounceTimer.Tick -= BoundsDebounceTimer_OnTick;
+        }
+        _viewModel.Dispose();
 
         base.OnClosing(e);
-    }
-
-    private void ToggleModeButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _browserWindow.ToggleWindowMode();
-    }
-
-    private async void PlayPauseButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        await _browserWindow.ToggleVideoPlaybackAsync();
-    }
-
-    private void HomeButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _browserWindow.NavigateHome();
-    }
-
-    private void GoButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        var input = AddressBarTextBox.Text;
-        if (input == AppConfig.Ui.AddressBarPlaceholder)
-        {
-            return;
-        }
-
-        _browserWindow.NavigateTo(input);
-    }
-
-    private void ReloadButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _browserWindow.ReloadPage();
-    }
-
-    private void AddressBarTextBox_OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter)
-        {
-            var input = AddressBarTextBox.Text;
-            if (input == AppConfig.Ui.AddressBarPlaceholder)
-            {
-                return;
-            }
-
-            _browserWindow.NavigateTo(input);
-        }
     }
 
     private void AddressBarTextBox_GotFocus(object sender, RoutedEventArgs e)
@@ -260,44 +179,34 @@ public partial class ControlWindow : Window
 
     private void EnableSmoothScrolling(System.Windows.Controls.ListBox listBox)
     {
-        if (listBox.Template?.FindName("Border", listBox) is not Border border)
+        listBox.Loaded += (_, _) =>
         {
-            listBox.Loaded += (s, e) =>
+            if (VisualTreeHelper.GetChild(listBox, 0) is Border loadedBorder &&
+                loadedBorder.Child is ScrollViewer scrollViewer)
             {
-                if (VisualTreeHelper.GetChild(listBox, 0) is Border loadedBorder &&
-                    loadedBorder.Child is ScrollViewer scrollViewer)
-                {
-                    scrollViewer.PreviewMouseWheel += SmoothScrollViewer_PreviewMouseWheel;
-                }
-            };
-        }
+                scrollViewer.PreviewMouseWheel -= SmoothScrollViewer_PreviewMouseWheel;
+                scrollViewer.PreviewMouseWheel += SmoothScrollViewer_PreviewMouseWheel;
+            }
+        };
     }
 
     private void SmoothScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         var scrollViewer = (ScrollViewer)sender;
-
-        // 计算目标位置
         var currentOffset = scrollViewer.VerticalOffset;
         var delta = e.Delta * AppConfig.Ui.SmoothScrollFactor;
         var targetOffset = currentOffset - delta;
-
-        // 限制在有效范围内
         var maxScroll = scrollViewer.ExtentHeight - scrollViewer.ViewportHeight;
         targetOffset = Math.Max(0, Math.Min(maxScroll, targetOffset));
 
-        // 如果已经到边界，使用默认滚动行为
         if ((currentOffset <= 0 && e.Delta > 0) ||
             (currentOffset >= maxScroll && e.Delta < 0))
         {
-            e.Handled = false;  // 让系统处理边界滚动
+            e.Handled = false;
             return;
         }
 
-        // 先停止正在运行的动画，避免并发
         scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, null);
-
-        // 使用动画平滑滚动
         var animation = new System.Windows.Media.Animation.DoubleAnimation
         {
             From = currentOffset,
@@ -335,177 +244,104 @@ public partial class ControlWindow : Window
 
     private void FavoriteSearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        FilterFavorites(FavoriteSearchBox.Text);
+        if (_viewModel is not null)
+        {
+            _viewModel.FavoriteSearchText = FavoriteSearchBox.Text;
+        }
     }
 
     private void HistorySearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        FilterHistory(HistorySearchBox.Text);
-    }
-
-    private void FilterFavorites(string searchText)
-    {
-        var shouldShowAll = string.IsNullOrWhiteSpace(searchText) ||
-                           searchText == AppConfig.Ui.SearchPlaceholder;
-
-        if (shouldShowAll)
+        if (_viewModel is not null)
         {
-            // 显示全部：增量同步
-            SyncObservableCollection(_favoriteItems, _allFavoriteItems);
-        }
-        else
-        {
-            // 过滤搜索：增量同步
-            var filtered = _allFavoriteItems.Where(item =>
-                item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-                item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
-
-            SyncObservableCollection(_favoriteItems, filtered);
-        }
-    }
-
-    private void FilterHistory(string searchText)
-    {
-        var shouldShowAll = string.IsNullOrWhiteSpace(searchText) ||
-                           searchText == AppConfig.Ui.SearchPlaceholder;
-
-        if (shouldShowAll)
-        {
-            // 显示全部：增量同步
-            SyncObservableCollection(_historyItems, _allHistoryItems);
-        }
-        else
-        {
-            // 过滤搜索：增量同步
-            var filtered = _allHistoryItems.Where(item =>
-                item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-                item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
-
-            SyncObservableCollection(_historyItems, filtered);
-        }
-    }
-
-    private void SyncObservableCollection<T>(ObservableCollection<T> target, IList<T> source)
-    {
-        var sourceSet = new HashSet<T>(source);
-
-        // 移除不在源列表中的项
-        for (int i = target.Count - 1; i >= 0; i--)
-        {
-            if (!sourceSet.Contains(target[i]))
-            {
-                target.RemoveAt(i);
-            }
-        }
-
-        // 添加新项（保持顺序）
-        var targetSet = new HashSet<T>(target);
-        foreach (var item in source)
-        {
-            if (!targetSet.Contains(item))
-            {
-                target.Add(item);
-            }
-        }
-    }
-
-    private async void ClearHistoryButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        var result = System.Windows.MessageBox.Show(
-            "确定要清空所有浏览历史吗？此操作不可撤销。",
-            "确认清空",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (result == MessageBoxResult.Yes)
-        {
-            await _browserWindow.ClearHistoryAsync();
+            _viewModel.HistorySearchText = HistorySearchBox.Text;
         }
     }
 
     private void FavoritesListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        if (FavoritesListBox.SelectedItem is not FavoriteItemViewModel item)
+        if (SelectItemFromRightClick(FavoritesListBox, e) is not ControlItemViewModel item)
         {
             return;
         }
 
         var menu = new ContextMenu();
-
         var openItem = new MenuItem { Header = "打开" };
-        openItem.Click += (_, _) => _browserWindow.NavigateTo(item.Url);
+        openItem.Click += (_, _) => _browser.NavigateTo(item.Url);
         menu.Items.Add(openItem);
 
         var copyItem = new MenuItem { Header = "复制链接" };
         copyItem.Click += (_, _) => System.Windows.Clipboard.SetText(item.Url);
         menu.Items.Add(copyItem);
-
         menu.Items.Add(new Separator());
 
         var deleteItem = new MenuItem { Header = "删除收藏" };
-        deleteItem.Click += async (_, _) => await _browserWindow.RemoveFavoriteAsync(item.Url);
+        deleteItem.Click += async (_, _) => await _browser.RemoveFavoriteAsync(item.Url);
         menu.Items.Add(deleteItem);
-
         menu.IsOpen = true;
     }
 
     private void HistoryListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        if (HistoryListBox.SelectedItem is not HistoryItemViewModel item)
+        if (SelectItemFromRightClick(HistoryListBox, e) is not ControlItemViewModel item)
         {
             return;
         }
 
         var menu = new ContextMenu();
-
         var openItem = new MenuItem { Header = "打开" };
-        openItem.Click += (_, _) => _browserWindow.NavigateTo(item.Url);
+        openItem.Click += (_, _) => _browser.NavigateTo(item.Url);
         menu.Items.Add(openItem);
 
         var copyItem = new MenuItem { Header = "复制链接" };
         copyItem.Click += (_, _) => System.Windows.Clipboard.SetText(item.Url);
         menu.Items.Add(copyItem);
-
         menu.Items.Add(new Separator());
 
         var deleteItem = new MenuItem { Header = "从历史中移除" };
-        deleteItem.Click += async (_, _) => await _browserWindow.RemoveHistoryEntryAsync(item.Url);
+        deleteItem.Click += async (_, _) => await _browser.RemoveHistoryEntryAsync(item.Url);
         menu.Items.Add(deleteItem);
-
         menu.IsOpen = true;
+    }
+
+    private static object? SelectItemFromRightClick(System.Windows.Controls.ListBox listBox, MouseButtonEventArgs e)
+    {
+        var element = e.OriginalSource as DependencyObject;
+        while (element is not null && element is not ListBoxItem)
+        {
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        if (element is not ListBoxItem listBoxItem)
+        {
+            return null;
+        }
+
+        listBoxItem.IsSelected = true;
+        e.Handled = true;
+        return listBox.ItemContainerGenerator.ItemFromContainer(listBoxItem);
     }
 
     private void HistoryListBox_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (HistoryListBox.SelectedItem is HistoryItemViewModel item)
+        if (HistoryListBox.SelectedItem is ControlItemViewModel item)
         {
-            _browserWindow.NavigateTo(item.Url);
+            _browser.NavigateTo(item.Url);
         }
-    }
-
-    private async void FavoriteToggleButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (_browserWindow.IsFavorite(_browserWindow.CurrentAddress))
-        {
-            await _browserWindow.RemoveFavoriteAsync(_browserWindow.CurrentAddress);
-            return;
-        }
-
-        await _browserWindow.AddCurrentPageToFavoritesAsync();
     }
 
     private void FavoritesListBox_OnMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (FavoritesListBox.SelectedItem is FavoriteItemViewModel item)
+        if (FavoritesListBox.SelectedItem is ControlItemViewModel item)
         {
-            _browserWindow.NavigateTo(item.Url);
+            _browser.NavigateTo(item.Url);
         }
     }
 
     private void ControlWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         _isRestoringBounds = true;
-        var restoredPosition = _browserWindow.RestoreControlWindowBounds(this);
+        var restoredPosition = _browser.RestoreControlWindowBounds(this);
         _hasUserMovedWindow = restoredPosition;
         _isRestoringBounds = false;
 
@@ -523,64 +359,37 @@ public partial class ControlWindow : Window
         }
 
         _hasUserMovedWindow = true;
-
-        // 使用防抖机制，避免频繁保存
-        _boundsDebounceTimer?.Stop();
-        _boundsDebounceTimer ??= new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(200)
-        };
-        _boundsDebounceTimer.Tick += (s, args) =>
-        {
-            _boundsDebounceTimer.Stop();
-            SaveWindowBounds();
-        };
+        _boundsDebounceTimer ??= CreateBoundsDebounceTimer();
+        _boundsDebounceTimer.Stop();
         _boundsDebounceTimer.Start();
     }
 
-    private sealed class HistoryItemViewModel : IEquatable<HistoryItemViewModel>
+    private System.Windows.Threading.DispatcherTimer CreateBoundsDebounceTimer()
     {
-        public HistoryItemViewModel(HistoryEntry item)
+        var timer = new System.Windows.Threading.DispatcherTimer
         {
-            Url = item.Url;
-            Title = item.Title;
-            TimeDisplay = TimeFormatter.FormatRelativeTime(item.VisitedAt);
-        }
-
-        public string Url { get; }
-        public string Title { get; }
-        public string TimeDisplay { get; }
-
-        public bool Equals(HistoryItemViewModel? other)
-        {
-            return other != null && Url == other.Url;
-        }
-
-        public override bool Equals(object? obj) => Equals(obj as HistoryItemViewModel);
-
-        public override int GetHashCode() => Url.GetHashCode();
+            Interval = TimeSpan.FromMilliseconds(200)
+        };
+        timer.Tick += BoundsDebounceTimer_OnTick;
+        return timer;
     }
 
-    private sealed class FavoriteItemViewModel : IEquatable<FavoriteItemViewModel>
+    private void BoundsDebounceTimer_OnTick(object? sender, EventArgs e)
     {
-        public FavoriteItemViewModel(FavoriteEntry item)
+        _boundsDebounceTimer?.Stop();
+        SaveWindowBounds();
+    }
+
+    private void SetAddressText(string address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
         {
-            Url = item.Url;
-            Title = item.Title;
-            TimeDisplay = TimeFormatter.FormatRelativeTime(item.SavedAt);
+            AddressBarTextBox.Text = AppConfig.Ui.AddressBarPlaceholder;
+            AddressBarTextBox.Foreground = PlaceholderBrush;
+            return;
         }
 
-        public string Url { get; }
-        public string Title { get; }
-        public string TimeDisplay { get; }
-
-        public bool Equals(FavoriteItemViewModel? other)
-        {
-            return other != null && Url == other.Url;
-        }
-
-        public override bool Equals(object? obj) => Equals(obj as FavoriteItemViewModel);
-
-        public override int GetHashCode() => Url.GetHashCode();
+        AddressBarTextBox.Text = address;
+        AddressBarTextBox.Foreground = ActiveBrush;
     }
 }

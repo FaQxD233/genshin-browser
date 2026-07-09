@@ -90,6 +90,7 @@ public sealed class FavoritesService : IDisposable
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
+            FileLogger.LogException(ex, "Load favorites");
             // 文件损坏或无法访问，从空列表开始
             _entries = new List<FavoriteEntry>();
         }
@@ -101,6 +102,11 @@ public sealed class FavoritesService : IDisposable
         try
         {
             await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, _jsonOptions).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            FileLogger.LogException(ex, "Save favorites");
+            throw;
         }
         finally
         {

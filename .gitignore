@@ -10,3 +10,6 @@ dist/
 
 # Local app data and runtime output are not source-controlled
 *.log
+
+# Temp/tool-generated folder
+.omo/

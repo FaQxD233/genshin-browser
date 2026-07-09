@@ -28,6 +28,23 @@ public sealed class KeyboardHookService : IDisposable
 
     public event EventHandler? ModeTogglePressed;
 
+    // 由 UI 层维护：固定模式下用户在游戏中，K 必须全局生效；
+    // 自由模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
+    private volatile bool _isGamingMode;
+    private volatile bool _isAppActive = true;
+
+    public bool IsGamingMode
+    {
+        get => _isGamingMode;
+        set => _isGamingMode = value;
+    }
+
+    public bool IsAppActive
+    {
+        get => _isAppActive;
+        set => _isAppActive = value;
+    }
+
     public bool Start(out int errorCode)
     {
         errorCode = 0;
@@ -99,7 +116,11 @@ public sealed class KeyboardHookService : IDisposable
 
                 if (isFirstKeyDown && vkCode == VkK)
                 {
-                    Raise(KPressed);
+                    // 固定模式（游戏中）或应用处于前台时才触发，避免影响其它软件输入 k
+                    if (_isGamingMode || _isAppActive)
+                    {
+                        Raise(KPressed);
+                    }
                 }
                 else if (isFirstKeyDown && vkCode == VkF8)
                 {

@@ -63,7 +63,7 @@ public static class AppConfig
         /// <summary>
         /// 搜索框占位符文本
         /// </summary>
-        public const string SearchPlaceholder = "🔍 搜索...";
+        public const string SearchPlaceholder = "搜索...";
 
         /// <summary>
         /// 地址栏占位符文本

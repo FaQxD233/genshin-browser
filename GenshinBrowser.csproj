@@ -14,11 +14,4 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="archive\**\*.cs" />
-    <Page Remove="archive\**\*.xaml" />
-    <EmbeddedResource Remove="archive\**\*" />
-    <None Include="archive\**\*" />
-  </ItemGroup>
 </Project>
