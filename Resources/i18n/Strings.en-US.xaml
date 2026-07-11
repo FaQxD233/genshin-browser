@@ -180,6 +180,7 @@
   <sys:String x:Key="Status.StartupFailed">Startup failed:\n{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">Automatic WebView2 Runtime install failed. Please install it manually.</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">Please download and install: https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
+  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB. You can clean it manually at %LOCALAPPDATA%\GenshinBrowser\WebViewProfile.</sys:String>
   <sys:String x:Key="Status.UnhandledException">Unhandled exception:\n{0}: {1}\n\nDetails were written to the log.</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser Error</sys:String>
 </ResourceDictionary>

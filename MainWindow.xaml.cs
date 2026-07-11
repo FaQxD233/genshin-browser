@@ -401,12 +401,59 @@ public partial class MainWindow : Window, IControlBrowser
             _browserReady = true;
             UpdateWindowTitle();
             RefreshControlWindow();
+
+            // 异步检查 WebView2 缓存大小，超过阈值时提示用户清理
+            _ = CheckWebView2CacheSizeAsync(userDataFolder);
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Initialize browser");
             SetNavigating(false);
             SetStatusMessage(LocalizationService.Format("Status.InitFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
+    /// <summary>
+    /// 异步检查 WebView2 用户数据目录大小，超过阈值时在状态栏提示用户手动清理。
+    /// 在后台线程计算，避免阻塞 UI。
+    /// </summary>
+    private async Task CheckWebView2CacheSizeAsync(string userDataFolder)
+    {
+        long sizeBytes = 0;
+        await Task.Run(() =>
+        {
+            try
+            {
+                var dir = new DirectoryInfo(userDataFolder);
+                if (!dir.Exists)
+                {
+                    return;
+                }
+
+                foreach (var file in dir.EnumerateFiles("*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        sizeBytes += file.Length;
+                    }
+                    catch
+                    {
+                        // 单个文件访问失败不影响总计
+                    }
+                }
+            }
+            catch
+            {
+                // 测量失败静默忽略
+            }
+        }).ConfigureAwait(true);
+
+        var sizeMb = sizeBytes / (1024 * 1024);
+        if (sizeMb > AppConfig.Data.WebView2CacheThresholdMb)
+        {
+            SetStatusMessage(
+                LocalizationService.Format("Status.WebView2CacheLarge", sizeMb),
+                StatusLevel.Info);
         }
     }
 

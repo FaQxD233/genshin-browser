@@ -29,6 +29,9 @@ public partial class App : Application
         }
 
         base.OnStartup(e);
+
+        // 启动时清理旧日志，避免无限增长
+        FileLogger.PurgeOldLogs();
     }
 
     private static void App_OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

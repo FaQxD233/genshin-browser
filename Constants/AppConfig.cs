@@ -34,6 +34,16 @@ public static class AppConfig
         /// 避免长期累积占用内存（进行中的任务不会被自动移除）。
         /// </summary>
         public const int MaxDownloadItems = 50;
+
+        /// <summary>
+        /// 日志保留天数。启动时清理超过此天数的旧日志文件。
+        /// </summary>
+        public const int LogRetentionDays = 14;
+
+        /// <summary>
+        /// WebView2 缓存大小阈值（MB）。超过时在状态栏提示用户清理。
+        /// </summary>
+        public const int WebView2CacheThresholdMb = 500;
     }
 
     /// <summary>
