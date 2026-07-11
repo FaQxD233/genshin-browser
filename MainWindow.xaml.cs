@@ -26,8 +26,10 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _browserReady;
     private bool _isShuttingDown;
     private bool _isRealClose;
+    private bool _isNavigating;
     private string _currentAddress = string.Empty;
     private string _statusMessage = "正在初始化浏览器...";
+    private StatusLevel _lastStatusLevel = StatusLevel.Info;
     private ControlWindow? _controlWindow;
     private CancellationTokenSource? _settingsSaveCts;
 
@@ -160,9 +162,13 @@ public partial class MainWindow : Window, IControlBrowser
 
     public string StatusMessage => _statusMessage;
 
+    public StatusLevel LastStatusLevel => _lastStatusLevel;
+
     public bool CanGoBack => BrowserView.CoreWebView2?.CanGoBack ?? false;
 
     public bool CanGoForward => BrowserView.CoreWebView2?.CanGoForward ?? false;
+
+    public bool IsNavigating => _isNavigating;
 
     public void GoBack()
     {
@@ -288,6 +294,7 @@ public partial class MainWindow : Window, IControlBrowser
                 "document.head.appendChild(s); })();";
             await BrowserView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(transparentBackgroundScript);
 
+            BrowserView.NavigationStarting += BrowserView_OnNavigationStarting;
             BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
             BrowserView.CoreWebView2.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
             BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
@@ -297,10 +304,11 @@ public partial class MainWindow : Window, IControlBrowser
 
             var startUrl = GetStartupUrl(_settings.LastUrl);
             _currentAddress = startUrl;
+            SetNavigating(true);
             BrowserView.CoreWebView2.Navigate(startUrl);
             // 对初始已加载的页面补执行一次（文档创建脚本只作用于之后的导航）
             _ = BrowserView.CoreWebView2.ExecuteScriptAsync(transparentBackgroundScript);
-            SetStatusMessage("浏览器已就绪，登录态和缓存将自动保留。");
+            SetStatusMessage("浏览器已就绪，登录态和缓存将自动保留。", StatusLevel.Success);
             _browserReady = true;
             UpdateWindowTitle();
             RefreshControlWindow();
@@ -308,8 +316,19 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Initialize browser");
-            SetStatusMessage($"初始化失败: {ex.Message}");
+            SetNavigating(false);
+            SetStatusMessage($"初始化失败: {ex.Message}", StatusLevel.Error);
         }
+    }
+
+    private void BrowserView_OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (e.IsRedirected)
+        {
+            return;
+        }
+
+        SetNavigating(true);
     }
 
     private async void BrowserView_OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -321,6 +340,8 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
+            SetNavigating(false);
+
             // 使用当前 Source 而不是 _currentAddress，避免竞态条件
             if (e.IsSuccess)
             {
@@ -329,13 +350,22 @@ public partial class MainWindow : Window, IControlBrowser
                 await _historyService.AddEntryAsync(currentUrl, string.IsNullOrWhiteSpace(title) ? currentUrl : title);
             }
 
-            SetStatusMessage(e.IsSuccess ? "页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。" : $"加载失败: {e.WebErrorStatus}");
+            if (e.IsSuccess)
+            {
+                SetStatusMessage("页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。", StatusLevel.Success);
+            }
+            else
+            {
+                SetStatusMessage($"加载失败: {e.WebErrorStatus}", StatusLevel.Error);
+            }
+
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Navigation completed handling");
-            SetStatusMessage($"记录页面状态失败: {ex.Message}");
+            SetNavigating(false);
+            SetStatusMessage($"记录页面状态失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -366,7 +396,7 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Source changed handling");
-            SetStatusMessage($"地址更新失败: {ex.Message}");
+            SetStatusMessage($"地址更新失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -438,7 +468,7 @@ public partial class MainWindow : Window, IControlBrowser
             operation.BytesReceivedChanged += (_, _) => OnDownloadProgress(item, operation);
             operation.StateChanged += (_, _) => OnDownloadStateChanged(item, operation);
 
-            SetStatusMessage($"开始下载: {item.FileName}");
+            SetStatusMessage($"开始下载: {item.FileName}", StatusLevel.Info);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             RefreshControlWindow();
         }
@@ -476,11 +506,11 @@ public partial class MainWindow : Window, IControlBrowser
         {
             case CoreWebView2DownloadState.Completed:
                 _downloadsService.MarkCompleted(item);
-                SetStatusMessage($"下载完成: {item.FileName}");
+                SetStatusMessage($"下载完成: {item.FileName}", StatusLevel.Success);
                 break;
             case CoreWebView2DownloadState.Interrupted:
                 _downloadsService.MarkInterrupted(item);
-                SetStatusMessage($"下载中断: {item.FileName}");
+                SetStatusMessage($"下载中断: {item.FileName}", StatusLevel.Warning);
                 break;
         }
 
@@ -512,7 +542,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
-            SetStatusMessage("浏览器尚未就绪。");
+            SetStatusMessage("浏览器尚未就绪。", StatusLevel.Warning);
             return;
         }
 
@@ -539,18 +569,26 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             var result = await BrowserView.CoreWebView2.ExecuteScriptAsync(script);
-            SetStatusMessage(result switch
+            switch (result)
             {
-                "\"play\"" => "已播放。",
-                "\"pause\"" => "已暂停。",
-                "\"no-video\"" => "当前页面没有可控制的视频。",
-                _ => "已发送播放控制命令。"
-            });
+                case "\"play\"":
+                    SetStatusMessage("已播放。", StatusLevel.Success);
+                    break;
+                case "\"pause\"":
+                    SetStatusMessage("已暂停。", StatusLevel.Success);
+                    break;
+                case "\"no-video\"":
+                    SetStatusMessage("当前页面没有可控制的视频。", StatusLevel.Warning);
+                    break;
+                default:
+                    SetStatusMessage("已发送播放控制命令。", StatusLevel.Info);
+                    break;
+            }
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Toggle video playback");
-            SetStatusMessage($"播放控制失败: {ex.Message}");
+            SetStatusMessage($"播放控制失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -567,34 +605,32 @@ public partial class MainWindow : Window, IControlBrowser
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         SetStatusMessage(_settings.WindowMode == WindowMode.Fixed
             ? "固定模式已开启。按 F8 返回自由模式。"
-            : "自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。");
+            : "自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。",
+            StatusLevel.Info);
         UpdateControlWindowVisibility();
         RefreshControlWindow();
         UpdateWindowTitle();
         QueueSettingsSave();
     }
 
-    public void NavigateHome()
-    {
-        NavigateTo(AppConfig.Browser.DefaultUrl);
-    }
-
     public void ReloadPage()
     {
         if (BrowserView.CoreWebView2 is null)
         {
-            SetStatusMessage("浏览器尚未就绪。");
+            SetStatusMessage("浏览器尚未就绪。", StatusLevel.Warning);
             return;
         }
 
         try
         {
+            SetNavigating(true);
             BrowserView.Reload();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Reload page");
-            SetStatusMessage($"刷新失败: {ex.Message}");
+            SetNavigating(false);
+            SetStatusMessage($"刷新失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -609,13 +645,13 @@ public partial class MainWindow : Window, IControlBrowser
         {
             var title = BrowserView.CoreWebView2?.DocumentTitle;
             await _favoritesService.AddOrUpdateAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
-            SetStatusMessage("已收藏当前页面。");
+            SetStatusMessage("已收藏当前页面。", StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Add current page to favorites");
-            SetStatusMessage($"收藏失败: {ex.Message}");
+            SetStatusMessage($"收藏失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -624,13 +660,13 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             await _favoritesService.RemoveAsync(url);
-            SetStatusMessage("已取消收藏。");
+            SetStatusMessage("已取消收藏。", StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Remove favorite");
-            SetStatusMessage($"取消收藏失败: {ex.Message}");
+            SetStatusMessage($"取消收藏失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -639,33 +675,18 @@ public partial class MainWindow : Window, IControlBrowser
         return !string.IsNullOrWhiteSpace(url) && _favoritesService.Contains(url);
     }
 
-    public async Task ClearHistoryAsync()
-    {
-        try
-        {
-            await _historyService.ClearAllAsync();
-            SetStatusMessage("已清空浏览历史。");
-            RefreshControlWindow();
-        }
-        catch (Exception ex)
-        {
-            FileLogger.LogException(ex, "Clear history");
-            SetStatusMessage($"清空历史失败: {ex.Message}");
-        }
-    }
-
     public async Task RemoveHistoryEntryAsync(string url)
     {
         try
         {
             await _historyService.RemoveAsync(url);
-            SetStatusMessage("已从历史记录中移除。");
+            SetStatusMessage("已从历史记录中移除。", StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Remove history entry");
-            SetStatusMessage($"移除失败: {ex.Message}");
+            SetStatusMessage($"移除失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -712,21 +733,23 @@ public partial class MainWindow : Window, IControlBrowser
         var target = BuildNavigationTarget(input);
         if (target is null)
         {
-            SetStatusMessage("只支持打开 http/https 页面。");
+            SetStatusMessage("只支持打开 http/https 页面。", StatusLevel.Warning);
             return;
         }
 
         try
         {
+            SetNavigating(true);
             BrowserView.CoreWebView2.Navigate(target);
             _currentAddress = target;
-            SetStatusMessage($"正在打开: {target}");
+            SetStatusMessage($"正在打开: {target}", StatusLevel.Info);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Navigate to target");
-            SetStatusMessage($"打开失败: {ex.Message}");
+            SetNavigating(false);
+            SetStatusMessage($"打开失败: {ex.Message}", StatusLevel.Error);
         }
     }
 
@@ -746,7 +769,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (_downloadsService.TryCancel(item))
         {
-            SetStatusMessage($"已取消下载: {item.FileName}");
+            SetStatusMessage($"已取消下载: {item.FileName}", StatusLevel.Success);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             RefreshControlWindow();
         }
@@ -756,7 +779,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_downloadsService.OpenFile(item))
         {
-            SetStatusMessage("无法打开文件，可能已被移动或删除。");
+            SetStatusMessage("无法打开文件，可能已被移动或删除。", StatusLevel.Warning);
             RefreshControlWindow();
         }
     }
@@ -765,7 +788,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_downloadsService.OpenFolder(item))
         {
-            SetStatusMessage("无法打开所在文件夹。");
+            SetStatusMessage("无法打开所在文件夹。", StatusLevel.Warning);
             RefreshControlWindow();
         }
     }
@@ -946,7 +969,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_keyboardHookService.Start(out var errorCode))
         {
-            SetStatusMessage($"全局热键安装失败，Win32 错误码: {errorCode}。控制面板按钮仍可使用。");
+            SetStatusMessage($"全局热键安装失败，Win32 错误码: {errorCode}。控制面板按钮仍可使用。", StatusLevel.Error);
         }
     }
 
@@ -961,7 +984,7 @@ public partial class MainWindow : Window, IControlBrowser
             FileLogger.LogException(ex, "Save settings");
             if (!_isShuttingDown)
             {
-                SetStatusMessage($"保存设置失败: {ex.Message}");
+                SetStatusMessage($"保存设置失败: {ex.Message}", StatusLevel.Error);
             }
         }
     }
@@ -1095,10 +1118,22 @@ public partial class MainWindow : Window, IControlBrowser
         BrowserStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void SetStatusMessage(string message)
+    private void SetStatusMessage(string message, StatusLevel level = StatusLevel.Info)
     {
         _statusMessage = message;
+        _lastStatusLevel = level;
         _controlWindow?.RefreshFromBrowser();
+    }
+
+    private void SetNavigating(bool isNavigating)
+    {
+        if (_isNavigating == isNavigating)
+        {
+            return;
+        }
+
+        _isNavigating = isNavigating;
+        RefreshControlWindow();
     }
 
     private void UpdateWindowTitle()
@@ -1130,7 +1165,7 @@ public partial class MainWindow : Window, IControlBrowser
         var clamped = Math.Clamp(factor, 0.25, 5.0);
         BrowserView.ZoomFactor = clamped;
         ZoomChanged?.Invoke(this, EventArgs.Empty);
-        SetStatusMessage($"缩放: {Math.Round(clamped * 100)}%");
+        SetStatusMessage($"缩放: {Math.Round(clamped * 100)}%", StatusLevel.Info);
         RefreshControlWindow();
     }
 

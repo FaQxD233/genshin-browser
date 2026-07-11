@@ -28,18 +28,17 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private Visibility _toastVisibility = Visibility.Collapsed;
     private bool _canGoBack;
     private bool _canGoForward;
+    private bool _isNavigating;
 
     public ControlWindowViewModel(IControlBrowser browser)
     {
         _browser = browser;
         ToggleModeCommand = new RelayCommand(_browser.ToggleWindowMode);
         TogglePlaybackCommand = new AsyncRelayCommand(_browser.ToggleVideoPlaybackAsync);
-        NavigateHomeCommand = new RelayCommand(_browser.NavigateHome);
         ReloadCommand = new RelayCommand(_browser.ReloadPage);
         NavigateCommand = new RelayCommand(parameter => _browser.NavigateTo(parameter as string));
         NavigateFromAddressBarCommand = new RelayCommand(NavigateFromAddressBar);
         ToggleFavoriteCommand = new AsyncRelayCommand(ToggleFavoriteAsync);
-        ClearHistoryCommand = new AsyncRelayCommand(ClearHistoryWithConfirmAsync);
         OpenItemCommand = new RelayCommand(NavigateToItem);
         RemoveFavoriteCommand = new AsyncRelayCommand(parameter => RemoveFavoriteAsync(parameter));
         RemoveHistoryCommand = new AsyncRelayCommand(parameter => RemoveHistoryAsync(parameter));
@@ -47,6 +46,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         GoForwardCommand = new RelayCommand(_browser.GoForward, () => _browser.CanGoForward);
         RecordToggleModeKeyCommand = new RelayCommand(StartRecordingToggleModeKey);
         RecordTogglePlaybackKeyCommand = new RelayCommand(StartRecordingTogglePlaybackKey);
+        ToggleSettingsCommand = new RelayCommand(ToggleSettings);
+        ToggleDownloadsCommand = new RelayCommand(ToggleDownloads);
 
         ZoomInCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor + 0.1, 0.25, 5.0));
         ZoomOutCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor - 0.1, 0.25, 5.0));
@@ -78,8 +79,6 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public AsyncRelayCommand TogglePlaybackCommand { get; }
 
-    public RelayCommand NavigateHomeCommand { get; }
-
     public RelayCommand ReloadCommand { get; }
 
     public RelayCommand NavigateCommand { get; }
@@ -88,15 +87,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public AsyncRelayCommand ToggleFavoriteCommand { get; }
 
-    public AsyncRelayCommand ClearHistoryCommand { get; }
-
-    /// <summary>
-    /// 清空历史前的确认回调，由视图层注入（显示主题化确认框）。
-    /// 返回 true 才会真正清空。
-    /// </summary>
-    public Func<bool>? ConfirmClear { get; set; }
-
     public RelayCommand OpenItemCommand { get; }
+
+    public RelayCommand ToggleSettingsCommand { get; }
+
+    public RelayCommand ToggleDownloadsCommand { get; }
 
     public AsyncRelayCommand RemoveFavoriteCommand { get; }
 
@@ -176,6 +171,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
         private set => SetProperty(ref _canGoForward, value);
     }
 
+    public bool IsNavigating
+    {
+        get => _isNavigating;
+        private set => SetProperty(ref _isNavigating, value);
+    }
+
     /// <summary>
     /// 合并后的全局搜索文本，根据当前 Tab 搜索收藏或历史。
     /// </summary>
@@ -219,18 +220,6 @@ public sealed class ControlWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 帮助图标的悬浮提示文本。
-    /// </summary>
-    public string HelpTooltip =>
-        "快捷键参考\n" +
-        "K — 播放 / 暂停\n" +
-        "F8 — 切换窗口模式\n" +
-        "Ctrl+F — 页面内查找\n" +
-        "Ctrl+= / - — 放大 / 缩小\n" +
-        "Ctrl+0 — 重置缩放\n" +
-        "Ctrl+L — 聚焦地址栏";
-
-    /// <summary>
     /// 收藏列表为空时的提示文案（区分「无数据」与「搜索无结果」）。
     /// </summary>
     public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText) ? "暂无收藏" : "未找到匹配项";
@@ -261,23 +250,47 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private bool _isSettingsExpanded;
 
     /// <summary>
-    /// 浮窗设置 Expander 的展开状态（双向绑定）。
+    /// 浮窗设置面板展开状态。与下载面板互斥。
     /// </summary>
     public bool IsSettingsExpanded
     {
         get => _isSettingsExpanded;
-        set => SetProperty(ref _isSettingsExpanded, value);
+        set
+        {
+            if (!SetProperty(ref _isSettingsExpanded, value))
+            {
+                return;
+            }
+
+            if (value && _isDownloadsExpanded)
+            {
+                _isDownloadsExpanded = false;
+                OnPropertyChanged(nameof(IsDownloadsExpanded));
+            }
+        }
     }
 
     private bool _isDownloadsExpanded;
 
     /// <summary>
-    /// 下载管理 Expander 的展开状态（双向绑定）。
+    /// 下载管理面板展开状态。与设置面板互斥。
     /// </summary>
     public bool IsDownloadsExpanded
     {
         get => _isDownloadsExpanded;
-        set => SetProperty(ref _isDownloadsExpanded, value);
+        set
+        {
+            if (!SetProperty(ref _isDownloadsExpanded, value))
+            {
+                return;
+            }
+
+            if (value && _isSettingsExpanded)
+            {
+                _isSettingsExpanded = false;
+                OnPropertyChanged(nameof(IsSettingsExpanded));
+            }
+        }
     }
 
     /// <summary>
@@ -317,6 +330,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         CanGoBack = _browser.CanGoBack;
         CanGoForward = _browser.CanGoForward;
+        IsNavigating = _browser.IsNavigating;
 
         IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
         FavoriteToggleText = IsCurrentFavorite ? "已收藏" : "收藏当前页";
@@ -328,7 +342,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
         FilterHistory();
 
-        if (!string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal) && ShouldToast(StatusMessage))
+        if (!string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal) && ShouldToast(_browser.LastStatusLevel))
         {
             ShowToast(StatusMessage);
         }
@@ -379,16 +393,6 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _browser.NavigateTo(input);
     }
 
-    private async Task ClearHistoryWithConfirmAsync()
-    {
-        if (ConfirmClear?.Invoke() != true)
-        {
-            return;
-        }
-
-        await _browser.ClearHistoryAsync().ConfigureAwait(true);
-    }
-
     private async Task RemoveFavoriteAsync(object? parameter)
     {
         if (parameter is ControlItemViewModel item)
@@ -420,13 +424,23 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private void Downloads_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        // 新增下载时自动展开下载面板，便于用户查看进度
+        // 新增下载时自动展开下载面板（setter 会互斥关闭设置面板）
         if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add && _browser.Downloads.Count > 0)
         {
             IsDownloadsExpanded = true;
         }
         UpdateDownloadsBadge();
         OnPropertyChanged(nameof(DownloadsEmptyText));
+    }
+
+    private void ToggleSettings()
+    {
+        IsSettingsExpanded = !IsSettingsExpanded;
+    }
+
+    private void ToggleDownloads()
+    {
+        IsDownloadsExpanded = !IsDownloadsExpanded;
     }
 
     private void UpdateDownloadsBadge()
@@ -562,12 +576,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         return text == AppConfig.Ui.SearchPlaceholder ? string.Empty : text?.Trim() ?? string.Empty;
     }
 
-    private static bool ShouldToast(string message)
+    private static bool ShouldToast(StatusLevel level)
     {
-        return message.Contains("失败", StringComparison.Ordinal) ||
-               message.Contains("已", StringComparison.Ordinal) ||
-               message.Contains("没有可控制", StringComparison.Ordinal) ||
-               message.Contains("尚未就绪", StringComparison.Ordinal);
+        return level is StatusLevel.Success or StatusLevel.Warning or StatusLevel.Error;
     }
 
     private void ShowToast(string message)

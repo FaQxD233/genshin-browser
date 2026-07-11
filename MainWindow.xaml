@@ -24,25 +24,29 @@
       <RowDefinition Height="30" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
-    <Border x:Name="DragBar" Grid.Row="0" Background="{StaticResource BackgroundTertiary}" Cursor="SizeAll">
+    <Border x:Name="DragBar" Grid.Row="0" Background="{StaticResource BackgroundTertiary}" Cursor="SizeAll"
+            BorderBrush="{StaticResource BorderColor}" BorderThickness="0,0,0,1">
       <Grid>
-        <TextBlock Text="Genshin Browser" VerticalAlignment="Center" Margin="10,0,0,0"
-                   Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="SemiBold" />
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False">
+          <TextBlock Text="Genshin Browser"
+                     Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="SemiBold"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-          <Button x:Name="MinButton" Width="36" Height="30" Margin="0"
+          <Button x:Name="MinButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="MinButton_OnClick"
                   ToolTip="最小化" AutomationProperties.Name="最小化">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE921;" />
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE921;" FontSize="12" />
           </Button>
-          <Button x:Name="MaxButton" Width="36" Height="30" Margin="0"
+          <Button x:Name="MaxButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="MaxButton_OnClick"
                   ToolTip="最大化 / 还原" AutomationProperties.Name="最大化或还原">
-            <TextBlock x:Name="MaxIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE740;" />
+            <TextBlock x:Name="MaxIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE740;" FontSize="12" />
           </Button>
-          <Button x:Name="CloseButton" Width="36" Height="30" Margin="0"
+          <Button x:Name="CloseButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarCloseButton}" Click="CloseButton_OnClick"
                   ToolTip="关闭" AutomationProperties.Name="关闭">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8BB;" />
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8BB;" FontSize="12" />
           </Button>
         </StackPanel>
       </Grid>

@@ -6,16 +6,18 @@
         Title="Genshin Browser Control"
         Width="560"
         Height="640"
-        MinWidth="380"
-        MinHeight="420"
+        MinWidth="400"
+        MinHeight="440"
         Background="{StaticResource BackgroundPrimary}"
         Foreground="{StaticResource TextPrimary}"
         WindowStartupLocation="Manual"
         AllowsTransparency="False"
         WindowStyle="SingleBorderWindow">
   <Window.Resources>
+    <services:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+
     <DataTemplate x:Key="DownloadItemTemplate" DataType="{x:Type models:DownloadItem}">
-      <Grid Margin="0,3">
+      <Grid Margin="0,4">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="Auto"/>
@@ -27,12 +29,12 @@
           </Grid.ColumnDefinitions>
           <TextBlock Text="{Binding FileName}" FontSize="12" FontWeight="Medium"
                      TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextPrimary}"
-                     ToolTip="{Binding FileName}"/>
-          <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="10"
-                     Margin="8,0,0,0" Foreground="{StaticResource TextTertiary}"
+                     ToolTip="{Binding FileName}" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="11"
+                     Margin="12,0,0,0" Foreground="{StaticResource TextTertiary}"
                      VerticalAlignment="Center"/>
         </Grid>
-        <Grid Grid.Row="1" Margin="0,3,0,0">
+        <Grid Grid.Row="1" Margin="0,6,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
@@ -41,46 +43,45 @@
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <ProgressBar Grid.Column="0" Style="{StaticResource ModernProgressBar}"
-                       Value="{Binding Progress}" VerticalAlignment="Center"/>
-          <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="10"
-                     Margin="8,0,0,0" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-          <Button Grid.Column="2" Style="{StaticResource IconButton}" Width="26" Height="22" Margin="4,0,0,0"
+                       Value="{Binding Progress}" VerticalAlignment="Center" Height="5"/>
+          <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="11"
+                     Margin="10,0,0,0" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+          <Button Grid.Column="2" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="8,0,0,0"
                   Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                   CommandParameter="{Binding}"
                   ToolTip="打开文件"
                   IsEnabled="{Binding CanOpen}"
                   AutomationProperties.Name="打开文件">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7B3;"/>
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7B3;" FontSize="12"/>
           </Button>
-          <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="26" Height="22" Margin="2,0,0,0"
+          <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
                   Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                   CommandParameter="{Binding}"
                   ToolTip="打开所在文件夹"
                   IsEnabled="{Binding CanOpenInFolder}"
                   AutomationProperties.Name="打开所在文件夹">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8DA;"/>
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8DA;" FontSize="12"/>
           </Button>
-          <Button Grid.Column="4" Style="{StaticResource IconButton}" Width="26" Height="22" Margin="2,0,0,0"
+          <Button Grid.Column="4" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
                   Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                   CommandParameter="{Binding}"
                   ToolTip="取消下载"
                   IsEnabled="{Binding CanCancel}"
                   AutomationProperties.Name="取消下载">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE711;"/>
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE711;" FontSize="12"/>
           </Button>
         </Grid>
       </Grid>
     </DataTemplate>
   </Window.Resources>
 
-  <Grid Margin="10">
+  <Grid Margin="16,14">
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
     <Grid.Triggers>
@@ -93,280 +94,419 @@
       </EventTrigger>
     </Grid.Triggers>
 
-    <!-- Row 0: 状态面板（精简，无辅助文本，[?] 图标代替） -->
-    <Grid Grid.Row="0" Margin="0,0,0,6">
+    <!-- Row 0: 顶栏 — 扁平；与下方区块间距 12 -->
+    <Grid Grid.Row="0" Margin="0,0,0,12">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
       <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-        <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}" Margin="0,0,8,0"/>
-        <TextBlock FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" Text="{Binding ModeText}" />
+        <Border Width="8" Height="8" CornerRadius="4" Margin="0,0,10,0" VerticalAlignment="Center">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Background" Value="{StaticResource AccentPrimary}"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ModeText}" Value="固定模式">
+                  <Setter Property="Background" Value="#F0A020"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+        </Border>
+        <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}"
+                   Margin="0,0,8,0" FontSize="15" Foreground="{StaticResource TextSecondary}"/>
+        <TextBlock FontSize="14" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextPrimary}"
+                   Text="{Binding ModeText}"
+                   VerticalAlignment="Center"/>
       </StackPanel>
 
+      <!-- 四个工具按钮：统一 34x30、间距 6、图标居中 -->
       <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-        <Button Style="{StaticResource IconButton}" Margin="0,0,4,0" Command="{Binding ToggleModeCommand}" ToolTip="切换窗口模式 (F8)"
+        <Button Style="{StaticResource IconButton}" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+                Command="{Binding ToggleModeCommand}" ToolTip="切换窗口模式 (F8)"
                 AutomationProperties.Name="切换窗口模式">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}"/>
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}" FontSize="13"/>
         </Button>
-        <Button Style="{StaticResource IconButton}" Margin="0,0,4,0" Command="{Binding TogglePlaybackCommand}" ToolTip="控制视频播放/暂停 (K)"
+        <Button Style="{StaticResource IconButton}" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+                Command="{Binding TogglePlaybackCommand}" ToolTip="控制视频播放/暂停 (K)"
                 AutomationProperties.Name="播放或暂停">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE769;"/>
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE769;" FontSize="13"/>
         </Button>
-        <Button x:Name="SettingsButton" Margin="0,0,4,0" Click="SettingsButton_OnClick"
+        <Button x:Name="SettingsButton" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+                Command="{Binding ToggleSettingsCommand}"
                 ToolTip="浮窗设置" AutomationProperties.Name="浮窗设置">
           <Button.Style>
             <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+              <Setter Property="Padding" Value="0"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
                   <Setter Property="Background" Value="{StaticResource BackgroundHover}"/>
+                  <Setter Property="BorderBrush" Value="{StaticResource AccentPrimary}"/>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
           </Button.Style>
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;"/>
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;" FontSize="13"/>
         </Button>
-        <Button x:Name="DownloadsButton" Margin="0,0,4,0" Click="DownloadsButton_OnClick"
+        <!-- 下载：固定尺寸，图标居中；角标叠在右上角，避免把图标挤歪 -->
+        <Button x:Name="DownloadsButton" Width="34" Height="30" Padding="0"
+                Command="{Binding ToggleDownloadsCommand}"
                 ToolTip="下载管理" AutomationProperties.Name="下载管理">
           <Button.Style>
             <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+              <Setter Property="Padding" Value="0"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsDownloadsExpanded}" Value="True">
                   <Setter Property="Background" Value="{StaticResource BackgroundHover}"/>
+                  <Setter Property="BorderBrush" Value="{StaticResource AccentPrimary}"/>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
           </Button.Style>
-          <StackPanel Orientation="Horizontal">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE896;"/>
-            <TextBlock Margin="3,0,0,0" FontSize="10" Foreground="{StaticResource AccentPrimary}"
-                       Text="{Binding DownloadsBadgeText}" VerticalAlignment="Center"/>
-          </StackPanel>
+          <Grid Width="18" Height="18">
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE896;" FontSize="13"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding DownloadsBadgeText}" FontSize="9" FontWeight="SemiBold"
+                       Foreground="{StaticResource AccentPrimary}"
+                       HorizontalAlignment="Right" VerticalAlignment="Top"
+                       Margin="0,-4,-6,0"/>
+          </Grid>
         </Button>
       </StackPanel>
     </Grid>
 
-    <!-- Row 1: 浮窗设置（可折叠面板） -->
-    <Border Grid.Row="1" Background="{StaticResource BackgroundTertiary}" CornerRadius="4" Padding="12,10" Margin="0,0,0,6">
+    <!-- Row 1: 设置面板
+         外层透明壳只负责 MaxHeight 动画（折叠=0，不占位）；
+         内层才是可见底色，Margin 底 12 在壳内，折叠时一并被裁掉 -->
+    <Border Grid.Row="1" x:Name="SettingsPanelBorder"
+            Background="Transparent"
+            Margin="0" Padding="0"
+            ClipToBounds="True" MaxHeight="0" Opacity="0">
       <Border.Style>
         <Style TargetType="Border">
-          <Setter Property="Visibility" Value="Collapsed"/>
           <Style.Triggers>
             <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
-              <Setter Property="Visibility" Value="Visible"/>
+              <DataTrigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="320" Duration="0:0:0.2"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.EnterActions>
+              <DataTrigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="0" Duration="0:0:0.16"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.ExitActions>
             </DataTrigger>
           </Style.Triggers>
         </Style>
       </Border.Style>
-      <StackPanel>
-        <!-- 不透明度 -->
-        <Grid Margin="0,0,0,10">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" MinWidth="80"/>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" MinWidth="36" />
-          </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="不透明度" Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center"/>
-          <Slider Grid.Column="1" Value="{Binding WindowOpacity, Mode=TwoWay}" Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="10,0"/>
-          <TextBlock Grid.Column="2" Text="{Binding OpacityPercentageText}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" FontSize="12"/>
-        </Grid>
+      <Border Background="{StaticResource BackgroundSecondary}"
+              CornerRadius="6"
+              Padding="12"
+              Margin="0,0,0,12">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <TextBlock Grid.Row="0" Text="浮窗设置" FontSize="12" FontWeight="SemiBold"
+                     Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"/>
+          <StackPanel Grid.Row="1">
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="76"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="44"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="不透明度" Foreground="{StaticResource TextSecondary}"
+                         FontSize="12" VerticalAlignment="Center"/>
+              <Slider Grid.Column="1" Value="{Binding WindowOpacity, Mode=TwoWay}"
+                      Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                      VerticalAlignment="Center" Margin="8,0"/>
+              <TextBlock Grid.Column="2" Text="{Binding OpacityPercentageText}"
+                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="Medium"/>
+            </Grid>
 
-        <!-- 缩放 -->
-        <Grid Margin="0,0,0,10">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" MinWidth="80"/>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="Auto"/>
-          </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="页面缩放" Foreground="{StaticResource TextSecondary}" FontSize="12" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0,2"
-                  Command="{Binding ZoomOutCommand}" ToolTip="缩小 (Ctrl+-)" AutomationProperties.Name="缩小">
-            <TextBlock Text="-" FontSize="16" Foreground="{StaticResource TextPrimary}"/>
-          </Button>
-          <TextBlock Grid.Column="2" Text="{Binding ZoomPercentageText}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{StaticResource TextPrimary}" FontSize="12"/>
-          <Button Grid.Column="3" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0,2" Margin="4,0,0,0"
-                  Command="{Binding ZoomInCommand}" ToolTip="放大 (Ctrl+=)" AutomationProperties.Name="放大">
-            <TextBlock Text="+" FontSize="16" Foreground="{StaticResource TextPrimary}"/>
-          </Button>
-          <Button Grid.Column="4" Style="{StaticResource ModernButton}" Padding="8,4" Margin="6,0,0,0" Command="{Binding ResetZoomCommand}" ToolTip="重置缩放 (Ctrl+0)" FontSize="11">重置</Button>
-        </Grid>
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="76"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="页面缩放" Foreground="{StaticResource TextSecondary}"
+                         FontSize="12" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="30" Height="28" MinWidth="0" Padding="0"
+                      Command="{Binding ZoomOutCommand}" ToolTip="缩小 (Ctrl+-)" AutomationProperties.Name="缩小">
+                <TextBlock Text="−" FontSize="15" Foreground="{StaticResource TextPrimary}"/>
+              </Button>
+              <TextBlock Grid.Column="2" Text="{Binding ZoomPercentageText}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Foreground="{StaticResource TextPrimary}" FontSize="12" FontWeight="Medium"/>
+              <Button Grid.Column="3" Style="{StaticResource ModernButton}" Width="30" Height="28" MinWidth="0" Padding="0" Margin="4,0,0,0"
+                      Command="{Binding ZoomInCommand}" ToolTip="放大 (Ctrl+=)" AutomationProperties.Name="放大">
+                <TextBlock Text="+" FontSize="15" Foreground="{StaticResource TextPrimary}"/>
+              </Button>
+              <Button Grid.Column="4" Style="{StaticResource ModernButton}" Padding="10,5" Margin="8,0,0,0"
+                      Command="{Binding ResetZoomCommand}" ToolTip="重置缩放 (Ctrl+0)" FontSize="11">重置</Button>
+            </Grid>
 
-        <!-- 快捷键 -->
-        <Grid Margin="0,0,0,10">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" MinWidth="80"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto" MinWidth="80"/>
-            <ColumnDefinition Width="*"/>
-          </Grid.ColumnDefinitions>
-          <TextBlock Grid.Column="0" Text="切换模式" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Content="{Binding ToggleModeKeyText}" Command="{Binding RecordToggleModeKeyCommand}" Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center" Margin="4,0,8,0" Padding="6,4" FontSize="11"/>
-          <TextBlock Grid.Column="2" Text="播放/暂停" Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
-          <Button Grid.Column="3" Content="{Binding TogglePlaybackKeyText}" Command="{Binding RecordTogglePlaybackKeyCommand}" Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center" Margin="4,0,0,0" Padding="6,4" FontSize="11"/>
-        </Grid>
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="76"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="76"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <TextBlock Grid.Column="0" Text="切换模式" Foreground="{StaticResource TextSecondary}"
+                         FontSize="12" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Content="{Binding ToggleModeKeyText}"
+                      Command="{Binding RecordToggleModeKeyCommand}"
+                      Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                      Padding="8,6" FontSize="11"/>
+              <TextBlock Grid.Column="3" Text="播放/暂停" Foreground="{StaticResource TextSecondary}"
+                         FontSize="12" VerticalAlignment="Center"/>
+              <Button Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
+                      Command="{Binding RecordTogglePlaybackKeyCommand}"
+                      Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                      Padding="8,6" FontSize="11"/>
+            </Grid>
 
-        <Button Style="{StaticResource ModernButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="10,6"
-                Command="{Binding RestoreDefaultSettingsCommand}" ToolTip="恢复不透明度、缩放与快捷键为默认值">
-          <StackPanel Orientation="Horizontal">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,6,0"/>
-            <TextBlock Text="恢复默认"/>
+            <Button Style="{StaticResource ModernButton}" HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" Padding="10,7"
+                    Command="{Binding RestoreDefaultSettingsCommand}"
+                    ToolTip="恢复不透明度、缩放与快捷键为默认值">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,8,0" FontSize="13"/>
+                <TextBlock Text="恢复默认" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Button>
           </StackPanel>
-        </Button>
-      </StackPanel>
+        </Grid>
+      </Border>
     </Border>
 
-    <!-- Row 2: 下载管理（可折叠面板） -->
-    <Border Grid.Row="2" Background="{StaticResource BackgroundTertiary}" CornerRadius="4" Padding="12,10" Margin="0,0,0,6">
+    <!-- Row 2: 下载面板 — 与设置同一双层结构 -->
+    <Border Grid.Row="2" x:Name="DownloadsPanelBorder"
+            Background="Transparent"
+            Margin="0" Padding="0"
+            ClipToBounds="True" MaxHeight="0" Opacity="0">
       <Border.Style>
         <Style TargetType="Border">
-          <Setter Property="Visibility" Value="Collapsed"/>
           <Style.Triggers>
             <DataTrigger Binding="{Binding IsDownloadsExpanded}" Value="True">
-              <Setter Property="Visibility" Value="Visible"/>
+              <DataTrigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="260" Duration="0:0:0.2"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.EnterActions>
+              <DataTrigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="0" Duration="0:0:0.16"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.ExitActions>
             </DataTrigger>
           </Style.Triggers>
         </Style>
       </Border.Style>
-      <Grid>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <Grid Grid.Row="0" Margin="0,0,0,4">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-          </Grid.ColumnDefinitions>
-          <TextBlock FontSize="11" Foreground="{StaticResource TextSecondary}" Text="{Binding DownloadsEmptyText}" VerticalAlignment="Center"/>
-          <Button Grid.Column="1" Style="{StaticResource ModernButton}" Padding="8,3" FontSize="11"
-                  Command="{Binding ClearFinishedDownloadsCommand}" ToolTip="清除已完成 / 已取消的记录">
-            清除已结束
-          </Button>
+      <Border Background="{StaticResource BackgroundSecondary}"
+              CornerRadius="6"
+              Padding="12"
+              Margin="0,0,0,12">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock Text="下载任务" FontSize="12" FontWeight="SemiBold"
+                         Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+              <TextBlock Margin="8,0,0,0" FontSize="12"
+                         Foreground="{StaticResource TextTertiary}"
+                         Text="{Binding DownloadsEmptyText}" VerticalAlignment="Center"/>
+            </StackPanel>
+            <Button Grid.Column="1" Style="{StaticResource ModernButton}" Padding="10,5" FontSize="11"
+                    Command="{Binding ClearFinishedDownloadsCommand}"
+                    ToolTip="清除已完成 / 已取消的记录">
+              清除已结束
+            </Button>
+          </Grid>
+          <ListBox Grid.Row="1" x:Name="DownloadsListBox"
+                   Style="{StaticResource ModernListBox}"
+                   MinHeight="72" MaxHeight="168"
+                   ItemsSource="{Binding Downloads}"
+                   ItemTemplate="{StaticResource DownloadItemTemplate}"
+                   Background="Transparent"
+                   BorderThickness="0">
+            <ListBox.ItemContainerStyle>
+              <Style TargetType="ListBoxItem" BasedOn="{StaticResource ModernListBoxItem}">
+                <Setter Property="Padding" Value="8,6"/>
+              </Style>
+            </ListBox.ItemContainerStyle>
+          </ListBox>
         </Grid>
-        <ListBox Grid.Row="1" x:Name="DownloadsListBox"
-                 Style="{StaticResource ModernListBox}"
-                 MinHeight="60" MaxHeight="160"
-                 ItemsSource="{Binding Downloads}"
-                 ItemTemplate="{StaticResource DownloadItemTemplate}"
-                 BorderBrush="{StaticResource BorderColor}" BorderThickness="1">
-          <ListBox.ItemContainerStyle>
-            <Style TargetType="ListBoxItem" BasedOn="{StaticResource ModernListBoxItem}">
-              <Setter Property="Padding" Value="8,4"/>
-            </Style>
-          </ListBox.ItemContainerStyle>
-        </ListBox>
-      </Grid>
+      </Border>
     </Border>
 
     <!-- Row 3: 地址栏 -->
-    <Grid Grid.Row="3" Margin="0,0,0,6">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="Auto" />
-        <ColumnDefinition Width="*" />
-        <ColumnDefinition Width="Auto" />
-      </Grid.ColumnDefinitions>
+    <Grid Grid.Row="3" Margin="0,0,0,12">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
 
-      <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,6,0">
-        <Button Style="{StaticResource IconButton}" Width="36" Height="32" Margin="0,0,4,0" Command="{Binding GoBackCommand}" ToolTip="后退" AutomationProperties.Name="后退">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72B;"/>
-        </Button>
-        <Button Style="{StaticResource IconButton}" Width="36" Height="32" Command="{Binding GoForwardCommand}" ToolTip="前进" AutomationProperties.Name="前进">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72A;"/>
-        </Button>
-      </StackPanel>
+      <Grid Grid.Row="0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
 
-      <TextBox x:Name="AddressBarTextBox"
-               Grid.Column="1"
-               Height="32"
-               VerticalContentAlignment="Center"
-               Style="{StaticResource ModernTextBox}"
-               services:Placeholder.Text="输入网址或搜索内容，按 Enter 打开"
-               services:Placeholder.Foreground="{StaticResource TextTertiary}"
-               ToolTip="输入网址或搜索内容，按 Enter 打开">
-        <TextBox.InputBindings>
-          <KeyBinding Key="Enter"
-                      Command="{Binding NavigateFromAddressBarCommand}"
-                      CommandParameter="{Binding Text, ElementName=AddressBarTextBox}" />
-        </TextBox.InputBindings>
-      </TextBox>
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
+          <Button Style="{StaticResource IconButton}" Width="34" Height="32" Margin="0,0,6,0"
+                  Command="{Binding GoBackCommand}"
+                  IsEnabled="{Binding CanGoBack}"
+                  ToolTip="后退" AutomationProperties.Name="后退">
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72B;" FontSize="13"/>
+          </Button>
+          <Button Style="{StaticResource IconButton}" Width="34" Height="32"
+                  Command="{Binding GoForwardCommand}"
+                  IsEnabled="{Binding CanGoForward}"
+                  ToolTip="前进" AutomationProperties.Name="前进">
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72A;" FontSize="13"/>
+          </Button>
+        </StackPanel>
 
-      <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6,0,0,0">
-        <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="52" Padding="8,5" Margin="0,0,4,0"
-                Command="{Binding NavigateFromAddressBarCommand}"
-                CommandParameter="{Binding Text, ElementName=AddressBarTextBox}">
-          打开
-        </Button>
-        <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="52" Padding="8,5" Margin="0,0,4,0" Command="{Binding ReloadCommand}">
-          刷新
-        </Button>
-        <Button Style="{StaticResource IconButton}" Width="36" Height="32"
-                Command="{Binding ToggleFavoriteCommand}"
-                ToolTip="{Binding FavoriteToggleText}"
-                AutomationProperties.Name="{Binding FavoriteToggleText}">
-          <TextBlock>
-            <TextBlock.Style>
-              <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
-                <Setter Property="Text" Value="&#xE734;"/>
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding IsCurrentFavorite}" Value="True">
-                    <Setter Property="Text" Value="&#xE735;"/>
-                    <Setter Property="Foreground" Value="#FFC83D"/>
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </TextBlock.Style>
-          </TextBlock>
-        </Button>
-      </StackPanel>
+        <TextBox x:Name="AddressBarTextBox"
+                 Grid.Column="1"
+                 Height="32"
+                 VerticalContentAlignment="Center"
+                 Style="{StaticResource ModernTextBox}"
+                 services:Placeholder.Text="输入网址或搜索..."
+                 services:Placeholder.Foreground="{StaticResource TextTertiary}"
+                 ToolTip="输入网址或搜索...">
+          <TextBox.InputBindings>
+            <KeyBinding Key="Enter"
+                        Command="{Binding NavigateFromAddressBarCommand}"
+                        CommandParameter="{Binding Text, ElementName=AddressBarTextBox}" />
+          </TextBox.InputBindings>
+        </TextBox>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+          <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
+                  Command="{Binding NavigateFromAddressBarCommand}"
+                  CommandParameter="{Binding Text, ElementName=AddressBarTextBox}">
+            打开
+          </Button>
+          <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
+                  Command="{Binding ReloadCommand}">
+            刷新
+          </Button>
+          <Button Style="{StaticResource IconButton}" Width="34" Height="32"
+                  Command="{Binding ToggleFavoriteCommand}"
+                  ToolTip="{Binding FavoriteToggleText}"
+                  AutomationProperties.Name="{Binding FavoriteToggleText}">
+            <TextBlock>
+              <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
+                  <Setter Property="Text" Value="&#xE734;"/>
+                  <Setter Property="FontSize" Value="13"/>
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsCurrentFavorite}" Value="True">
+                      <Setter Property="Text" Value="&#xE735;"/>
+                      <Setter Property="Foreground" Value="#FFC83D"/>
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <ProgressBar Grid.Row="1" Margin="76,6,98,0" Height="2"
+                   Style="{StaticResource AddressBarProgressBar}"
+                   Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
     </Grid>
 
-    <!-- Row 5: Tab 切换 + 搜索 + 列表（独占下半部分） -->
-    <Grid Grid.Row="5" Margin="0,6,0,0">
+    <!-- 顶栏/地址栏 与 列表区 的分隔：一条细线，不用卡片 -->
+    <Grid Grid.Row="4">
       <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
 
-      <!-- Tab 行：[收藏夹] [浏览记录] -->
-      <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,2">
+      <Border Grid.Row="0" Height="1" Background="{StaticResource BorderColor}" Margin="0,0,0,10" Opacity="0.7"/>
+
+      <!-- Tab -->
+      <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
         <RadioButton GroupName="ListTabs" Style="{StaticResource TabRadioButton}"
                      IsChecked="{Binding IsFavoritesTab, Mode=TwoWay}"
+                     Margin="0,0,4,0"
                      ToolTip="收藏夹" AutomationProperties.Name="收藏夹">
           <StackPanel Orientation="Horizontal">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE734;" Margin="0,0,6,0"/>
-            <TextBlock Text="收藏夹"/>
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE734;" Margin="0,0,6,0" FontSize="13"/>
+            <TextBlock Text="收藏夹" VerticalAlignment="Center"/>
           </StackPanel>
         </RadioButton>
         <RadioButton GroupName="ListTabs" Style="{StaticResource TabRadioButton}"
                      IsChecked="{Binding IsHistoryTab, Mode=TwoWay}"
                      ToolTip="浏览记录" AutomationProperties.Name="浏览记录">
           <StackPanel Orientation="Horizontal">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE121;" Margin="0,0,6,0"/>
-            <TextBlock Text="浏览记录"/>
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE121;" Margin="0,0,6,0" FontSize="13"/>
+            <TextBlock Text="浏览记录" VerticalAlignment="Center"/>
           </StackPanel>
         </RadioButton>
       </StackPanel>
 
-      <!-- 搜索框：独立成行，宽度 100% -->
-      <TextBox x:Name="SearchBox" Grid.Row="1" Style="{StaticResource SearchTextBox}"
-               Margin="0,0,0,6"
+      <!-- 搜索 -->
+      <TextBox x:Name="SearchBox" Grid.Row="2" Style="{StaticResource SearchTextBox}"
+               Margin="0,0,0,10"
                services:Placeholder.Text="搜索..."
                services:Placeholder.Foreground="{StaticResource TextTertiary}"
-               TextChanged="SearchBox_OnTextChanged" ToolTip="搜索当前列表"/>
+               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+               ToolTip="搜索当前列表"/>
 
-      <!-- 列表区：两个 ListBox 叠放，按 Tab 切换可见性 -->
-      <Grid Grid.Row="2">
+      <!-- 列表：直接铺在窗口背景上，不外包一层卡片 -->
+      <Grid Grid.Row="3">
         <ListBox x:Name="FavoritesListBox"
                  ItemsSource="{Binding FavoriteItems}"
                  ItemTemplate="{StaticResource BrowserListItemTemplate}"
                  MouseDoubleClick="FavoritesListBox_OnMouseDoubleClick"
-                 MouseRightButtonUp="FavoritesListBox_OnRightClick">
+                 MouseRightButtonUp="FavoritesListBox_OnRightClick"
+                 KeyDown="ListBox_OnKeyDown"
+                 BorderThickness="0">
           <ListBox.Style>
             <Style TargetType="ListBox" BasedOn="{StaticResource ModernListBox}">
+              <Setter Property="Background" Value="Transparent"/>
               <Setter Property="Visibility" Value="Collapsed"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
@@ -384,9 +524,12 @@
                  ItemsSource="{Binding HistoryItems}"
                  ItemTemplate="{StaticResource BrowserListItemTemplate}"
                  MouseDoubleClick="HistoryListBox_OnMouseDoubleClick"
-                 MouseRightButtonUp="HistoryListBox_OnRightClick">
+                 MouseRightButtonUp="HistoryListBox_OnRightClick"
+                 KeyDown="ListBox_OnKeyDown"
+                 BorderThickness="0">
           <ListBox.Style>
             <Style TargetType="ListBox" BasedOn="{StaticResource ModernListBox}">
+              <Setter Property="Background" Value="Transparent"/>
               <Setter Property="Visibility" Value="Visible"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
@@ -400,9 +543,8 @@
           </ListBox.ItemContainerStyle>
         </ListBox>
 
-        <!-- 收藏夹空列表提示 -->
         <TextBlock Text="{Binding FavoritesEmptyText}"
-                   FontSize="12" Foreground="{StaticResource TextTertiary}"
+                   FontSize="13" Foreground="{StaticResource TextTertiary}"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsHitTestVisible="False">
           <TextBlock.Style>
@@ -421,9 +563,8 @@
           </TextBlock.Style>
         </TextBlock>
 
-        <!-- 历史空列表提示 -->
         <TextBlock Text="{Binding HistoryEmptyText}"
-                   FontSize="12" Foreground="{StaticResource TextTertiary}"
+                   FontSize="13" Foreground="{StaticResource TextTertiary}"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsHitTestVisible="False">
           <TextBlock.Style>
@@ -444,20 +585,20 @@
       </Grid>
     </Grid>
 
-    <Border Grid.RowSpan="6"
+    <Border Grid.RowSpan="5"
             Style="{StaticResource ToastBorderStyle}"
             Tag="{Binding IsToastVisible}"
             Visibility="{Binding ToastVisibility}"
             Background="{StaticResource BackgroundTertiary}"
             BorderBrush="{StaticResource AccentPrimary}"
             BorderThickness="1"
-            CornerRadius="6"
-            Padding="12,10"
+            CornerRadius="8"
+            Padding="14,12"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             MaxWidth="360"
-            Margin="0,0,4,4">
-      <TextBlock Text="{Binding ToastMessage}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap"/>
+            Margin="0,0,8,8">
+      <TextBlock Text="{Binding ToastMessage}" Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" FontSize="12"/>
     </Border>
   </Grid>
 </Window>

@@ -22,7 +22,7 @@ public static class AppConfig
         /// <summary>
         /// 最大历史记录条数。超过此数量的旧记录将被删除，以防止 JSON 文件过大影响启动时间。
         /// </summary>
-        public const int MaxHistoryEntries = 50;
+        public const int MaxHistoryEntries = 200;
 
         /// <summary>
         /// 最大收藏条数

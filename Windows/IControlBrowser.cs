@@ -30,6 +30,16 @@ public interface IControlBrowser
     bool CanGoForward { get; }
 
     /// <summary>
+    /// 是否正在导航加载中（用于地址栏进度指示）。
+    /// </summary>
+    bool IsNavigating { get; }
+
+    /// <summary>
+    /// 最近一次状态消息的级别，供控制窗决定是否弹出 Toast。
+    /// </summary>
+    StatusLevel LastStatusLevel { get; }
+
+    /// <summary>
     /// 当前页面缩放系数，1.0 = 100%。
     /// </summary>
     double ZoomFactor { get; set; }
@@ -63,8 +73,6 @@ public interface IControlBrowser
 
     Task ToggleVideoPlaybackAsync();
 
-    void NavigateHome();
-
     void ReloadPage();
 
     void NavigateTo(string? input);
@@ -72,8 +80,6 @@ public interface IControlBrowser
     Task AddCurrentPageToFavoritesAsync();
 
     Task RemoveFavoriteAsync(string url);
-
-    Task ClearHistoryAsync();
 
     Task RemoveHistoryEntryAsync(string url);
 

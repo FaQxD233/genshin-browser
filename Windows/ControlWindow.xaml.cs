@@ -23,13 +23,7 @@ public partial class ControlWindow : Window
         InitializeComponent();
         _browser = browser;
         _browserOwner = browser as Window ?? throw new ArgumentException("Control browser must also be a WPF window.", nameof(browser));
-        _viewModel = new ControlWindowViewModel(browser)
-        {
-            ConfirmClear = () => ThemedMessageBox.ShowYesNo(
-                this,
-                "确定要清空所有浏览历史吗？此操作不可撤销。",
-                "确认清空") == MessageBoxResult.Yes,
-        };
+        _viewModel = new ControlWindowViewModel(browser);
         DataContext = _viewModel;
         Owner = _browserOwner;
 
@@ -188,65 +182,30 @@ public partial class ControlWindow : Window
         e.Handled = true;
     }
 
-    private void SearchBox_OnTextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (_viewModel is not null)
-        {
-            _viewModel.SearchText = SearchBox.Text;
-        }
-    }
-
-    private void SettingsButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _viewModel.IsSettingsExpanded = !_viewModel.IsSettingsExpanded;
-        if (_viewModel.IsSettingsExpanded)
-        {
-            _viewModel.IsDownloadsExpanded = false;
-        }
-    }
-
-    private void DownloadsButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        _viewModel.IsDownloadsExpanded = !_viewModel.IsDownloadsExpanded;
-        if (_viewModel.IsDownloadsExpanded)
-        {
-            _viewModel.IsSettingsExpanded = false;
-        }
-    }
-
     private void FavoritesListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        if (SelectItemFromRightClick(FavoritesListBox, e) is not ControlItemViewModel item)
-        {
-            return;
-        }
-
-        var menu = new ContextMenu();
-        var openItem = new MenuItem { Header = "打开" };
-        openItem.Click += (_, _) => _browser.NavigateTo(item.Url);
-        menu.Items.Add(openItem);
-
-        var copyItem = new MenuItem { Header = "复制链接" };
-        copyItem.Click += (_, _) => System.Windows.Clipboard.SetText(item.Url);
-        menu.Items.Add(copyItem);
-        menu.Items.Add(new Separator());
-
-        var deleteItem = new MenuItem { Header = "删除收藏" };
-        deleteItem.Click += async (_, _) => await _browser.RemoveFavoriteAsync(item.Url);
-        menu.Items.Add(deleteItem);
-        menu.IsOpen = true;
+        ShowListItemContextMenu(FavoritesListBox, e, "删除收藏", item => _viewModel.RemoveFavoriteCommand.Execute(item));
     }
 
     private void HistoryListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        if (SelectItemFromRightClick(HistoryListBox, e) is not ControlItemViewModel item)
+        ShowListItemContextMenu(HistoryListBox, e, "从历史中移除", item => _viewModel.RemoveHistoryCommand.Execute(item));
+    }
+
+    private void ShowListItemContextMenu(
+        System.Windows.Controls.ListBox listBox,
+        MouseButtonEventArgs e,
+        string deleteHeader,
+        Action<ControlItemViewModel> deleteAction)
+    {
+        if (SelectItemFromRightClick(listBox, e) is not ControlItemViewModel item)
         {
             return;
         }
 
         var menu = new ContextMenu();
         var openItem = new MenuItem { Header = "打开" };
-        openItem.Click += (_, _) => _browser.NavigateTo(item.Url);
+        openItem.Click += (_, _) => _viewModel.OpenItemCommand.Execute(item);
         menu.Items.Add(openItem);
 
         var copyItem = new MenuItem { Header = "复制链接" };
@@ -254,10 +213,40 @@ public partial class ControlWindow : Window
         menu.Items.Add(copyItem);
         menu.Items.Add(new Separator());
 
-        var deleteItem = new MenuItem { Header = "从历史中移除" };
-        deleteItem.Click += async (_, _) => await _browser.RemoveHistoryEntryAsync(item.Url);
+        var deleteItem = new MenuItem { Header = deleteHeader };
+        deleteItem.Click += (_, _) => deleteAction(item);
         menu.Items.Add(deleteItem);
         menu.IsOpen = true;
+    }
+
+    private void ListBox_OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ListBox listBox ||
+            listBox.SelectedItem is not ControlItemViewModel item)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Enter)
+        {
+            _viewModel.OpenItemCommand.Execute(item);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Delete)
+        {
+            if (ReferenceEquals(listBox, FavoritesListBox))
+            {
+                _viewModel.RemoveFavoriteCommand.Execute(item);
+            }
+            else if (ReferenceEquals(listBox, HistoryListBox))
+            {
+                _viewModel.RemoveHistoryCommand.Execute(item);
+            }
+
+            e.Handled = true;
+        }
     }
 
     private static object? SelectItemFromRightClick(System.Windows.Controls.ListBox listBox, MouseButtonEventArgs e)
@@ -282,7 +271,7 @@ public partial class ControlWindow : Window
     {
         if (HistoryListBox.SelectedItem is ControlItemViewModel item)
         {
-            _browser.NavigateTo(item.Url);
+            _viewModel.OpenItemCommand.Execute(item);
         }
     }
 
@@ -290,7 +279,7 @@ public partial class ControlWindow : Window
     {
         if (FavoritesListBox.SelectedItem is ControlItemViewModel item)
         {
-            _browser.NavigateTo(item.Url);
+            _viewModel.OpenItemCommand.Execute(item);
         }
     }
 
