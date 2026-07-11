@@ -54,6 +54,8 @@ public sealed class SettingsService : IDisposable
             ToggleModeModifiers = settings.ToggleModeModifiers,
             TogglePlaybackKey = settings.TogglePlaybackKey,
             TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
+            ThemeMode = settings.ThemeMode,
+            Language = settings.Language,
         };
 
         await _saveGate.WaitAsync().ConfigureAwait(false);

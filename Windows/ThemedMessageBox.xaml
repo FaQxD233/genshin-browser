@@ -7,20 +7,20 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         WindowStyle="SingleBorderWindow"
-        Background="{StaticResource BackgroundPrimary}"
-        Foreground="{StaticResource TextPrimary}"
+        Background="{DynamicResource BackgroundPrimary}"
+        Foreground="{DynamicResource TextPrimary}"
         ShowInTaskbar="False">
-  <Border Background="{StaticResource BackgroundSecondary}" Padding="20">
+  <Border Background="{DynamicResource BackgroundSecondary}" Padding="20">
     <StackPanel>
       <TextBlock x:Name="TitleText"
                  FontSize="13"
                  FontWeight="SemiBold"
-                 Foreground="{StaticResource TextPrimary}"
+                 Foreground="{DynamicResource TextPrimary}"
                  Margin="0,0,0,8"
                  TextWrapping="Wrap"/>
       <TextBlock x:Name="MessageText"
                  FontSize="12"
-                 Foreground="{StaticResource TextSecondary}"
+                 Foreground="{DynamicResource TextSecondary}"
                  TextWrapping="Wrap"
                  Margin="0,0,0,16"/>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -29,12 +29,12 @@
                 MinWidth="72"
                 Padding="14,7"
                 Margin="0,0,8,0"
-                Content="否"/>
+                Content="{DynamicResource MsgBox.No}"/>
         <Button x:Name="YesButton"
                 Style="{StaticResource PrimaryButton}"
                 MinWidth="72"
                 Padding="14,7"
-                Content="是"/>
+                Content="{DynamicResource MsgBox.Yes}"/>
       </StackPanel>
     </StackPanel>
   </Border>

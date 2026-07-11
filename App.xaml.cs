@@ -35,8 +35,8 @@ public partial class App : Application
     {
         FileLogger.LogException(e.Exception, "App.DispatcherUnhandledException");
         System.Windows.MessageBox.Show(
-            $"发生未处理异常：\n{e.Exception.GetType().Name}: {e.Exception.Message}\n\n详情已写入日志。",
-            "Genshin Browser 错误",
+            LocalizationService.Format("Status.UnhandledException", e.Exception.GetType().Name, e.Exception.Message),
+            LocalizationService.Get("Status.ErrorTitle", "Genshin Browser 错误"),
             MessageBoxButton.OK);
         e.Handled = true;
     }

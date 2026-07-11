@@ -184,12 +184,12 @@ public partial class ControlWindow : Window
 
     private void FavoritesListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        ShowListItemContextMenu(FavoritesListBox, e, "删除收藏", item => _viewModel.RemoveFavoriteCommand.Execute(item));
+        ShowListItemContextMenu(FavoritesListBox, e, LocalizationService.Get("Context.RemoveFavorite", "删除收藏"), item => _viewModel.RemoveFavoriteCommand.Execute(item));
     }
 
     private void HistoryListBox_OnRightClick(object sender, MouseButtonEventArgs e)
     {
-        ShowListItemContextMenu(HistoryListBox, e, "从历史中移除", item => _viewModel.RemoveHistoryCommand.Execute(item));
+        ShowListItemContextMenu(HistoryListBox, e, LocalizationService.Get("Context.RemoveHistory", "从历史中移除"), item => _viewModel.RemoveHistoryCommand.Execute(item));
     }
 
     private void ShowListItemContextMenu(
@@ -204,11 +204,11 @@ public partial class ControlWindow : Window
         }
 
         var menu = new ContextMenu();
-        var openItem = new MenuItem { Header = "打开" };
+        var openItem = new MenuItem { Header = LocalizationService.Get("Context.Open", "打开") };
         openItem.Click += (_, _) => _viewModel.OpenItemCommand.Execute(item);
         menu.Items.Add(openItem);
 
-        var copyItem = new MenuItem { Header = "复制链接" };
+        var copyItem = new MenuItem { Header = LocalizationService.Get("Context.CopyLink", "复制链接") };
         copyItem.Click += (_, _) => System.Windows.Clipboard.SetText(item.Url);
         menu.Items.Add(copyItem);
         menu.Items.Add(new Separator());

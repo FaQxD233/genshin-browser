@@ -28,7 +28,7 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _isRealClose;
     private bool _isNavigating;
     private string _currentAddress = string.Empty;
-    private string _statusMessage = "正在初始化浏览器...";
+    private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private StatusLevel _lastStatusLevel = StatusLevel.Info;
     private ControlWindow? _controlWindow;
     private CancellationTokenSource? _settingsSaveCts;
@@ -197,6 +197,10 @@ public partial class MainWindow : Window, IControlBrowser
         _settings = await _settingsService.LoadAsync();
         RestoreWindowBounds();
 
+        ThemeService.Apply(_settings.ThemeMode);
+        LocalizationService.Apply(_settings.Language);
+        _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
+
         ApplyWindowOpacity(_settings.WindowOpacity);
         _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
         _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
@@ -224,7 +228,10 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "MainWindow_OnLoaded");
-            System.Windows.MessageBox.Show($"启动失败：\n{ex.GetType().Name}: {ex.Message}", "Genshin Browser", MessageBoxButton.OK);
+            System.Windows.MessageBox.Show(
+                LocalizationService.Format("Status.StartupFailed", ex.GetType().Name, ex.Message),
+                LocalizationService.Get("App.Title", "Genshin Browser"),
+                MessageBoxButton.OK);
         }
     }
 
@@ -257,7 +264,7 @@ public partial class MainWindow : Window, IControlBrowser
             throw new InvalidOperationException(msg);
         }
 
-        _statusMessage = "正在安装 WebView2 Runtime...";
+        _statusMessage = LocalizationService.Get("Status.InstallingWebView2", "正在安装 WebView2 Runtime...");
         BrowserStateChanged?.Invoke(this, EventArgs.Empty);
         var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
@@ -269,7 +276,7 @@ public partial class MainWindow : Window, IControlBrowser
         await process.WaitForExitAsync();
 
         if (!IsWebView2RuntimeInstalled())
-            throw new InvalidOperationException("WebView2 Runtime 自动安装失败，请手动安装。");
+            throw new InvalidOperationException(LocalizationService.Get("Status.WebView2InstallFailed", "WebView2 Runtime 自动安装失败，请手动安装。"));
     }
 
     private async Task InitializeBrowserAsync()
@@ -308,7 +315,7 @@ public partial class MainWindow : Window, IControlBrowser
             BrowserView.CoreWebView2.Navigate(startUrl);
             // 对初始已加载的页面补执行一次（文档创建脚本只作用于之后的导航）
             _ = BrowserView.CoreWebView2.ExecuteScriptAsync(transparentBackgroundScript);
-            SetStatusMessage("浏览器已就绪，登录态和缓存将自动保留。", StatusLevel.Success);
+            SetStatusMessage(LocalizationService.Get("Status.BrowserReady"), StatusLevel.Success);
             _browserReady = true;
             UpdateWindowTitle();
             RefreshControlWindow();
@@ -317,7 +324,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             FileLogger.LogException(ex, "Initialize browser");
             SetNavigating(false);
-            SetStatusMessage($"初始化失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.InitFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -352,11 +359,11 @@ public partial class MainWindow : Window, IControlBrowser
 
             if (e.IsSuccess)
             {
-                SetStatusMessage("页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。", StatusLevel.Success);
+                SetStatusMessage(LocalizationService.Get("Status.PageLoaded"), StatusLevel.Success);
             }
             else
             {
-                SetStatusMessage($"加载失败: {e.WebErrorStatus}", StatusLevel.Error);
+                SetStatusMessage(LocalizationService.Format("Status.LoadFailed", e.WebErrorStatus), StatusLevel.Error);
             }
 
             RefreshControlWindow();
@@ -365,7 +372,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             FileLogger.LogException(ex, "Navigation completed handling");
             SetNavigating(false);
-            SetStatusMessage($"记录页面状态失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.RecordStateFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -396,7 +403,7 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Source changed handling");
-            SetStatusMessage($"地址更新失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.AddressUpdateFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -453,7 +460,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             var operation = e.DownloadOperation;
             var filePath = e.ResultFilePath ?? string.Empty;
-            var fileName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(filePath) : "下载文件";
+            var fileName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(filePath) : LocalizationService.Get("Downloads.DefaultFileName", "下载文件");
 
             var item = new DownloadItem
             {
@@ -468,7 +475,7 @@ public partial class MainWindow : Window, IControlBrowser
             operation.BytesReceivedChanged += (_, _) => OnDownloadProgress(item, operation);
             operation.StateChanged += (_, _) => OnDownloadStateChanged(item, operation);
 
-            SetStatusMessage($"开始下载: {item.FileName}", StatusLevel.Info);
+            SetStatusMessage(LocalizationService.Format("Status.DownloadStarted", item.FileName), StatusLevel.Info);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             RefreshControlWindow();
         }
@@ -506,11 +513,11 @@ public partial class MainWindow : Window, IControlBrowser
         {
             case CoreWebView2DownloadState.Completed:
                 _downloadsService.MarkCompleted(item);
-                SetStatusMessage($"下载完成: {item.FileName}", StatusLevel.Success);
+                SetStatusMessage(LocalizationService.Format("Status.DownloadCompleted", item.FileName), StatusLevel.Success);
                 break;
             case CoreWebView2DownloadState.Interrupted:
                 _downloadsService.MarkInterrupted(item);
-                SetStatusMessage($"下载中断: {item.FileName}", StatusLevel.Warning);
+                SetStatusMessage(LocalizationService.Format("Status.DownloadInterrupted", item.FileName), StatusLevel.Warning);
                 break;
         }
 
@@ -542,7 +549,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
-            SetStatusMessage("浏览器尚未就绪。", StatusLevel.Warning);
+            SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             return;
         }
 
@@ -572,23 +579,23 @@ public partial class MainWindow : Window, IControlBrowser
             switch (result)
             {
                 case "\"play\"":
-                    SetStatusMessage("已播放。", StatusLevel.Success);
+                    SetStatusMessage(LocalizationService.Get("Status.Played"), StatusLevel.Success);
                     break;
                 case "\"pause\"":
-                    SetStatusMessage("已暂停。", StatusLevel.Success);
+                    SetStatusMessage(LocalizationService.Get("Status.Paused"), StatusLevel.Success);
                     break;
                 case "\"no-video\"":
-                    SetStatusMessage("当前页面没有可控制的视频。", StatusLevel.Warning);
+                    SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
                     break;
                 default:
-                    SetStatusMessage("已发送播放控制命令。", StatusLevel.Info);
+                    SetStatusMessage(LocalizationService.Get("Status.PlaybackCommandSent"), StatusLevel.Info);
                     break;
             }
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Toggle video playback");
-            SetStatusMessage($"播放控制失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.PlaybackFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -604,8 +611,8 @@ public partial class MainWindow : Window, IControlBrowser
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         SetStatusMessage(_settings.WindowMode == WindowMode.Fixed
-            ? "固定模式已开启。按 F8 返回自由模式。"
-            : "自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。",
+            ? LocalizationService.Get("Mode.FixedOn")
+            : LocalizationService.Get("Mode.FreeOn"),
             StatusLevel.Info);
         UpdateControlWindowVisibility();
         RefreshControlWindow();
@@ -617,7 +624,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (BrowserView.CoreWebView2 is null)
         {
-            SetStatusMessage("浏览器尚未就绪。", StatusLevel.Warning);
+            SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             return;
         }
 
@@ -630,7 +637,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             FileLogger.LogException(ex, "Reload page");
             SetNavigating(false);
-            SetStatusMessage($"刷新失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.ReloadFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -645,13 +652,13 @@ public partial class MainWindow : Window, IControlBrowser
         {
             var title = BrowserView.CoreWebView2?.DocumentTitle;
             await _favoritesService.AddOrUpdateAsync(_currentAddress, string.IsNullOrWhiteSpace(title) ? _currentAddress : title);
-            SetStatusMessage("已收藏当前页面。", StatusLevel.Success);
+            SetStatusMessage(LocalizationService.Get("Status.FavoriteAdded"), StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Add current page to favorites");
-            SetStatusMessage($"收藏失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.FavoriteAddFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -660,13 +667,13 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             await _favoritesService.RemoveAsync(url);
-            SetStatusMessage("已取消收藏。", StatusLevel.Success);
+            SetStatusMessage(LocalizationService.Get("Status.FavoriteRemoved"), StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Remove favorite");
-            SetStatusMessage($"取消收藏失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.FavoriteRemoveFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -680,13 +687,13 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             await _historyService.RemoveAsync(url);
-            SetStatusMessage("已从历史记录中移除。", StatusLevel.Success);
+            SetStatusMessage(LocalizationService.Get("Status.HistoryRemoved"), StatusLevel.Success);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Remove history entry");
-            SetStatusMessage($"移除失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.HistoryRemoveFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -733,7 +740,7 @@ public partial class MainWindow : Window, IControlBrowser
         var target = BuildNavigationTarget(input);
         if (target is null)
         {
-            SetStatusMessage("只支持打开 http/https 页面。", StatusLevel.Warning);
+            SetStatusMessage(LocalizationService.Get("Status.OnlyHttp"), StatusLevel.Warning);
             return;
         }
 
@@ -742,14 +749,14 @@ public partial class MainWindow : Window, IControlBrowser
             SetNavigating(true);
             BrowserView.CoreWebView2.Navigate(target);
             _currentAddress = target;
-            SetStatusMessage($"正在打开: {target}", StatusLevel.Info);
+            SetStatusMessage(LocalizationService.Format("Status.Opening", target), StatusLevel.Info);
             RefreshControlWindow();
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Navigate to target");
             SetNavigating(false);
-            SetStatusMessage($"打开失败: {ex.Message}", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.OpenFailed", ex.Message), StatusLevel.Error);
         }
     }
 
@@ -765,11 +772,47 @@ public partial class MainWindow : Window, IControlBrowser
         QueueSettingsSave();
     }
 
+    public string ThemeMode
+    {
+        get => ThemeService.Normalize(_settings.ThemeMode);
+        set
+        {
+            var mode = ThemeService.Normalize(value);
+            if (string.Equals(_settings.ThemeMode, mode, StringComparison.OrdinalIgnoreCase))
+            {
+                ThemeService.Apply(mode);
+                return;
+            }
+
+            _settings.ThemeMode = mode;
+            ThemeService.Apply(mode);
+            QueueSettingsSave();
+        }
+    }
+
+    public string UiLanguage
+    {
+        get => LocalizationService.Normalize(_settings.Language);
+        set
+        {
+            var lang = LocalizationService.Normalize(value);
+            if (string.Equals(_settings.Language, lang, StringComparison.OrdinalIgnoreCase))
+            {
+                LocalizationService.Apply(lang);
+                return;
+            }
+
+            _settings.Language = lang;
+            LocalizationService.Apply(lang);
+            QueueSettingsSave();
+        }
+    }
+
     public void CancelDownload(DownloadItem item)
     {
         if (_downloadsService.TryCancel(item))
         {
-            SetStatusMessage($"已取消下载: {item.FileName}", StatusLevel.Success);
+            SetStatusMessage(LocalizationService.Format("Status.DownloadCanceled", item.FileName), StatusLevel.Success);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             RefreshControlWindow();
         }
@@ -779,7 +822,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_downloadsService.OpenFile(item))
         {
-            SetStatusMessage("无法打开文件，可能已被移动或删除。", StatusLevel.Warning);
+            SetStatusMessage(LocalizationService.Get("Status.CannotOpenFile"), StatusLevel.Warning);
             RefreshControlWindow();
         }
     }
@@ -788,7 +831,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_downloadsService.OpenFolder(item))
         {
-            SetStatusMessage("无法打开所在文件夹。", StatusLevel.Warning);
+            SetStatusMessage(LocalizationService.Get("Status.CannotOpenFolder"), StatusLevel.Warning);
             RefreshControlWindow();
         }
     }
@@ -969,7 +1012,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (!_keyboardHookService.Start(out var errorCode))
         {
-            SetStatusMessage($"全局热键安装失败，Win32 错误码: {errorCode}。控制面板按钮仍可使用。", StatusLevel.Error);
+            SetStatusMessage(LocalizationService.Format("Status.HotkeyInstallFailed", errorCode), StatusLevel.Error);
         }
     }
 
@@ -984,7 +1027,7 @@ public partial class MainWindow : Window, IControlBrowser
             FileLogger.LogException(ex, "Save settings");
             if (!_isShuttingDown)
             {
-                SetStatusMessage($"保存设置失败: {ex.Message}", StatusLevel.Error);
+                SetStatusMessage(LocalizationService.Format("Status.SaveSettingsFailed", ex.Message), StatusLevel.Error);
             }
         }
     }
@@ -1165,7 +1208,7 @@ public partial class MainWindow : Window, IControlBrowser
         var clamped = Math.Clamp(factor, 0.25, 5.0);
         BrowserView.ZoomFactor = clamped;
         ZoomChanged?.Invoke(this, EventArgs.Empty);
-        SetStatusMessage($"缩放: {Math.Round(clamped * 100)}%", StatusLevel.Info);
+        SetStatusMessage(LocalizationService.Format("Status.Zoom", Math.Round(clamped * 100)), StatusLevel.Info);
         RefreshControlWindow();
     }
 

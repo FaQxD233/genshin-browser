@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
+using GenshinBrowser.Services;
 using GenshinBrowser.Windows;
 
 namespace GenshinBrowser.ViewModels;
@@ -14,11 +15,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private readonly DispatcherTimer _toastTimer;
     private readonly List<ControlItemViewModel> _allHistoryItems = new();
     private readonly List<ControlItemViewModel> _allFavoriteItems = new();
-    private string _modeText = "自由模式";
+    private string _modeText = LocalizationService.Get("Mode.Free", "自由模式");
     private string _modeToggleIcon = "\uE718";
-    private string _statusMessage = "正在初始化浏览器...";
+    private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private string _currentAddress = string.Empty;
-    private string _favoriteToggleText = "收藏当前页";
+    private string _favoriteToggleText = LocalizationService.Get("Fav.Add", "收藏当前页");
     private string _favoriteToggleIcon = "\uE735";
     private bool _isCurrentFavorite;
     private string _searchText = string.Empty;
@@ -57,6 +58,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
         OpenDownloadFileCommand = new RelayCommand(parameter => OpenDownloadFile(parameter));
         OpenDownloadFolderCommand = new RelayCommand(parameter => OpenDownloadFolder(parameter));
         ClearFinishedDownloadsCommand = new RelayCommand(_browser.ClearFinishedDownloads);
+        SetThemeDarkCommand = new RelayCommand(() => SetTheme(ThemeService.Dark));
+        SetThemeLightCommand = new RelayCommand(() => SetTheme(ThemeService.Light));
+        SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
+        SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         _toastTimer.Tick += ToastTimer_OnTick;
@@ -64,7 +69,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _browser.ZoomChanged += Browser_OnZoomChanged;
         _browser.DownloadsChanged += Browser_OnDownloadsChanged;
         _browser.Downloads.CollectionChanged += Downloads_CollectionChanged;
+        LocalizationService.LanguageChanged += Localization_OnLanguageChanged;
         UpdateDownloadsBadge();
+        RefreshThemeLanguageFlags();
     }
 
     public ObservableCollection<ControlItemViewModel> HistoryItems { get; } = new();
@@ -116,6 +123,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand OpenDownloadFolderCommand { get; }
 
     public RelayCommand ClearFinishedDownloadsCommand { get; }
+
+    public RelayCommand SetThemeDarkCommand { get; }
+
+    public RelayCommand SetThemeLightCommand { get; }
+
+    public RelayCommand SetLanguageZhCommand { get; }
+
+    public RelayCommand SetLanguageEnCommand { get; }
 
     public string ModeText
     {
@@ -222,12 +237,16 @@ public sealed class ControlWindowViewModel : ViewModelBase
     /// <summary>
     /// 收藏列表为空时的提示文案（区分「无数据」与「搜索无结果」）。
     /// </summary>
-    public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText) ? "暂无收藏" : "未找到匹配项";
+    public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText)
+            ? LocalizationService.Get("Empty.Favorites", "暂无收藏")
+            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项");
 
     /// <summary>
     /// 历史列表为空时的提示文案。
     /// </summary>
-    public string HistoryEmptyText => string.IsNullOrEmpty(SearchText) ? "暂无浏览记录" : "未找到匹配项";
+    public string HistoryEmptyText => string.IsNullOrEmpty(SearchText)
+            ? LocalizationService.Get("Empty.History", "暂无浏览记录")
+            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项");
 
     public string ToastMessage
     {
@@ -317,13 +336,17 @@ public sealed class ControlWindowViewModel : ViewModelBase
     /// <summary>
     /// 下载列表为空时的提示文案。
     /// </summary>
-    public string DownloadsEmptyText => Downloads.Count == 0 ? "暂无下载任务" : string.Empty;
+    public string DownloadsEmptyText => Downloads.Count == 0
+            ? LocalizationService.Get("Downloads.Empty", "暂无下载任务")
+            : string.Empty;
 
     public void RefreshFromBrowser()
     {
         var previousStatus = StatusMessage;
 
-        ModeText = _browser.CurrentMode == WindowMode.Fixed ? "固定模式" : "自由模式";
+        ModeText = _browser.CurrentMode == WindowMode.Fixed
+            ? LocalizationService.Get("Mode.Fixed", "固定模式")
+            : LocalizationService.Get("Mode.Free", "自由模式");
         ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "\uE785" : "\uE718";
         StatusMessage = _browser.StatusMessage;
         CurrentAddress = _browser.CurrentAddress;
@@ -333,7 +356,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         IsNavigating = _browser.IsNavigating;
 
         IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
-        FavoriteToggleText = IsCurrentFavorite ? "已收藏" : "收藏当前页";
+        FavoriteToggleText = IsCurrentFavorite
+            ? LocalizationService.Get("Fav.Added", "已收藏")
+            : LocalizationService.Get("Fav.Add", "收藏当前页");
         FavoriteToggleIcon = IsCurrentFavorite ? "\uE734" : "\uE735";
 
         SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
@@ -358,6 +383,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _browser.ZoomChanged -= Browser_OnZoomChanged;
         _browser.DownloadsChanged -= Browser_OnDownloadsChanged;
         _browser.Downloads.CollectionChanged -= Downloads_CollectionChanged;
+        LocalizationService.LanguageChanged -= Localization_OnLanguageChanged;
         _toastTimer.Stop();
         _toastTimer.Tick -= ToastTimer_OnTick;
     }
@@ -385,7 +411,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         var input = parameter as string;
         // 忽略占位符文本，避免误触发搜索
-        if (string.IsNullOrEmpty(input) || input == AppConfig.Ui.AddressBarPlaceholder)
+        var addressPlaceholder = LocalizationService.Get("Nav.AddressPlaceholder", AppConfig.Ui.AddressBarPlaceholder);
+        if (string.IsNullOrEmpty(input) || input == addressPlaceholder || input == AppConfig.Ui.AddressBarPlaceholder)
         {
             return;
         }
@@ -453,7 +480,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         _browser.RestoreDefaultSettings();
         RefreshFromBrowser();
-        ShowToast("已恢复默认设置");
+        ShowToast(LocalizationService.Get("Toast.RestoredDefaults", "已恢复默认设置"));
     }
 
     private void CancelDownload(object? parameter)
@@ -573,7 +600,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private static string NormalizeSearch(string? text)
     {
-        return text == AppConfig.Ui.SearchPlaceholder ? string.Empty : text?.Trim() ?? string.Empty;
+        var placeholder = LocalizationService.Get("Search.Placeholder", AppConfig.Ui.SearchPlaceholder);
+        return text == placeholder || text == AppConfig.Ui.SearchPlaceholder
+            ? string.Empty
+            : text?.Trim() ?? string.Empty;
     }
 
     private static bool ShouldToast(StatusLevel level)
@@ -659,7 +689,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _currentRecordingModifiers = ModifierKeys.None;
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        ShowToast("请按下“切换模式”快捷键（按 Esc 取消）");
+        ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下“切换模式”快捷键（按 Esc 取消）"));
     }
 
     private void StartRecordingTogglePlaybackKey()
@@ -669,7 +699,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _currentRecordingModifiers = ModifierKeys.None;
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        ShowToast("请按下“视频播放”快捷键（按 Esc 取消）");
+        ShowToast(LocalizationService.Get("Toast.RecordPlayback", "请按下“视频播放”快捷键（按 Esc 取消）"));
     }
 
     public void UpdateRecordingModifiers(ModifierKeys modifiers)
@@ -688,7 +718,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
             _currentRecordingModifiers = ModifierKeys.None;
             OnPropertyChanged(nameof(ToggleModeKeyText));
             OnPropertyChanged(nameof(TogglePlaybackKeyText));
-            ShowToast("已取消录制。");
+            ShowToast(LocalizationService.Get("Toast.RecordCanceled", "已取消录制。"));
             return;
         }
 
@@ -696,13 +726,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (key == _browser.TogglePlaybackKey && modifiers == _browser.TogglePlaybackModifiers)
             {
-                ShowToast("该快捷键已被视频播放占用！");
+                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByPlayback", "该快捷键已被视频播放占用！"));
             }
             else
             {
                 _browser.ToggleModeKey = key;
                 _browser.ToggleModeModifiers = modifiers;
-                ShowToast($"已将“切换模式”设为 {FormatHotkey(key, modifiers)}");
+                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", FormatHotkey(key, modifiers)));
             }
             _isRecordingToggleModeKey = false;
         }
@@ -710,13 +740,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (key == _browser.ToggleModeKey && modifiers == _browser.ToggleModeModifiers)
             {
-                ShowToast("该快捷键已被切换模式占用！");
+                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被切换模式占用！"));
             }
             else
             {
                 _browser.TogglePlaybackKey = key;
                 _browser.TogglePlaybackModifiers = modifiers;
-                ShowToast($"已将“视频播放”设为 {FormatHotkey(key, modifiers)}");
+                ShowToast(LocalizationService.Format("Toast.PlaybackSet", FormatHotkey(key, modifiers)));
             }
             _isRecordingTogglePlaybackKey = false;
         }
@@ -726,7 +756,71 @@ public sealed class ControlWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
     }
 
+
+    public bool IsThemeDark => string.Equals(_browser.ThemeMode, ThemeService.Dark, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsThemeLight => string.Equals(_browser.ThemeMode, ThemeService.Light, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
+
+    public bool IsLanguageEn => string.Equals(_browser.UiLanguage, LocalizationService.EnUs, StringComparison.OrdinalIgnoreCase);
+
+    private void SetTheme(string mode)
+    {
+        _browser.ThemeMode = mode;
+        RefreshThemeLanguageFlags();
+        ShowToast(mode == ThemeService.Light
+            ? LocalizationService.Get("Toast.ThemeLight", "已切换到亮色主题")
+            : LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"));
+    }
+
+    private void SetLanguage(string language)
+    {
+        _browser.UiLanguage = language;
+        RefreshLocalizedTexts();
+        RefreshThemeLanguageFlags();
+        ShowToast(language == LocalizationService.EnUs
+            ? LocalizationService.Get("Toast.LanguageEn", "Language: English")
+            : LocalizationService.Get("Toast.LanguageZh", "界面语言：中文"));
+    }
+
+    private void Localization_OnLanguageChanged(object? sender, EventArgs e)
+    {
+        RefreshLocalizedTexts();
+        RefreshThemeLanguageFlags();
+        // 下载状态文案依赖语言资源
+        foreach (var item in Downloads)
+        {
+            item.NotifyLanguageChanged();
+        }
+    }
+
+    private void RefreshThemeLanguageFlags()
+    {
+        OnPropertyChanged(nameof(IsThemeDark));
+        OnPropertyChanged(nameof(IsThemeLight));
+        OnPropertyChanged(nameof(IsLanguageZh));
+        OnPropertyChanged(nameof(IsLanguageEn));
+    }
+
+    private void RefreshLocalizedTexts()
+    {
+        ModeText = _browser.CurrentMode == WindowMode.Fixed
+            ? LocalizationService.Get("Mode.Fixed", "固定模式")
+            : LocalizationService.Get("Mode.Free", "自由模式");
+        FavoriteToggleText = IsCurrentFavorite
+            ? LocalizationService.Get("Fav.Added", "已收藏")
+            : LocalizationService.Get("Fav.Add", "收藏当前页");
+        OnPropertyChanged(nameof(FavoritesEmptyText));
+        OnPropertyChanged(nameof(HistoryEmptyText));
+        OnPropertyChanged(nameof(DownloadsEmptyText));
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        StatusMessage = _browser.StatusMessage;
+    }
+
     private static string GetModifiersString(ModifierKeys modifiers)
+
     {
         var parts = new List<string>();
         if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
@@ -739,7 +833,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private static string FormatHotkey(Key key, ModifierKeys modifiers)
     {
-        if (key == Key.None) return "未设置";
+        if (key == Key.None) return LocalizationService.Get("Hotkey.NotSet", "未设置");
         return GetModifiersString(modifiers) + GetKeyName(key);
     }
 
@@ -747,7 +841,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         return key switch
         {
-            Key.None => "无",
+            Key.None => LocalizationService.Get("Hotkey.None", "无"),
             Key.OemPeriod => ".",
             Key.OemComma => ",",
             Key.OemQuestion => "/",

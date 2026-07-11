@@ -1,0 +1,147 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <!-- Window titles -->
+  <sys:String x:Key="App.Title">Genshin Browser</sys:String>
+  <sys:String x:Key="Control.Title">Genshin Browser Control</sys:String>
+
+  <!-- Mode -->
+  <sys:String x:Key="Mode.Free">Free mode</sys:String>
+  <sys:String x:Key="Mode.Fixed">Fixed mode</sys:String>
+  <sys:String x:Key="Mode.ToggleTooltip">Toggle window mode (F8)</sys:String>
+  <sys:String x:Key="Mode.ToggleName">Toggle window mode</sys:String>
+  <sys:String x:Key="Mode.FixedOn">Fixed mode on. Press F8 to return to free mode.</sys:String>
+  <sys:String x:Key="Mode.FreeOn">Free mode. Control window is open. You can move the window, browse history, and edit the address.</sys:String>
+
+  <!-- Top toolbar -->
+  <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video (K)</sys:String>
+  <sys:String x:Key="Toolbar.PlaybackName">Play or pause</sys:String>
+  <sys:String x:Key="Toolbar.SettingsTooltip">Floating window settings</sys:String>
+  <sys:String x:Key="Toolbar.SettingsName">Floating window settings</sys:String>
+  <sys:String x:Key="Toolbar.DownloadsTooltip">Downloads</sys:String>
+  <sys:String x:Key="Toolbar.DownloadsName">Downloads</sys:String>
+
+  <!-- Settings panel -->
+  <sys:String x:Key="Settings.Title">Floating window settings</sys:String>
+  <sys:String x:Key="Settings.Opacity">Opacity</sys:String>
+  <sys:String x:Key="Settings.Zoom">Page zoom</sys:String>
+  <sys:String x:Key="Settings.ZoomOutTooltip">Zoom out (Ctrl+-)</sys:String>
+  <sys:String x:Key="Settings.ZoomOutName">Zoom out</sys:String>
+  <sys:String x:Key="Settings.ZoomInTooltip">Zoom in (Ctrl+=)</sys:String>
+  <sys:String x:Key="Settings.ZoomInName">Zoom in</sys:String>
+  <sys:String x:Key="Settings.ZoomResetTooltip">Reset zoom (Ctrl+0)</sys:String>
+  <sys:String x:Key="Settings.ZoomReset">Reset</sys:String>
+  <sys:String x:Key="Settings.ToggleMode">Toggle mode</sys:String>
+  <sys:String x:Key="Settings.Playback">Play / pause</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
+  <sys:String x:Key="Settings.Theme">Theme</sys:String>
+  <sys:String x:Key="Settings.ThemeDark">Dark</sys:String>
+  <sys:String x:Key="Settings.ThemeLight">Light</sys:String>
+  <sys:String x:Key="Settings.Language">Language</sys:String>
+  <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
+  <sys:String x:Key="Settings.LanguageEn">English</sys:String>
+
+  <!-- Downloads -->
+  <sys:String x:Key="Downloads.Title">Downloads</sys:String>
+  <sys:String x:Key="Downloads.ClearFinished">Clear finished</sys:String>
+  <sys:String x:Key="Downloads.ClearFinishedTooltip">Clear completed / canceled items</sys:String>
+  <sys:String x:Key="Downloads.Empty">No downloads</sys:String>
+  <sys:String x:Key="Downloads.OpenFile">Open file</sys:String>
+  <sys:String x:Key="Downloads.OpenFolder">Open containing folder</sys:String>
+  <sys:String x:Key="Downloads.Cancel">Cancel download</sys:String>
+  <sys:String x:Key="Downloads.State.InProgress">Downloading</sys:String>
+  <sys:String x:Key="Downloads.State.Completed">Completed</sys:String>
+  <sys:String x:Key="Downloads.State.Canceled">Canceled</sys:String>
+  <sys:String x:Key="Downloads.State.Interrupted">Interrupted</sys:String>
+  <sys:String x:Key="Downloads.DefaultFileName">Download</sys:String>
+
+  <!-- Address bar / navigation -->
+  <sys:String x:Key="Nav.Back">Back</sys:String>
+  <sys:String x:Key="Nav.Forward">Forward</sys:String>
+  <sys:String x:Key="Nav.Open">Open</sys:String>
+  <sys:String x:Key="Nav.Reload">Reload</sys:String>
+  <sys:String x:Key="Nav.AddressPlaceholder">Enter URL or search...</sys:String>
+  <sys:String x:Key="Nav.AddressTooltip">Enter URL or search...</sys:String>
+
+  <!-- Favorites / history -->
+  <sys:String x:Key="Fav.Add">Add to favorites</sys:String>
+  <sys:String x:Key="Fav.Added">Favorited</sys:String>
+  <sys:String x:Key="Fav.Tab">Favorites</sys:String>
+  <sys:String x:Key="History.Tab">History</sys:String>
+  <sys:String x:Key="Search.Placeholder">Search...</sys:String>
+  <sys:String x:Key="Search.Tooltip">Search current list</sys:String>
+  <sys:String x:Key="Empty.Favorites">No favorites</sys:String>
+  <sys:String x:Key="Empty.History">No history</sys:String>
+  <sys:String x:Key="Empty.NoMatch">No matches</sys:String>
+  <sys:String x:Key="Context.Open">Open</sys:String>
+  <sys:String x:Key="Context.CopyLink">Copy link</sys:String>
+  <sys:String x:Key="Context.RemoveFavorite">Remove favorite</sys:String>
+  <sys:String x:Key="Context.RemoveHistory">Remove from history</sys:String>
+
+  <!-- Title bar -->
+  <sys:String x:Key="TitleBar.Minimize">Minimize</sys:String>
+  <sys:String x:Key="TitleBar.Maximize">Maximize / Restore</sys:String>
+  <sys:String x:Key="TitleBar.MaximizeName">Maximize or restore</sys:String>
+  <sys:String x:Key="TitleBar.Close">Close</sys:String>
+
+  <!-- MessageBox -->
+  <sys:String x:Key="MsgBox.Yes">Yes</sys:String>
+  <sys:String x:Key="MsgBox.No">No</sys:String>
+
+  <!-- Hotkey / settings toasts -->
+  <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
+  <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “toggle mode” (Esc to cancel)</sys:String>
+  <sys:String x:Key="Toast.RecordPlayback">Press a hotkey for “video playback” (Esc to cancel)</sys:String>
+  <sys:String x:Key="Toast.RecordCanceled">Recording canceled.</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByPlayback">That hotkey is already used by video playback!</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByMode">That hotkey is already used by toggle mode!</sys:String>
+  <sys:String x:Key="Toast.ToggleModeSet">“Toggle mode” set to {0}</sys:String>
+  <sys:String x:Key="Toast.PlaybackSet">“Video playback” set to {0}</sys:String>
+  <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
+  <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
+  <sys:String x:Key="Toast.LanguageZh">界面语言：中文</sys:String>
+  <sys:String x:Key="Toast.LanguageEn">Language: English</sys:String>
+  <sys:String x:Key="Hotkey.NotSet">Not set</sys:String>
+  <sys:String x:Key="Hotkey.None">None</sys:String>
+
+  <!-- Status messages (MainWindow) -->
+  <sys:String x:Key="Status.InitBrowser">Initializing browser...</sys:String>
+  <sys:String x:Key="Status.InstallingWebView2">Installing WebView2 Runtime...</sys:String>
+  <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions and cache are kept automatically.</sys:String>
+  <sys:String x:Key="Status.InitFailed">Initialization failed: {0}</sys:String>
+  <sys:String x:Key="Status.PageLoaded">Page loaded. Press K to play/pause video, F8 to toggle fixed/free mode.</sys:String>
+  <sys:String x:Key="Status.LoadFailed">Load failed: {0}</sys:String>
+  <sys:String x:Key="Status.RecordStateFailed">Failed to record page state: {0}</sys:String>
+  <sys:String x:Key="Status.AddressUpdateFailed">Failed to update address: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadStarted">Download started: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadCompleted">Download completed: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadInterrupted">Download interrupted: {0}</sys:String>
+  <sys:String x:Key="Status.BrowserNotReady">Browser is not ready yet.</sys:String>
+  <sys:String x:Key="Status.Played">Playing.</sys:String>
+  <sys:String x:Key="Status.Paused">Paused.</sys:String>
+  <sys:String x:Key="Status.NoVideo">No controllable video on this page.</sys:String>
+  <sys:String x:Key="Status.PlaybackCommandSent">Playback command sent.</sys:String>
+  <sys:String x:Key="Status.PlaybackFailed">Playback control failed: {0}</sys:String>
+  <sys:String x:Key="Status.ReloadFailed">Reload failed: {0}</sys:String>
+  <sys:String x:Key="Status.FavoriteAdded">Page added to favorites.</sys:String>
+  <sys:String x:Key="Status.FavoriteAddFailed">Failed to favorite: {0}</sys:String>
+  <sys:String x:Key="Status.FavoriteRemoved">Removed from favorites.</sys:String>
+  <sys:String x:Key="Status.FavoriteRemoveFailed">Failed to remove favorite: {0}</sys:String>
+  <sys:String x:Key="Status.HistoryRemoved">Removed from history.</sys:String>
+  <sys:String x:Key="Status.HistoryRemoveFailed">Failed to remove: {0}</sys:String>
+  <sys:String x:Key="Status.OnlyHttp">Only http/https pages are supported.</sys:String>
+  <sys:String x:Key="Status.Opening">Opening: {0}</sys:String>
+  <sys:String x:Key="Status.OpenFailed">Failed to open: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadCanceled">Download canceled: {0}</sys:String>
+  <sys:String x:Key="Status.CannotOpenFile">Cannot open file. It may have been moved or deleted.</sys:String>
+  <sys:String x:Key="Status.CannotOpenFolder">Cannot open containing folder.</sys:String>
+  <sys:String x:Key="Status.HotkeyInstallFailed">Failed to install global hotkey, Win32 error: {0}. Control panel buttons still work.</sys:String>
+  <sys:String x:Key="Status.SaveSettingsFailed">Failed to save settings: {0}</sys:String>
+  <sys:String x:Key="Status.Zoom">Zoom: {0}%</sys:String>
+  <sys:String x:Key="Status.StartupFailed">Startup failed:\n{0}: {1}</sys:String>
+  <sys:String x:Key="Status.WebView2InstallFailed">Automatic WebView2 Runtime install failed. Please install it manually.</sys:String>
+  <sys:String x:Key="Status.WebView2ManualHint">Please download and install: https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
+  <sys:String x:Key="Status.UnhandledException">Unhandled exception:\n{0}: {1}\n\nDetails were written to the log.</sys:String>
+  <sys:String x:Key="Status.ErrorTitle">Genshin Browser Error</sys:String>
+</ResourceDictionary>

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using GenshinBrowser.Services;
 
 namespace GenshinBrowser.Models;
 
@@ -78,12 +79,20 @@ public sealed class DownloadItem : INotifyPropertyChanged
 
     public string StateText => State switch
     {
-        DownloadState.InProgress => "下载中",
-        DownloadState.Completed => "已完成",
-        DownloadState.Canceled => "已取消",
-        DownloadState.Interrupted => "已中断",
+        DownloadState.InProgress => LocalizationService.Get("Downloads.State.InProgress", "下载中"),
+        DownloadState.Completed => LocalizationService.Get("Downloads.State.Completed", "已完成"),
+        DownloadState.Canceled => LocalizationService.Get("Downloads.State.Canceled", "已取消"),
+        DownloadState.Interrupted => LocalizationService.Get("Downloads.State.Interrupted", "已中断"),
         _ => string.Empty
     };
+
+    /// <summary>
+    /// 语言切换后刷新状态文案绑定。
+    /// </summary>
+    public void NotifyLanguageChanged()
+    {
+        OnPropertyChanged(nameof(StateText));
+    }
 
     public string SizeText
     {

@@ -33,4 +33,14 @@ public sealed class AppSettings
     public Key TogglePlaybackKey { get; set; } = Key.K;
 
     public ModifierKeys TogglePlaybackModifiers { get; set; } = ModifierKeys.None;
+
+    /// <summary>
+    /// 主题：Dark / Light。默认 Dark。
+    /// </summary>
+    public string ThemeMode { get; set; } = "Dark";
+
+    /// <summary>
+    /// 界面语言：zh-CN / en-US。默认 zh-CN。
+    /// </summary>
+    public string Language { get; set; } = "zh-CN";
 }

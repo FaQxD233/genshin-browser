@@ -1,0 +1,147 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+  <!-- Window titles -->
+  <sys:String x:Key="App.Title">Genshin Browser</sys:String>
+  <sys:String x:Key="Control.Title">Genshin Browser Control</sys:String>
+
+  <!-- Mode -->
+  <sys:String x:Key="Mode.Free">自由模式</sys:String>
+  <sys:String x:Key="Mode.Fixed">固定模式</sys:String>
+  <sys:String x:Key="Mode.ToggleTooltip">切换窗口模式 (F8)</sys:String>
+  <sys:String x:Key="Mode.ToggleName">切换窗口模式</sys:String>
+  <sys:String x:Key="Mode.FixedOn">固定模式已开启。按 F8 返回自由模式。</sys:String>
+  <sys:String x:Key="Mode.FreeOn">自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。</sys:String>
+
+  <!-- Top toolbar -->
+  <sys:String x:Key="Toolbar.PlaybackTooltip">控制视频播放/暂停 (K)</sys:String>
+  <sys:String x:Key="Toolbar.PlaybackName">播放或暂停</sys:String>
+  <sys:String x:Key="Toolbar.SettingsTooltip">浮窗设置</sys:String>
+  <sys:String x:Key="Toolbar.SettingsName">浮窗设置</sys:String>
+  <sys:String x:Key="Toolbar.DownloadsTooltip">下载管理</sys:String>
+  <sys:String x:Key="Toolbar.DownloadsName">下载管理</sys:String>
+
+  <!-- Settings panel -->
+  <sys:String x:Key="Settings.Title">浮窗设置</sys:String>
+  <sys:String x:Key="Settings.Opacity">不透明度</sys:String>
+  <sys:String x:Key="Settings.Zoom">页面缩放</sys:String>
+  <sys:String x:Key="Settings.ZoomOutTooltip">缩小 (Ctrl+-)</sys:String>
+  <sys:String x:Key="Settings.ZoomOutName">缩小</sys:String>
+  <sys:String x:Key="Settings.ZoomInTooltip">放大 (Ctrl+=)</sys:String>
+  <sys:String x:Key="Settings.ZoomInName">放大</sys:String>
+  <sys:String x:Key="Settings.ZoomResetTooltip">重置缩放 (Ctrl+0)</sys:String>
+  <sys:String x:Key="Settings.ZoomReset">重置</sys:String>
+  <sys:String x:Key="Settings.ToggleMode">切换模式</sys:String>
+  <sys:String x:Key="Settings.Playback">播放/暂停</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaults">恢复默认</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放与快捷键为默认值</sys:String>
+  <sys:String x:Key="Settings.Theme">主题</sys:String>
+  <sys:String x:Key="Settings.ThemeDark">暗色</sys:String>
+  <sys:String x:Key="Settings.ThemeLight">亮色</sys:String>
+  <sys:String x:Key="Settings.Language">语言</sys:String>
+  <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
+  <sys:String x:Key="Settings.LanguageEn">English</sys:String>
+
+  <!-- Downloads -->
+  <sys:String x:Key="Downloads.Title">下载任务</sys:String>
+  <sys:String x:Key="Downloads.ClearFinished">清除已结束</sys:String>
+  <sys:String x:Key="Downloads.ClearFinishedTooltip">清除已完成 / 已取消的记录</sys:String>
+  <sys:String x:Key="Downloads.Empty">暂无下载任务</sys:String>
+  <sys:String x:Key="Downloads.OpenFile">打开文件</sys:String>
+  <sys:String x:Key="Downloads.OpenFolder">打开所在文件夹</sys:String>
+  <sys:String x:Key="Downloads.Cancel">取消下载</sys:String>
+  <sys:String x:Key="Downloads.State.InProgress">下载中</sys:String>
+  <sys:String x:Key="Downloads.State.Completed">已完成</sys:String>
+  <sys:String x:Key="Downloads.State.Canceled">已取消</sys:String>
+  <sys:String x:Key="Downloads.State.Interrupted">已中断</sys:String>
+  <sys:String x:Key="Downloads.DefaultFileName">下载文件</sys:String>
+
+  <!-- Address bar / navigation -->
+  <sys:String x:Key="Nav.Back">后退</sys:String>
+  <sys:String x:Key="Nav.Forward">前进</sys:String>
+  <sys:String x:Key="Nav.Open">打开</sys:String>
+  <sys:String x:Key="Nav.Reload">刷新</sys:String>
+  <sys:String x:Key="Nav.AddressPlaceholder">输入网址或搜索...</sys:String>
+  <sys:String x:Key="Nav.AddressTooltip">输入网址或搜索...</sys:String>
+
+  <!-- Favorites / history -->
+  <sys:String x:Key="Fav.Add">收藏当前页</sys:String>
+  <sys:String x:Key="Fav.Added">已收藏</sys:String>
+  <sys:String x:Key="Fav.Tab">收藏夹</sys:String>
+  <sys:String x:Key="History.Tab">浏览记录</sys:String>
+  <sys:String x:Key="Search.Placeholder">搜索...</sys:String>
+  <sys:String x:Key="Search.Tooltip">搜索当前列表</sys:String>
+  <sys:String x:Key="Empty.Favorites">暂无收藏</sys:String>
+  <sys:String x:Key="Empty.History">暂无浏览记录</sys:String>
+  <sys:String x:Key="Empty.NoMatch">未找到匹配项</sys:String>
+  <sys:String x:Key="Context.Open">打开</sys:String>
+  <sys:String x:Key="Context.CopyLink">复制链接</sys:String>
+  <sys:String x:Key="Context.RemoveFavorite">删除收藏</sys:String>
+  <sys:String x:Key="Context.RemoveHistory">从历史中移除</sys:String>
+
+  <!-- Title bar -->
+  <sys:String x:Key="TitleBar.Minimize">最小化</sys:String>
+  <sys:String x:Key="TitleBar.Maximize">最大化 / 还原</sys:String>
+  <sys:String x:Key="TitleBar.MaximizeName">最大化或还原</sys:String>
+  <sys:String x:Key="TitleBar.Close">关闭</sys:String>
+
+  <!-- MessageBox -->
+  <sys:String x:Key="MsgBox.Yes">是</sys:String>
+  <sys:String x:Key="MsgBox.No">否</sys:String>
+
+  <!-- Hotkey / settings toasts -->
+  <sys:String x:Key="Toast.RestoredDefaults">已恢复默认设置</sys:String>
+  <sys:String x:Key="Toast.RecordToggleMode">请按下“切换模式”快捷键（按 Esc 取消）</sys:String>
+  <sys:String x:Key="Toast.RecordPlayback">请按下“视频播放”快捷键（按 Esc 取消）</sys:String>
+  <sys:String x:Key="Toast.RecordCanceled">已取消录制。</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByPlayback">该快捷键已被视频播放占用！</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByMode">该快捷键已被切换模式占用！</sys:String>
+  <sys:String x:Key="Toast.ToggleModeSet">已将“切换模式”设为 {0}</sys:String>
+  <sys:String x:Key="Toast.PlaybackSet">已将“视频播放”设为 {0}</sys:String>
+  <sys:String x:Key="Toast.ThemeDark">已切换到暗色主题</sys:String>
+  <sys:String x:Key="Toast.ThemeLight">已切换到亮色主题</sys:String>
+  <sys:String x:Key="Toast.LanguageZh">界面语言：中文</sys:String>
+  <sys:String x:Key="Toast.LanguageEn">Language: English</sys:String>
+  <sys:String x:Key="Hotkey.NotSet">未设置</sys:String>
+  <sys:String x:Key="Hotkey.None">无</sys:String>
+
+  <!-- Status messages (MainWindow) -->
+  <sys:String x:Key="Status.InitBrowser">正在初始化浏览器...</sys:String>
+  <sys:String x:Key="Status.InstallingWebView2">正在安装 WebView2 Runtime...</sys:String>
+  <sys:String x:Key="Status.BrowserReady">浏览器已就绪，登录态和缓存将自动保留。</sys:String>
+  <sys:String x:Key="Status.InitFailed">初始化失败: {0}</sys:String>
+  <sys:String x:Key="Status.PageLoaded">页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。</sys:String>
+  <sys:String x:Key="Status.LoadFailed">加载失败: {0}</sys:String>
+  <sys:String x:Key="Status.RecordStateFailed">记录页面状态失败: {0}</sys:String>
+  <sys:String x:Key="Status.AddressUpdateFailed">地址更新失败: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadStarted">开始下载: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadCompleted">下载完成: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadInterrupted">下载中断: {0}</sys:String>
+  <sys:String x:Key="Status.BrowserNotReady">浏览器尚未就绪。</sys:String>
+  <sys:String x:Key="Status.Played">已播放。</sys:String>
+  <sys:String x:Key="Status.Paused">已暂停。</sys:String>
+  <sys:String x:Key="Status.NoVideo">当前页面没有可控制的视频。</sys:String>
+  <sys:String x:Key="Status.PlaybackCommandSent">已发送播放控制命令。</sys:String>
+  <sys:String x:Key="Status.PlaybackFailed">播放控制失败: {0}</sys:String>
+  <sys:String x:Key="Status.ReloadFailed">刷新失败: {0}</sys:String>
+  <sys:String x:Key="Status.FavoriteAdded">已收藏当前页面。</sys:String>
+  <sys:String x:Key="Status.FavoriteAddFailed">收藏失败: {0}</sys:String>
+  <sys:String x:Key="Status.FavoriteRemoved">已取消收藏。</sys:String>
+  <sys:String x:Key="Status.FavoriteRemoveFailed">取消收藏失败: {0}</sys:String>
+  <sys:String x:Key="Status.HistoryRemoved">已从历史记录中移除。</sys:String>
+  <sys:String x:Key="Status.HistoryRemoveFailed">移除失败: {0}</sys:String>
+  <sys:String x:Key="Status.OnlyHttp">只支持打开 http/https 页面。</sys:String>
+  <sys:String x:Key="Status.Opening">正在打开: {0}</sys:String>
+  <sys:String x:Key="Status.OpenFailed">打开失败: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadCanceled">已取消下载: {0}</sys:String>
+  <sys:String x:Key="Status.CannotOpenFile">无法打开文件，可能已被移动或删除。</sys:String>
+  <sys:String x:Key="Status.CannotOpenFolder">无法打开所在文件夹。</sys:String>
+  <sys:String x:Key="Status.HotkeyInstallFailed">全局热键安装失败，Win32 错误码: {0}。控制面板按钮仍可使用。</sys:String>
+  <sys:String x:Key="Status.SaveSettingsFailed">保存设置失败: {0}</sys:String>
+  <sys:String x:Key="Status.Zoom">缩放: {0}%</sys:String>
+  <sys:String x:Key="Status.StartupFailed">启动失败：\n{0}: {1}</sys:String>
+  <sys:String x:Key="Status.WebView2InstallFailed">WebView2 Runtime 自动安装失败，请手动安装。</sys:String>
+  <sys:String x:Key="Status.WebView2ManualHint">请手动下载安装：https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
+  <sys:String x:Key="Status.UnhandledException">发生未处理异常：\n{0}: {1}\n\n详情已写入日志。</sys:String>
+  <sys:String x:Key="Status.ErrorTitle">Genshin Browser 错误</sys:String>
+</ResourceDictionary>

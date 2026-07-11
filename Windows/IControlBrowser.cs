@@ -92,6 +92,16 @@ public interface IControlBrowser
     /// </summary>
     void RestoreDefaultSettings();
 
+    /// <summary>
+    /// 当前主题：Dark / Light。
+    /// </summary>
+    string ThemeMode { get; set; }
+
+    /// <summary>
+    /// 当前界面语言：zh-CN / en-US。
+    /// </summary>
+    string UiLanguage { get; set; }
+
     void CancelDownload(DownloadItem item);
 
     void OpenDownloadFile(DownloadItem item);
