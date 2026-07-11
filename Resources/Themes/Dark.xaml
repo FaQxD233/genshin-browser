@@ -12,6 +12,10 @@
   <Color x:Key="ColorAccentSuccessDark">#238636</Color>
   <Color x:Key="ColorAccentSuccessBorder">#2EA043</Color>
   <Color x:Key="ColorAccentDanger">#F85149</Color>
+  <!-- 模式强调色：浏览=蓝，浮窗=橙（分段高亮 / 主窗描边闪） -->
+  <Color x:Key="ColorModeBrowsingAccent">#58A6FF</Color>
+  <Color x:Key="ColorModeFloatingAccent">#F0A020</Color>
+  <Color x:Key="ColorModeFloatingAccentSoft">#33F0A020</Color>
   <Color x:Key="ColorListDivider">#21262D</Color>
   <Color x:Key="ColorTextPrimary">#E6EDF3</Color>
   <Color x:Key="ColorTextSecondary">#8B949E</Color>
@@ -29,6 +33,9 @@
   <SolidColorBrush x:Key="AccentSuccessDark" Color="{StaticResource ColorAccentSuccessDark}"/>
   <SolidColorBrush x:Key="AccentSuccessBorder" Color="{StaticResource ColorAccentSuccessBorder}"/>
   <SolidColorBrush x:Key="AccentDanger" Color="{StaticResource ColorAccentDanger}"/>
+  <SolidColorBrush x:Key="ModeBrowsingAccent" Color="{StaticResource ColorModeBrowsingAccent}"/>
+  <SolidColorBrush x:Key="ModeFloatingAccent" Color="{StaticResource ColorModeFloatingAccent}"/>
+  <SolidColorBrush x:Key="ModeFloatingAccentSoft" Color="{StaticResource ColorModeFloatingAccentSoft}"/>
   <SolidColorBrush x:Key="ListDivider" Color="{StaticResource ColorListDivider}"/>
   <SolidColorBrush x:Key="TextPrimary" Color="{StaticResource ColorTextPrimary}"/>
   <SolidColorBrush x:Key="TextSecondary" Color="{StaticResource ColorTextSecondary}"/>

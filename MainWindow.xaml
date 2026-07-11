@@ -64,7 +64,7 @@
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button x:Name="ModeToggleButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="ModeToggleButton_OnClick"
-                  ToolTip="{DynamicResource Mode.ToggleTooltip}" AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
+                  AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
             <TextBlock x:Name="ModeToggleIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE718;" FontSize="12" />
           </Button>
           <Button x:Name="MinButton" Width="40" Height="30" Margin="0"

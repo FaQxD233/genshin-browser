@@ -135,6 +135,7 @@ public partial class MainWindow : Window, IControlBrowser
                 _settings.ToggleModeKey = value;
                 _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(value);
                 QueueSettingsSave();
+                OnHotkeysChanged();
             }
         }
     }
@@ -149,6 +150,7 @@ public partial class MainWindow : Window, IControlBrowser
                 _settings.ToggleModeModifiers = value;
                 _keyboardHookService.ToggleModeModifiers = value;
                 QueueSettingsSave();
+                OnHotkeysChanged();
             }
         }
     }
@@ -163,6 +165,7 @@ public partial class MainWindow : Window, IControlBrowser
                 _settings.TogglePlaybackKey = value;
                 _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(value);
                 QueueSettingsSave();
+                OnHotkeysChanged();
             }
         }
     }
@@ -177,8 +180,21 @@ public partial class MainWindow : Window, IControlBrowser
                 _settings.TogglePlaybackModifiers = value;
                 _keyboardHookService.TogglePlaybackModifiers = value;
                 QueueSettingsSave();
+                OnHotkeysChanged();
             }
         }
+    }
+
+    private string FormatToggleModeHotkey() =>
+        HotkeyFormatter.Format(_settings.ToggleModeKey, _settings.ToggleModeModifiers);
+
+    private string FormatTogglePlaybackHotkey() =>
+        HotkeyFormatter.Format(_settings.TogglePlaybackKey, _settings.TogglePlaybackModifiers);
+
+    private void OnHotkeysChanged()
+    {
+        UpdateModeToggleButton();
+        RefreshControlWindow();
     }
 
     public double ZoomFactor
@@ -422,7 +438,12 @@ public partial class MainWindow : Window, IControlBrowser
 
             if (e.IsSuccess)
             {
-                SetStatusMessage(LocalizationService.Get("Status.PageLoaded"), StatusLevel.Success);
+                SetStatusMessage(
+                    LocalizationService.Format(
+                        "Status.PageLoaded",
+                        FormatTogglePlaybackHotkey(),
+                        FormatToggleModeHotkey()),
+                    StatusLevel.Success);
             }
             else
             {
@@ -767,9 +788,13 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _settings.HasSeenFloatingModeHint = true;
             ShowMainModeToast(
-                LocalizationService.Get("Mode.FirstFloatingHint", "已进入浮窗：置顶并隐藏控制台。按 F8 返回浏览；移到窗口顶部可显示标题栏。"),
+                LocalizationService.Format(
+                    "Mode.FirstFloatingHint",
+                    FormatToggleModeHotkey()),
                 TimeSpan.FromSeconds(3.2));
-            SetStatusMessage(LocalizationService.Get("Mode.FixedOn"), StatusLevel.Success);
+            SetStatusMessage(
+                LocalizationService.Format("Mode.FixedOn", FormatToggleModeHotkey()),
+                StatusLevel.Success);
         }
         else
         {
@@ -780,7 +805,7 @@ public partial class MainWindow : Window, IControlBrowser
                 TimeSpan.FromSeconds(1.1));
             SetStatusMessage(
                 enteringFloating
-                    ? LocalizationService.Get("Mode.FixedOn")
+                    ? LocalizationService.Format("Mode.FixedOn", FormatToggleModeHotkey())
                     : LocalizationService.Get("Mode.FreeOn"),
                 StatusLevel.Info);
         }
@@ -971,11 +996,13 @@ public partial class MainWindow : Window, IControlBrowser
             if (string.Equals(_settings.Language, lang, StringComparison.OrdinalIgnoreCase))
             {
                 LocalizationService.Apply(lang);
+                UpdateModeToggleButton();
                 return;
             }
 
             _settings.Language = lang;
             LocalizationService.Apply(lang);
+            UpdateModeToggleButton();
             QueueSettingsSave();
         }
     }
@@ -1163,6 +1190,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     /// <summary>
     /// 同步标题栏模式按钮图标与动作型 tooltip：浮窗=锁，浏览=解锁。
+    /// 快捷键文案跟当前设置走，避免改键后仍显示默认 F8。
     /// </summary>
     private void UpdateModeToggleButton()
     {
@@ -1174,10 +1202,11 @@ public partial class MainWindow : Window, IControlBrowser
 
         if (ModeToggleButton is not null)
         {
+            var hotkey = FormatToggleModeHotkey();
             // 动作型 tooltip：写清点下去会进入哪一侧
             ModeToggleButton.ToolTip = _settings.WindowMode == WindowMode.Fixed
-                ? LocalizationService.Get("Mode.SwitchToBrowsingTooltip", "返回浏览（显示控制台）(F8)")
-                : LocalizationService.Get("Mode.SwitchToFloatingTooltip", "切换到浮窗（置顶，隐藏控制台）(F8)");
+                ? LocalizationService.Format("Mode.SwitchToBrowsingTooltip", hotkey)
+                : LocalizationService.Format("Mode.SwitchToFloatingTooltip", hotkey);
         }
     }
 
@@ -1239,7 +1268,7 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 模式切换时主窗边缘短暂描边闪（浏览蓝 / 浮窗橙）。
+    /// 模式切换时主窗边缘短暂描边闪（浏览蓝 / 浮窗橙，色值来自主题 token）。
     /// </summary>
     private void FlashModeBorder(bool floating)
     {
@@ -1248,10 +1277,12 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        var color = floating
-            ? System.Windows.Media.Color.FromRgb(0xF0, 0xA0, 0x20)
-            : System.Windows.Media.Color.FromRgb(0x2F, 0x81, 0xF7);
-        ModeFlashBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(color);
+        var key = floating ? "ModeFloatingAccent" : "ModeBrowsingAccent";
+        ModeFlashBorder.BorderBrush = TryFindResource(key) as System.Windows.Media.Brush
+            ?? new System.Windows.Media.SolidColorBrush(
+                floating
+                    ? System.Windows.Media.Color.FromRgb(0xF0, 0xA0, 0x20)
+                    : System.Windows.Media.Color.FromRgb(0x58, 0xA6, 0xFF));
 
         var anim = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames();
         anim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.Zero)));

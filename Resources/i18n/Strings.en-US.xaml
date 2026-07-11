@@ -8,19 +8,19 @@
   <!-- Mode: UI labels Browsing / Floating; internal enum remains Free / Fixed -->
   <sys:String x:Key="Mode.Free">Browsing</sys:String>
   <sys:String x:Key="Mode.Fixed">Floating</sys:String>
-  <sys:String x:Key="Mode.ToggleTooltip">Switch Browsing / Floating (F8)</sys:String>
+  <sys:String x:Key="Mode.ToggleTooltip">Switch Browsing / Floating ({0})</sys:String>
   <sys:String x:Key="Mode.ToggleName">Switch Browsing and Floating</sys:String>
-  <!-- Action-style tooltip: describe the destination, not just “toggle” -->
-  <sys:String x:Key="Mode.SwitchToFloatingTooltip">Switch to Floating (always on top, hide control panel) (F8)</sys:String>
-  <sys:String x:Key="Mode.SwitchToBrowsingTooltip">Return to Browsing (show control panel) (F8)</sys:String>
-  <sys:String x:Key="Mode.FixedOn">Floating on: always on top, control panel hidden. Press F8 to return to Browsing.</sys:String>
+  <!-- Action-style tooltip: describe the destination, not just “toggle”; {0}=current mode hotkey -->
+  <sys:String x:Key="Mode.SwitchToFloatingTooltip">Switch to Floating (always on top, hide control panel) ({0})</sys:String>
+  <sys:String x:Key="Mode.SwitchToBrowsingTooltip">Return to Browsing (show control panel) ({0})</sys:String>
+  <sys:String x:Key="Mode.FixedOn">Floating on: always on top, control panel hidden. Press {0} to return to Browsing.</sys:String>
   <sys:String x:Key="Mode.FreeOn">Browsing: window is movable, control panel is open.</sys:String>
   <sys:String x:Key="Mode.ToastFloating">Floating</sys:String>
   <sys:String x:Key="Mode.ToastBrowsing">Browsing</sys:String>
-  <sys:String x:Key="Mode.FirstFloatingHint">Floating on: always on top, control panel hidden. Press F8 to return to Browsing; move to the top edge to show the title bar.</sys:String>
+  <sys:String x:Key="Mode.FirstFloatingHint">Floating on: always on top, control panel hidden. Press {0} to return to Browsing; move to the top edge to show the title bar.</sys:String>
 
-  <!-- Top toolbar -->
-  <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video (K)</sys:String>
+  <!-- Top toolbar; {0}=current playback hotkey -->
+  <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video ({0})</sys:String>
   <sys:String x:Key="Toolbar.PlaybackName">Play or pause</sys:String>
   <sys:String x:Key="Toolbar.SettingsTooltip">Floating window settings</sys:String>
   <sys:String x:Key="Toolbar.SettingsName">Floating window settings</sys:String>
@@ -30,6 +30,9 @@
   <!-- Settings panel -->
   <sys:String x:Key="Settings.Title">Floating window settings</sys:String>
   <sys:String x:Key="Settings.Opacity">Opacity</sys:String>
+  <sys:String x:Key="Settings.OpacityOutTooltip">Decrease opacity</sys:String>
+  <sys:String x:Key="Settings.OpacityInTooltip">Increase opacity</sys:String>
+  <sys:String x:Key="Settings.OpacityResetTooltip">Reset opacity to 100%</sys:String>
   <sys:String x:Key="Settings.Zoom">Page zoom</sys:String>
   <sys:String x:Key="Settings.ZoomOutTooltip">Zoom out (Ctrl+-)</sys:String>
   <sys:String x:Key="Settings.ZoomOutName">Zoom out</sys:String>
@@ -81,7 +84,7 @@
   <sys:String x:Key="Downloads.Title">Downloads</sys:String>
   <sys:String x:Key="Downloads.ClearFinished">Clear finished</sys:String>
   <sys:String x:Key="Downloads.ClearFinishedTooltip">Clear completed / canceled items</sys:String>
-  <sys:String x:Key="Downloads.Empty">No downloads</sys:String>
+  <sys:String x:Key="Downloads.Empty">No downloads&#x0a;Files you download will show up here</sys:String>
   <sys:String x:Key="Downloads.OpenFile">Open file</sys:String>
   <sys:String x:Key="Downloads.OpenFolder">Open containing folder</sys:String>
   <sys:String x:Key="Downloads.Cancel">Cancel download</sys:String>
@@ -106,9 +109,9 @@
   <sys:String x:Key="History.Tab">History</sys:String>
   <sys:String x:Key="Search.Placeholder">Search...</sys:String>
   <sys:String x:Key="Search.Tooltip">Search current list</sys:String>
-  <sys:String x:Key="Empty.Favorites">No favorites</sys:String>
-  <sys:String x:Key="Empty.History">No history</sys:String>
-  <sys:String x:Key="Empty.NoMatch">No matches</sys:String>
+  <sys:String x:Key="Empty.Favorites">No favorites yet&#x0a;Open a video and tap ☆ to save it</sys:String>
+  <sys:String x:Key="Empty.History">No history yet&#x0a;Pages you visit will appear here</sys:String>
+  <sys:String x:Key="Empty.NoMatch">No matches&#x0a;Try a different keyword</sys:String>
   <sys:String x:Key="Context.Open">Open</sys:String>
   <sys:String x:Key="Context.CopyLink">Copy link</sys:String>
   <sys:String x:Key="Context.RemoveFavorite">Remove favorite</sys:String>
@@ -145,7 +148,7 @@
   <sys:String x:Key="Status.InstallingWebView2">Installing WebView2 Runtime...</sys:String>
   <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions and cache are kept automatically.</sys:String>
   <sys:String x:Key="Status.InitFailed">Initialization failed: {0}</sys:String>
-  <sys:String x:Key="Status.PageLoaded">Page loaded. Press K to play/pause video, F8 to switch Browsing/Floating.</sys:String>
+  <sys:String x:Key="Status.PageLoaded">Page loaded. Press {0} to play/pause video, {1} to switch Browsing/Floating.</sys:String>
   <sys:String x:Key="Status.LoadFailed">Load failed: {0}</sys:String>
   <sys:String x:Key="Status.RecordStateFailed">Failed to record page state: {0}</sys:String>
   <sys:String x:Key="Status.AddressUpdateFailed">Failed to update address: {0}</sys:String>

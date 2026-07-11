@@ -89,51 +89,35 @@
     <Setter Property="Foreground" Value="White"/>
   </Style>
 
-  <!-- 设置分区小标题 -->
+  <!-- 设置分区小标题：加大上边距，让分组之间更有呼吸感 -->
   <Style x:Key="SettingsSectionTitle" TargetType="TextBlock">
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="FontWeight" Value="SemiBold"/>
     <Setter Property="Foreground" Value="{DynamicResource TextTertiary}"/>
-    <Setter Property="Margin" Value="0,2,0,6"/>
+    <Setter Property="Margin" Value="0,10,0,8"/>
   </Style>
 
-  <!-- 顶栏模式状态 pill：整块可点切换 浏览/浮窗 -->
-  <Style x:Key="ModePillButton" TargetType="Button">
-    <Setter Property="Background" Value="{DynamicResource BackgroundSecondary}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
-    <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="Padding" Value="10,5"/>
-    <Setter Property="Cursor" Value="Hand"/>
-    <Setter Property="Template">
-      <Setter.Value>
-        <ControlTemplate TargetType="Button">
-          <Border x:Name="PillChrome"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="14"
-                  Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-          </Border>
-          <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="PillChrome" Property="Background" Value="{DynamicResource BackgroundHover}"/>
-              <Setter TargetName="PillChrome" Property="BorderBrush" Value="{DynamicResource BorderColorStrong}"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="PillChrome" Property="Background" Value="{DynamicResource BackgroundTertiary}"/>
-            </Trigger>
-          </ControlTemplate.Triggers>
-        </ControlTemplate>
-      </Setter.Value>
-    </Setter>
-  </Style>
+  <!-- 设置区标签列宽（窗口大小 / 不透明度等） -->
+  <sys:Double xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="SettingsLabelColumnWidth">68</sys:Double>
 
-  <!-- 主题/语言分段选中按钮 -->
+  <!-- 主题/语言/模式分段选中按钮 -->
   <Style x:Key="SegmentButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
     <Setter Property="Padding" Value="4,2"/>
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Height" Value="26"/>
+  </Style>
+
+  <!-- 下载角标：小胶囊，无任务时由 Visibility 隐藏 -->
+  <Style x:Key="DownloadsBadgeBorder" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="4,0"/>
+    <Setter Property="MinWidth" Value="16"/>
+    <Setter Property="Height" Value="16"/>
+    <Setter Property="HorizontalAlignment" Value="Right"/>
+    <Setter Property="VerticalAlignment" Value="Top"/>
+    <Setter Property="Margin" Value="0,-5,-7,0"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
   </Style>
 
   <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">

@@ -55,6 +55,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
         ZoomInCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor + 0.1, 0.25, 5.0));
         ZoomOutCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor - 0.1, 0.25, 5.0));
         ResetZoomCommand = new RelayCommand(() => _browser.ZoomFactor = 1.0);
+        // 不透明度步进 5%，与设置区 −/+ 按钮一致
+        OpacityInCommand = new RelayCommand(() => WindowOpacity = Math.Clamp(WindowOpacity + 0.05, 0.1, 1.0));
+        OpacityOutCommand = new RelayCommand(() => WindowOpacity = Math.Clamp(WindowOpacity - 0.05, 0.1, 1.0));
+        ResetOpacityCommand = new RelayCommand(() => WindowOpacity = 1.0);
         RestoreDefaultSettingsCommand = new RelayCommand(RestoreDefaults);
         CancelDownloadCommand = new RelayCommand(parameter => CancelDownload(parameter));
         OpenDownloadFileCommand = new RelayCommand(parameter => OpenDownloadFile(parameter));
@@ -126,6 +130,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public RelayCommand ResetZoomCommand { get; }
 
+    public RelayCommand OpacityInCommand { get; }
+
+    public RelayCommand OpacityOutCommand { get; }
+
+    public RelayCommand ResetOpacityCommand { get; }
+
     public RelayCommand RestoreDefaultSettingsCommand { get; }
 
     public RelayCommand CancelDownloadCommand { get; }
@@ -169,6 +179,18 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     /// <summary>当前是否为浮窗模式（分段控件高亮）。</summary>
     public bool IsFloatingMode => _browser.CurrentMode == WindowMode.Fixed;
+
+    /// <summary>切换到浏览的动作型 tooltip（含当前快捷键）。</summary>
+    public string SwitchToBrowsingTooltip =>
+        LocalizationService.Format("Mode.SwitchToBrowsingTooltip", FormatToggleModeHotkey());
+
+    /// <summary>切换到浮窗的动作型 tooltip（含当前快捷键）。</summary>
+    public string SwitchToFloatingTooltip =>
+        LocalizationService.Format("Mode.SwitchToFloatingTooltip", FormatToggleModeHotkey());
+
+    /// <summary>播放按钮 tooltip（含当前快捷键）。</summary>
+    public string PlaybackTooltip =>
+        LocalizationService.Format("Toolbar.PlaybackTooltip", FormatTogglePlaybackHotkey());
 
     public string StatusMessage
     {
@@ -264,15 +286,15 @@ public sealed class ControlWindowViewModel : ViewModelBase
     /// 收藏列表为空时的提示文案（区分「无数据」与「搜索无结果」）。
     /// </summary>
     public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText)
-            ? LocalizationService.Get("Empty.Favorites", "暂无收藏")
-            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项");
+            ? LocalizationService.Get("Empty.Favorites", "暂无收藏\n打开视频后点 ☆ 即可添加")
+            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
 
     /// <summary>
     /// 历史列表为空时的提示文案。
     /// </summary>
     public string HistoryEmptyText => string.IsNullOrEmpty(SearchText)
-            ? LocalizationService.Get("Empty.History", "暂无浏览记录")
-            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项");
+            ? LocalizationService.Get("Empty.History", "暂无浏览记录\n访问过的页面会出现在这里")
+            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
 
     public string ToastMessage
     {
@@ -349,7 +371,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public ObservableCollection<DownloadItem> Downloads => _browser.Downloads;
 
     /// <summary>
-    /// 下载面板标题处的角标文本（进行中数量）。
+    /// 下载按钮角标文本（进行中数量，无括号）。
     /// </summary>
     public string DownloadsBadgeText
     {
@@ -359,12 +381,18 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private string _downloadsBadgeText = string.Empty;
 
+    /// <summary>是否显示下载角标（有进行中任务时）。</summary>
+    public bool HasDownloadsBadge => !string.IsNullOrEmpty(DownloadsBadgeText);
+
+    /// <summary>下载列表是否为空（用于空状态展示）。</summary>
+    public bool HasNoDownloads => Downloads.Count == 0;
+
     /// <summary>
     /// 下载列表为空时的提示文案。
     /// </summary>
-    public string DownloadsEmptyText => Downloads.Count == 0
-            ? LocalizationService.Get("Downloads.Empty", "暂无下载任务")
-            : string.Empty;
+    public string DownloadsEmptyText => LocalizationService.Get(
+        "Downloads.Empty",
+        "暂无下载任务\n文件下载会出现在这里");
 
     public void RefreshFromBrowser()
     {
@@ -376,6 +404,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "\uE785" : "\uE718";
         OnPropertyChanged(nameof(IsBrowsingMode));
         OnPropertyChanged(nameof(IsFloatingMode));
+        NotifyHotkeyDependentTexts();
         StatusMessage = _browser.StatusMessage;
         CurrentAddress = _browser.CurrentAddress;
 
@@ -510,7 +539,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void UpdateDownloadsBadge()
     {
         var inProgress = _browser.Downloads.Count(item => item.State == DownloadState.InProgress);
-        DownloadsBadgeText = inProgress > 0 ? $"({inProgress})" : string.Empty;
+        DownloadsBadgeText = inProgress > 0 ? inProgress.ToString() : string.Empty;
+        OnPropertyChanged(nameof(HasDownloadsBadge));
+        OnPropertyChanged(nameof(HasNoDownloads));
     }
 
     private void RestoreDefaults()
@@ -856,9 +887,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (_isRecordingToggleModeKey)
             {
-                return GetModifiersString(_currentRecordingModifiers) + "...";
+                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
             }
-            return FormatHotkey(_browser.ToggleModeKey, _browser.ToggleModeModifiers);
+            return FormatToggleModeHotkey();
         }
     }
 
@@ -868,9 +899,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (_isRecordingTogglePlaybackKey)
             {
-                return GetModifiersString(_currentRecordingModifiers) + "...";
+                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
             }
-            return FormatHotkey(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers);
+            return FormatTogglePlaybackHotkey();
         }
     }
 
@@ -924,7 +955,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
             {
                 _browser.ToggleModeKey = key;
                 _browser.ToggleModeModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", FormatHotkey(key, modifiers)));
+                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", HotkeyFormatter.Format(key, modifiers)));
             }
             _isRecordingToggleModeKey = false;
         }
@@ -938,14 +969,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
             {
                 _browser.TogglePlaybackKey = key;
                 _browser.TogglePlaybackModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.PlaybackSet", FormatHotkey(key, modifiers)));
+                ShowToast(LocalizationService.Format("Toast.PlaybackSet", HotkeyFormatter.Format(key, modifiers)));
             }
             _isRecordingTogglePlaybackKey = false;
         }
 
         _currentRecordingModifiers = ModifierKeys.None;
-        OnPropertyChanged(nameof(ToggleModeKeyText));
-        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        NotifyHotkeyDependentTexts();
     }
 
 
@@ -1008,50 +1038,22 @@ public sealed class ControlWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(FavoritesEmptyText));
         OnPropertyChanged(nameof(HistoryEmptyText));
         OnPropertyChanged(nameof(DownloadsEmptyText));
-        OnPropertyChanged(nameof(ToggleModeKeyText));
-        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        NotifyHotkeyDependentTexts();
         StatusMessage = _browser.StatusMessage;
     }
 
-    private static string GetModifiersString(ModifierKeys modifiers)
-
+    private void NotifyHotkeyDependentTexts()
     {
-        var parts = new List<string>();
-        if (modifiers.HasFlag(ModifierKeys.Control)) parts.Add("Ctrl");
-        if (modifiers.HasFlag(ModifierKeys.Alt)) parts.Add("Alt");
-        if (modifiers.HasFlag(ModifierKeys.Shift)) parts.Add("Shift");
-        if (modifiers.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
-        if (parts.Count == 0) return string.Empty;
-        return string.Join(" + ", parts) + " + ";
+        OnPropertyChanged(nameof(ToggleModeKeyText));
+        OnPropertyChanged(nameof(TogglePlaybackKeyText));
+        OnPropertyChanged(nameof(SwitchToBrowsingTooltip));
+        OnPropertyChanged(nameof(SwitchToFloatingTooltip));
+        OnPropertyChanged(nameof(PlaybackTooltip));
     }
 
-    private static string FormatHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == Key.None) return LocalizationService.Get("Hotkey.NotSet", "未设置");
-        return GetModifiersString(modifiers) + GetKeyName(key);
-    }
+    private string FormatToggleModeHotkey() =>
+        HotkeyFormatter.Format(_browser.ToggleModeKey, _browser.ToggleModeModifiers);
 
-    private static string GetKeyName(Key key)
-    {
-        return key switch
-        {
-            Key.None => LocalizationService.Get("Hotkey.None", "无"),
-            Key.OemPeriod => ".",
-            Key.OemComma => ",",
-            Key.OemQuestion => "/",
-            Key.OemPlus => "+",
-            Key.OemMinus => "-",
-            Key.D0 => "0",
-            Key.D1 => "1",
-            Key.D2 => "2",
-            Key.D3 => "3",
-            Key.D4 => "4",
-            Key.D5 => "5",
-            Key.D6 => "6",
-            Key.D7 => "7",
-            Key.D8 => "8",
-            Key.D9 => "9",
-            _ => key.ToString()
-        };
-    }
+    private string FormatTogglePlaybackHotkey() =>
+        HotkeyFormatter.Format(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers);
 }
