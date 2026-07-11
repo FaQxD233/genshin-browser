@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
@@ -27,6 +28,11 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _isShuttingDown;
     private bool _isRealClose;
     private bool _isNavigating;
+    /// <summary>
+    /// 为 false 时忽略 Location/SizeChanged 对边界的写回，
+    /// 防止启动默认坐标在配置恢复前覆盖 settings.json。
+    /// </summary>
+    private bool _persistWindowBounds;
     private string _currentAddress = string.Empty;
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private StatusLevel _lastStatusLevel = StatusLevel.Info;
@@ -37,6 +43,19 @@ public partial class MainWindow : Window, IControlBrowser
     // 这里用手工记录工作区矩形并保存还原前的边界。
     private bool _isMaximized;
     private Rect _savedBounds;
+
+    // 标题栏：浏览模式常驻；浮窗模式自动隐藏（顶部感应唤出）。
+    // 显示时窗口向下 +30，不挤占 WebView 内容高度。
+    // 内容区高度是尺寸真源：标题栏显隐只做 Height = content ± 30 的绝对赋值，
+    // 禁止用 ActualHeight 累加减，否则 DPI/布局取整会每次漂移 1px。
+    private bool _isTitleBarVisible = true;
+    private bool _adjustingTitleBarBounds;
+    private double _contentAreaHeight = 370;
+    private DispatcherTimer? _titleBarHideTimer;
+    private DispatcherTimer? _modeToastTimer;
+
+    // 主窗移动/缩放时，控制窗尺寸显示与跟随位置的 UI 防抖
+    private DispatcherTimer? _windowBoundsUiDebounceTimer;
 
     public event EventHandler? BrowserStateChanged;
     public event EventHandler? ZoomChanged;
@@ -54,6 +73,16 @@ public partial class MainWindow : Window, IControlBrowser
         _favoritesService = new FavoritesService(Path.Combine(dataRoot, "favorites.json"));
         _windowModeService = new WindowModeService(this);
         _keyboardHookService = new KeyboardHookService();
+
+        // 在窗口首次显示前同步加载并恢复边界，避免先以默认位置出现再跳、
+        // 以及 Loaded 异步期间默认坐标被错误写回 settings.json。
+        _settings = _settingsService.Load();
+        RestoreWindowBounds();
+        ThemeService.Apply(_settings.ThemeMode);
+        LocalizationService.Apply(_settings.Language);
+        ApplyWindowOpacity(_settings.WindowOpacity);
+        _windowModeService.ApplyMode(_settings.WindowMode);
+        UpdateModeToggleButton();
 
         Loaded += MainWindow_OnLoaded;
         Closing += MainWindow_OnClosing;
@@ -76,6 +105,8 @@ public partial class MainWindow : Window, IControlBrowser
         PreviewKeyDown += MainWindow_OnPreviewKeyDown;
         LocationChanged += MainWindow_OnLocationOrSizeChanged;
         SizeChanged += MainWindow_OnLocationOrSizeChanged;
+        SourceInitialized += MainWindow_OnSourceInitialized;
+        ContentRendered += MainWindow_OnContentRendered;
     }
 
     public WindowMode CurrentMode => _settings.WindowMode;
@@ -152,7 +183,18 @@ public partial class MainWindow : Window, IControlBrowser
 
     public double ZoomFactor
     {
-        get => BrowserView.ZoomFactor;
+        get
+        {
+            // WebView2 初始化前访问 ZoomFactor 会抛异常；控制窗 VM 构造时就会读一次。
+            try
+            {
+                return BrowserView.CoreWebView2 is null ? 1.0 : BrowserView.ZoomFactor;
+            }
+            catch
+            {
+                return 1.0;
+            }
+        }
         set => SetZoom(value);
     }
 
@@ -190,23 +232,30 @@ public partial class MainWindow : Window, IControlBrowser
 
     public IReadOnlyList<FavoriteEntry> FavoriteEntries => _favoritesService.GetEntries();
 
+    private void MainWindow_OnSourceInitialized(object? sender, EventArgs e)
+    {
+        // HWND / DPI 已就绪：再 clamp 一次，确保高分屏上位置不偏移
+        RestoreWindowBounds();
+    }
+
+    private void MainWindow_OnContentRendered(object? sender, EventArgs e)
+    {
+        // 首帧渲染完成后再允许持久化边界，避免启动过程中的默认坐标写回磁盘
+        _persistWindowBounds = true;
+        ContentRendered -= MainWindow_OnContentRendered;
+    }
+
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         try
         {
-        _settings = await _settingsService.LoadAsync();
-        RestoreWindowBounds();
-
-        ThemeService.Apply(_settings.ThemeMode);
-        LocalizationService.Apply(_settings.Language);
+        // 配置已在构造函数同步加载并恢复；此处只接键盘钩子 / 控制窗 / WebView
         _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
 
-        ApplyWindowOpacity(_settings.WindowOpacity);
         _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
         _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
         _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey);
         _keyboardHookService.TogglePlaybackModifiers = _settings.TogglePlaybackModifiers;
-        _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateWindowTitle();
 
@@ -221,7 +270,7 @@ public partial class MainWindow : Window, IControlBrowser
         _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
         StartKeyboardHook();
 
-        // 跟踪应用前台状态：自由模式下离开前台时禁用全局 K，避免影响其它软件输入
+        // 跟踪应用前台状态：浏览模式下离开前台时禁用全局 K，避免影响其它软件输入
         Application.Current.Activated += App_OnActivated;
         Application.Current.Deactivated += App_OnDeactivated;
         }
@@ -290,16 +339,26 @@ public partial class MainWindow : Window, IControlBrowser
             BrowserView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             BrowserView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             BrowserView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            // CompositionControl + 透明浮窗必须用真正的 Transparent，非 0 alpha 会导致白屏/合成失败。
+            // 光标问题用窗口近透明背景解决，切勿把 DefaultBackgroundColor 改成 Alpha>0。
             BrowserView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
             ApplyWindowOpacity(_settings.WindowOpacity);
 
-            // 让网页自身的背景也透明，否则页面深色 CSS 背景（如 GitHub/B 站 dark 主题）
-            // 会盖住浮窗透明度，导致窗口看起来仍是黑色底色。仅覆盖背景，不影响布局。
-            const string transparentBackgroundScript =
-                "(() => { const s = document.createElement('style');" +
-                "s.textContent = 'html,body{background:transparent !important;}';" +
-                "document.head.appendChild(s); })();";
-            await BrowserView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(transparentBackgroundScript);
+            // 页面初始化脚本：透明背景 + 取消播放器 cursor:none
+            await BrowserView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageBootstrapScript);
+
+            // ForceCursor 已保证可见箭头；再兜底拦截 null/None
+            BrowserView.Cursor = System.Windows.Input.Cursors.Arrow;
+            var cursorDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
+                FrameworkElement.CursorProperty, typeof(FrameworkElement));
+            cursorDescriptor?.AddValueChanged(BrowserView, (_, _) =>
+            {
+                if (BrowserView.Cursor is null ||
+                    ReferenceEquals(BrowserView.Cursor, System.Windows.Input.Cursors.None))
+                {
+                    BrowserView.Cursor = System.Windows.Input.Cursors.Arrow;
+                }
+            });
 
             BrowserView.NavigationStarting += BrowserView_OnNavigationStarting;
             BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
@@ -314,7 +373,9 @@ public partial class MainWindow : Window, IControlBrowser
             SetNavigating(true);
             BrowserView.CoreWebView2.Navigate(startUrl);
             // 对初始已加载的页面补执行一次（文档创建脚本只作用于之后的导航）
-            _ = BrowserView.CoreWebView2.ExecuteScriptAsync(transparentBackgroundScript);
+            _ = BrowserView.CoreWebView2.ExecuteScriptAsync(PageBootstrapScript);
+            // 按当前窗口模式应用标题栏（浏览常驻 / 浮窗隐藏）
+            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
             SetStatusMessage(LocalizationService.Get("Status.BrowserReady"), StatusLevel.Success);
             _browserReady = true;
             UpdateWindowTitle();
@@ -355,6 +416,8 @@ public partial class MainWindow : Window, IControlBrowser
                 var currentUrl = BrowserView.CoreWebView2.Source;
                 var title = BrowserView.CoreWebView2.DocumentTitle;
                 await _historyService.AddEntryAsync(currentUrl, string.IsNullOrWhiteSpace(title) ? currentUrl : title);
+                // SPA / 文档创建脚本漏绑时补一次
+                _ = BrowserView.CoreWebView2.ExecuteScriptAsync(PageBootstrapScript);
             }
 
             if (e.IsSuccess)
@@ -383,7 +446,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void BrowserView_OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
     {
-        // 当页面 URL 改变时（包括用户点击链接、重定向等），立即更新地址栏
+        // 当页面 URL 改变时（包括用户点击链接、重定向、B 站 SPA 切集等），立即更新地址栏与 LastUrl
         if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
             return;
@@ -391,19 +454,95 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var newUrl = BrowserView.CoreWebView2.Source;
-            if (_currentAddress != newUrl)
+            if (CaptureCurrentUrlToSettings())
             {
-                _currentAddress = newUrl;
-                _settings.LastUrl = newUrl;
-                QueueSettingsSave(); // 异步保存配置
-                RefreshControlWindow(); // 立即刷新控制窗口的地址栏
+                QueueSettingsSave();
+                RefreshControlWindow();
+                // SPA（如 B 站分 P / 相关推荐）不一定触发完整 NavigationCompleted，补记历史
+                _ = RecordHistoryForCurrentSourceAsync();
             }
         }
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Source changed handling");
             SetStatusMessage(LocalizationService.Format("Status.AddressUpdateFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
+    /// <summary>
+    /// 将 WebView 当前 Source 同步到内存中的地址与 LastUrl。返回是否发生了变化。
+    /// </summary>
+    private bool CaptureCurrentUrlToSettings()
+    {
+        if (BrowserView.CoreWebView2 is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var newUrl = BrowserView.CoreWebView2.Source;
+            if (string.IsNullOrWhiteSpace(newUrl))
+            {
+                return false;
+            }
+
+            if (string.Equals(_currentAddress, newUrl, StringComparison.Ordinal)
+                && string.Equals(_settings.LastUrl, newUrl, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            _currentAddress = newUrl;
+            _settings.LastUrl = newUrl;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Capture current URL");
+            return false;
+        }
+    }
+
+    private async Task RecordHistoryForCurrentSourceAsync()
+    {
+        if (!_browserReady || BrowserView.CoreWebView2 is null || _isShuttingDown)
+        {
+            return;
+        }
+
+        try
+        {
+            var currentUrl = BrowserView.CoreWebView2.Source;
+            if (string.IsNullOrWhiteSpace(currentUrl))
+            {
+                return;
+            }
+
+            // 给 SPA 一点时间更新 document.title
+            await Task.Delay(400).ConfigureAwait(true);
+            if (_isShuttingDown || BrowserView.CoreWebView2 is null)
+            {
+                return;
+            }
+
+            // 若这 400ms 内又切到了别的地址，丢弃这次记录（由新的 SourceChanged 负责）
+            if (!string.Equals(BrowserView.CoreWebView2.Source, currentUrl, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var title = BrowserView.CoreWebView2.DocumentTitle;
+            await _historyService.AddEntryAsync(currentUrl, string.IsNullOrWhiteSpace(title) ? currentUrl : title)
+                .ConfigureAwait(true);
+            if (!_isShuttingDown)
+            {
+                RefreshControlWindow();
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Record history for source change");
         }
     }
 
@@ -601,19 +740,52 @@ public partial class MainWindow : Window, IControlBrowser
 
     public void ToggleWindowMode()
     {
-        _settings.WindowMode = _settings.WindowMode == WindowMode.Fixed ? WindowMode.Free : WindowMode.Fixed;
+        SetWindowMode(_settings.WindowMode == WindowMode.Fixed ? WindowMode.Free : WindowMode.Fixed);
+    }
 
-        if (_settings.WindowMode == WindowMode.Fixed)
+    public void SetWindowMode(WindowMode mode)
+    {
+        if (_settings.WindowMode == mode)
         {
-            SaveWindowBounds();
+            return;
         }
+
+        // 切换前先记下当前位置/尺寸，浏览/浮窗共用同一组边界
+        SaveWindowBounds();
+
+        _settings.WindowMode = mode;
 
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
-        SetStatusMessage(_settings.WindowMode == WindowMode.Fixed
-            ? LocalizationService.Get("Mode.FixedOn")
-            : LocalizationService.Get("Mode.FreeOn"),
-            StatusLevel.Info);
+        // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
+        ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+        UpdateModeToggleButton();
+
+        var enteringFloating = _settings.WindowMode == WindowMode.Fixed;
+        // 首次进入浮窗：较长引导；之后仅短 toast + 描边闪
+        if (enteringFloating && !_settings.HasSeenFloatingModeHint)
+        {
+            _settings.HasSeenFloatingModeHint = true;
+            ShowMainModeToast(
+                LocalizationService.Get("Mode.FirstFloatingHint", "已进入浮窗：置顶并隐藏控制台。按 F8 返回浏览；移到窗口顶部可显示标题栏。"),
+                TimeSpan.FromSeconds(3.2));
+            SetStatusMessage(LocalizationService.Get("Mode.FixedOn"), StatusLevel.Success);
+        }
+        else
+        {
+            ShowMainModeToast(
+                enteringFloating
+                    ? LocalizationService.Get("Mode.ToastFloating", "浮窗")
+                    : LocalizationService.Get("Mode.ToastBrowsing", "浏览"),
+                TimeSpan.FromSeconds(1.1));
+            SetStatusMessage(
+                enteringFloating
+                    ? LocalizationService.Get("Mode.FixedOn")
+                    : LocalizationService.Get("Mode.FreeOn"),
+                StatusLevel.Info);
+        }
+
+        FlashModeBorder(enteringFloating);
         UpdateControlWindowVisibility();
         RefreshControlWindow();
         UpdateWindowTitle();
@@ -808,6 +980,146 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    public double BrowserWindowWidth
+    {
+        get => ActualWidth > 0 ? ActualWidth : Width;
+        set => ApplyBrowserWindowSize(value, BrowserWindowHeight);
+    }
+
+    public double BrowserWindowHeight
+    {
+        // 控制面板显示的是内容区高度（不含临时加高的标题栏）
+        get => GetContentAreaHeight();
+        set => ApplyBrowserWindowSize(BrowserWindowWidth, value);
+    }
+
+    public void MoveBrowserToCorner(string corner)
+    {
+        if (_isMaximized)
+        {
+            ToggleMaximize();
+        }
+
+        var workArea = WindowBoundsHelper.GetWorkArea(this);
+        var key = (corner ?? string.Empty).Trim();
+        // 贴边：无空隙
+        var left = workArea.Left;
+        var top = workArea.Top;
+        switch (key)
+        {
+            case "TopRight":
+                left = workArea.Right - Width;
+                top = workArea.Top;
+                break;
+            case "BottomLeft":
+                left = workArea.Left;
+                top = workArea.Bottom - Height;
+                break;
+            case "BottomRight":
+                left = workArea.Right - Width;
+                top = workArea.Bottom - Height;
+                break;
+            default:
+                // TopLeft
+                left = workArea.Left;
+                top = workArea.Top;
+                break;
+        }
+
+        Left = left;
+        Top = top;
+        WindowBoundsHelper.ClampToWorkArea(this, workArea);
+        SaveWindowBounds();
+        QueueSettingsSave();
+        RefreshControlWindow();
+
+        var toastKey = key switch
+        {
+            "TopRight" => "Toast.MovedTopRight",
+            "BottomLeft" => "Toast.MovedBottomLeft",
+            "BottomRight" => "Toast.MovedBottomRight",
+            _ => "Toast.MovedTopLeft",
+        };
+        var fallback = key switch
+        {
+            "TopRight" => "已移动到右上角",
+            "BottomLeft" => "已移动到左下角",
+            "BottomRight" => "已移动到右下角",
+            _ => "已移动到左上角",
+        };
+        SetStatusMessage(LocalizationService.Get(toastKey, fallback), StatusLevel.Success);
+    }
+
+    private void ApplyBrowserWindowSize(double width, double height)
+    {
+        if (_isMaximized)
+        {
+            ToggleMaximize();
+        }
+
+        var workArea = WindowBoundsHelper.GetWorkArea(this);
+        var minWidth = MinWidth > 0 ? MinWidth : 640;
+        var minHeight = MinHeight > 0 ? MinHeight : 360;
+        var maxWidth = Math.Max(minWidth, workArea.Width);
+        // height 参数是内容区高度；标题栏显示时窗口再 +30
+        var contentHeight = Math.Clamp(height, minHeight, Math.Max(minHeight, workArea.Height));
+        _contentAreaHeight = contentHeight;
+        var windowHeight = contentHeight + (_isTitleBarVisible ? TitleBarExpandedHeight : 0);
+        var maxHeight = Math.Max(minHeight, workArea.Height);
+
+        _adjustingTitleBarBounds = true;
+        try
+        {
+            Width = Math.Clamp(width, minWidth, maxWidth);
+            Height = Math.Clamp(windowHeight, minHeight, maxHeight);
+            WindowBoundsHelper.ClampToWorkArea(this, workArea);
+        }
+        finally
+        {
+            _adjustingTitleBarBounds = false;
+        }
+
+        SaveWindowBounds();
+        QueueSettingsSave();
+        RefreshControlWindow();
+    }
+
+    /// <summary>
+    /// 内容区（WebView）高度：优先用内部真源，避免 ActualHeight 取整误差。
+    /// </summary>
+    private double GetContentAreaHeight()
+    {
+        if (_contentAreaHeight > 0)
+        {
+            return _contentAreaHeight;
+        }
+
+        var height = Height > 0 ? Height : ActualHeight;
+        if (_isTitleBarVisible)
+        {
+            height = Math.Max(MinHeight, height - TitleBarExpandedHeight);
+        }
+
+        return height;
+    }
+
+    /// <summary>
+    /// 用户拖拽/设置改尺寸后，把内容区高度同步为真源。
+    /// 标题栏程序化加减高度时不要调用。
+    /// </summary>
+    private void CaptureContentAreaHeightFromWindow()
+    {
+        var windowHeight = ActualHeight > 0 ? ActualHeight : Height;
+        if (windowHeight <= 0)
+        {
+            return;
+        }
+
+        _contentAreaHeight = _isTitleBarVisible
+            ? Math.Max(MinHeight, windowHeight - TitleBarExpandedHeight)
+            : Math.Max(MinHeight, windowHeight);
+    }
+
     public void CancelDownload(DownloadItem item)
     {
         if (_downloadsService.TryCancel(item))
@@ -843,9 +1155,116 @@ public partial class MainWindow : Window, IControlBrowser
         RefreshControlWindow();
     }
 
+    private void ModeToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleWindowMode();
+
     private void MinButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void MaxButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
+
+    /// <summary>
+    /// 同步标题栏模式按钮图标与动作型 tooltip：浮窗=锁，浏览=解锁。
+    /// </summary>
+    private void UpdateModeToggleButton()
+    {
+        if (ModeToggleIcon is not null)
+        {
+            // 浮窗 E785(锁)，浏览 E718(解锁) — 与 ControlWindowViewModel 一致
+            ModeToggleIcon.Text = _settings.WindowMode == WindowMode.Fixed ? "" : "";
+        }
+
+        if (ModeToggleButton is not null)
+        {
+            // 动作型 tooltip：写清点下去会进入哪一侧
+            ModeToggleButton.ToolTip = _settings.WindowMode == WindowMode.Fixed
+                ? LocalizationService.Get("Mode.SwitchToBrowsingTooltip", "返回浏览（显示控制台）(F8)")
+                : LocalizationService.Get("Mode.SwitchToFloatingTooltip", "切换到浮窗（置顶，隐藏控制台）(F8)");
+        }
+    }
+
+    private void ShowMainModeToast(string message, TimeSpan duration)
+    {
+        if (ModeToastBorder is null || ModeToastText is null)
+        {
+            return;
+        }
+
+        ModeToastText.Text = message;
+        ModeToastBorder.Visibility = Visibility.Visible;
+
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(140))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase
+            {
+                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        ModeToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        if (ModeToastBorder.RenderTransform is System.Windows.Media.TranslateTransform tt)
+        {
+            tt.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
+        }
+
+        _modeToastTimer ??= new DispatcherTimer();
+        _modeToastTimer.Tick -= ModeToastTimer_OnTick;
+        _modeToastTimer.Tick += ModeToastTimer_OnTick;
+        _modeToastTimer.Interval = duration;
+        _modeToastTimer.Stop();
+        _modeToastTimer.Start();
+    }
+
+    private void ModeToastTimer_OnTick(object? sender, EventArgs e)
+    {
+        _modeToastTimer?.Stop();
+        if (ModeToastBorder is null)
+        {
+            return;
+        }
+
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(160));
+        fadeOut.Completed += (_, _) =>
+        {
+            if (ModeToastBorder is not null)
+            {
+                ModeToastBorder.Visibility = Visibility.Collapsed;
+            }
+        };
+        ModeToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+    }
+
+    /// <summary>
+    /// 模式切换时主窗边缘短暂描边闪（浏览蓝 / 浮窗橙）。
+    /// </summary>
+    private void FlashModeBorder(bool floating)
+    {
+        if (ModeFlashBorder is null)
+        {
+            return;
+        }
+
+        var color = floating
+            ? System.Windows.Media.Color.FromRgb(0xF0, 0xA0, 0x20)
+            : System.Windows.Media.Color.FromRgb(0x2F, 0x81, 0xF7);
+        ModeFlashBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(color);
+
+        var anim = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames();
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(0.95, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(90)))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        });
+        anim.KeyFrames.Add(new System.Windows.Media.Animation.EasingDoubleKeyFrame(0, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(720)))
+        {
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseIn }
+        });
+        ModeFlashBorder.BeginAnimation(UIElement.OpacityProperty, anim);
+    }
 
     private void ToggleMaximize()
     {
@@ -922,6 +1341,13 @@ public partial class MainWindow : Window, IControlBrowser
         _settingsSaveCts?.Dispose();
         _settingsSaveCts = null;
 
+        if (_windowBoundsUiDebounceTimer is not null)
+        {
+            _windowBoundsUiDebounceTimer.Stop();
+            _windowBoundsUiDebounceTimer.Tick -= WindowBoundsUiDebounceTimer_OnTick;
+            _windowBoundsUiDebounceTimer = null;
+        }
+
         // 取消事件订阅
         LocationChanged -= MainWindow_OnLocationOrSizeChanged;
         SizeChanged -= MainWindow_OnLocationOrSizeChanged;
@@ -938,7 +1364,16 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
+            // 退出前强制用当前页面 URL 刷新 LastUrl，避免 SPA 导航 / 防抖取消导致恢复到旧地址
+            CaptureCurrentUrlToSettings();
+
             // 取消事件订阅
+            _titleBarHideTimer?.Stop();
+            if (_titleBarHideTimer is not null)
+            {
+                _titleBarHideTimer.Tick -= TitleBarHideTimer_OnTick;
+            }
+
             if (BrowserView.CoreWebView2 is not null)
             {
                 BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
@@ -965,47 +1400,122 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
     {
-        // 最大化期间不保存边界、不重排控制窗口
-        if (_isMaximized)
+        // 启动恢复 / 最大化 / 标题栏扩展窗口期间不写回边界
+        if (!_persistWindowBounds || _isMaximized || _isShuttingDown || _adjustingTitleBarBounds)
         {
             return;
         }
 
+        // 用户拖拽/系统改尺寸：刷新内容区真源，再持久化
+        CaptureContentAreaHeightFromWindow();
+
+        // 浏览 / 浮窗模式都记住主窗位置与尺寸（落盘已有 QueueSettingsSave 防抖）
+        SaveWindowBounds();
+        QueueSettingsSave();
+
+        // 控制窗宽高显示 / 跟随位置：防抖，避免拖动时每帧全量刷新列表
+        QueueControlWindowBoundsUiRefresh();
+    }
+
+    private void QueueControlWindowBoundsUiRefresh()
+    {
+        if (_controlWindow is null || _isShuttingDown)
+        {
+            return;
+        }
+
+        _windowBoundsUiDebounceTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(AppConfig.Ui.WindowBoundsUiDebounceMs),
+        };
+        _windowBoundsUiDebounceTimer.Tick -= WindowBoundsUiDebounceTimer_OnTick;
+        _windowBoundsUiDebounceTimer.Tick += WindowBoundsUiDebounceTimer_OnTick;
+        _windowBoundsUiDebounceTimer.Stop();
+        _windowBoundsUiDebounceTimer.Start();
+    }
+
+    private void WindowBoundsUiDebounceTimer_OnTick(object? sender, EventArgs e)
+    {
+        _windowBoundsUiDebounceTimer?.Stop();
+        if (_isShuttingDown || _controlWindow is null)
+        {
+            return;
+        }
+
+        _controlWindow.RefreshWindowSizeDisplay();
+
         if (_settings.WindowMode == WindowMode.Free)
         {
-            SaveWindowBounds();
-            _controlWindow?.ShowNearBrowserWindow();
+            _controlWindow.ShowNearBrowserWindow();
         }
     }
 
     private void RestoreWindowBounds()
     {
-        if (_settings.WindowWidth > 0)
+        var width = _settings.WindowWidth > 0 ? _settings.WindowWidth : Width;
+        // settings 存的是内容区高度；标题栏显示时窗口额外 +30
+        var contentHeight = _settings.WindowHeight > 0 ? _settings.WindowHeight : GetContentAreaHeight();
+        contentHeight = Math.Max(MinHeight > 0 ? MinHeight : 360, contentHeight);
+        _contentAreaHeight = contentHeight;
+        var showTitleBar = _settings.WindowMode == WindowMode.Free;
+        var height = contentHeight + (showTitleBar ? TitleBarExpandedHeight : 0);
+        var left = _settings.WindowLeft;
+        var top = _settings.WindowTop;
+
+        if (double.IsNaN(left) || double.IsInfinity(left))
         {
-            Width = _settings.WindowWidth;
+            left = 100;
         }
 
-        if (_settings.WindowHeight > 0)
+        if (double.IsNaN(top) || double.IsInfinity(top))
         {
-            Height = _settings.WindowHeight;
+            top = 100;
         }
 
-        Left = _settings.WindowLeft;
-        Top = _settings.WindowTop;
+        // 与将要应用的标题栏状态对齐，避免先用错高度再闪一下
+        _isTitleBarVisible = showTitleBar;
+        if (TitleBarRow is not null)
+        {
+            TitleBarRow.Height = new GridLength(showTitleBar ? TitleBarExpandedHeight : 0);
+        }
+
+        if (TitleBarHitZone is not null)
+        {
+            TitleBarHitZone.IsHitTestVisible = !showTitleBar;
+        }
+
+        Width = width;
+        Height = height;
+        Left = left;
+        Top = top;
         WindowBoundsHelper.ClampToWorkArea(this);
     }
 
     private void SaveWindowBounds()
     {
-        if (WindowState != WindowState.Normal || _isMaximized)
+        if (WindowState != WindowState.Normal || _isMaximized || _adjustingTitleBarBounds)
+        {
+            return;
+        }
+
+        // 优先用 Actual*（布局完成后更准）；未完成布局时回退到 Width/Height
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        if (width <= 0 || double.IsNaN(Left) || double.IsNaN(Top))
+        {
+            return;
+        }
+
+        // 持久化内容区高度真源，不用 ActualHeight 反推（会引入 DPI 取整漂移）
+        var height = GetContentAreaHeight();
+        if (height <= 0)
         {
             return;
         }
 
         _settings.WindowLeft = Left;
         _settings.WindowTop = Top;
-        _settings.WindowWidth = Width;
-        _settings.WindowHeight = Height;
+        _settings.WindowWidth = width;
+        _settings.WindowHeight = height;
     }
 
     private void StartKeyboardHook()
@@ -1181,11 +1691,224 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void UpdateWindowTitle()
     {
-        var pageTitle = BrowserView.CoreWebView2 is null || string.IsNullOrWhiteSpace(BrowserView.CoreWebView2.DocumentTitle)
+        var documentTitle = BrowserView.CoreWebView2 is null || string.IsNullOrWhiteSpace(BrowserView.CoreWebView2.DocumentTitle)
+            ? null
+            : BrowserView.CoreWebView2.DocumentTitle;
+
+        var pageTitle = documentTitle is null
             ? "Genshin Browser"
-            : $"{BrowserView.CoreWebView2.DocumentTitle} - Genshin Browser";
+            : $"{documentTitle} - Genshin Browser";
 
         Title = pageTitle;
+
+        // 标题栏内显示短标题，避免被右侧按钮挤掉
+        if (TitleBarTitleText is not null)
+        {
+            TitleBarTitleText.Text = documentTitle ?? LocalizationService.Get("App.Title", "Genshin Browser");
+        }
+    }
+
+    private const double TitleBarExpandedHeight = 30;
+
+    /// <summary>
+    /// 注入到每个页面：透明背景 + 取消播放器 cursor:none。
+    /// </summary>
+    private const string PageBootstrapScript = """
+(() => {
+  try {
+    if (!document.getElementById('gb-page-bootstrap-style')) {
+      const s = document.createElement('style');
+      s.id = 'gb-page-bootstrap-style';
+      s.textContent = [
+        'html,body{background:transparent !important;}',
+        'video,video *{cursor:default !important;}',
+        '.bpx-player-container,.bpx-player-video-wrap,.bpx-player-video-area,',
+        '.bpx-player-video-perch,.bilibili-player,.bilibili-player-area,',
+        '.bilibili-player-video-wrap,.bilibili-player-video-perch{cursor:default !important;}'
+      ].join('');
+      (document.documentElement || document.head || document.body).appendChild(s);
+    }
+  } catch (_) {}
+})();
+""";
+
+    /// <summary>
+    /// 按窗口模式应用标题栏：浏览常驻，浮窗默认隐藏。
+    /// </summary>
+    private void ApplyTitleBarForCurrentMode(bool forceHideInFixed)
+    {
+        if (_settings.WindowMode == WindowMode.Free)
+        {
+            _titleBarHideTimer?.Stop();
+            SetTitleBarVisible(true);
+            return;
+        }
+
+        // 浮窗模式：默认隐藏；若鼠标已在顶部带内则保持显示
+        if (forceHideInFixed && !DragBar.IsMouseOver && !IsMouseInTitleBarBand())
+        {
+            _titleBarHideTimer?.Stop();
+            SetTitleBarVisible(false);
+            return;
+        }
+
+        if (!DragBar.IsMouseOver && !IsMouseInTitleBarBand())
+        {
+            ScheduleTitleBarAutoHide();
+        }
+    }
+
+    private void TitleBarArea_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        // 进入感应区或标题栏：取消隐藏并显示
+        _titleBarHideTimer?.Stop();
+        SetTitleBarVisible(true);
+    }
+
+    private void TitleBarArea_OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        // 仅标题栏（DragBar）绑定 Leave。感应区不绑 Leave：
+        // 显示时关掉感应区命中会伪触发 Leave，否则会立刻开隐藏计时导致抖动。
+        if (DragBar.IsMouseOver)
+        {
+            return;
+        }
+
+        // 浏览模式：标题栏常驻，离开也不收回
+        if (_settings.WindowMode == WindowMode.Free)
+        {
+            _titleBarHideTimer?.Stop();
+            return;
+        }
+
+        ScheduleTitleBarAutoHide();
+    }
+
+    private void ScheduleTitleBarAutoHide()
+    {
+        if (_settings.WindowMode != WindowMode.Fixed)
+        {
+            return;
+        }
+
+        // 离开后 1 秒再收回：窗口高度减回，内容区尺寸不变
+        _titleBarHideTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _titleBarHideTimer.Tick -= TitleBarHideTimer_OnTick;
+        _titleBarHideTimer.Tick += TitleBarHideTimer_OnTick;
+        _titleBarHideTimer.Stop();
+        _titleBarHideTimer.Start();
+    }
+
+    private void TitleBarHideTimer_OnTick(object? sender, EventArgs e)
+    {
+        _titleBarHideTimer?.Stop();
+
+        // 浏览模式始终常驻
+        if (_settings.WindowMode == WindowMode.Free)
+        {
+            SetTitleBarVisible(true);
+            return;
+        }
+
+        // 仍在标题栏，或仍停在顶部感应高度内，则保持显示
+        if (DragBar.IsMouseOver || IsMouseInTitleBarBand())
+        {
+            return;
+        }
+
+        SetTitleBarVisible(false);
+    }
+
+    /// <summary>
+    /// 鼠标是否仍在窗口顶部标题栏高度带内（与感应区同高）。
+    /// </summary>
+    private bool IsMouseInTitleBarBand()
+    {
+        try
+        {
+            var pos = System.Windows.Input.Mouse.GetPosition(this);
+            return pos.Y >= 0 && pos.Y < TitleBarExpandedHeight
+                   && pos.X >= 0 && pos.X <= ActualWidth;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void SetTitleBarVisible(bool visible)
+    {
+        if (_isTitleBarVisible == visible)
+        {
+            // 常驻时感应区必须关闭；隐藏态必须打开，避免状态被外部改坏
+            TitleBarHitZone.IsHitTestVisible = !visible;
+            return;
+        }
+
+        var wasVisible = _isTitleBarVisible;
+        _isTitleBarVisible = visible;
+        // 显示时关掉感应区，避免挡住标题栏；隐藏后重新开启
+        TitleBarHitZone.IsHitTestVisible = !visible;
+
+        // 用行高占位显示标题栏；同时窗口 Height ±30，使 WebView 内容区高度不变
+        TitleBarRow.Height = new GridLength(visible ? TitleBarExpandedHeight : 0);
+        AdjustWindowHeightForTitleBar(visible, wasVisible);
+    }
+
+    /// <summary>
+    /// 标题栏显示时窗口向下加高 30；隐藏时减回。不改 Top，因此是向下延长。
+    /// 以内容区高度真源做绝对赋值：Height = content [+ 30]，禁止 ActualHeight ± 30 累加。
+    /// 最大化时不改窗口外框（内容区已铺满工作区）。
+    /// </summary>
+    private void AdjustWindowHeightForTitleBar(bool nowVisible, bool wasVisible)
+    {
+        if (nowVisible == wasVisible || _isMaximized || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        if (_contentAreaHeight <= 0)
+        {
+            CaptureContentAreaHeightFromWindow();
+        }
+
+        var contentHeight = Math.Max(MinHeight > 0 ? MinHeight : 360, _contentAreaHeight);
+        _contentAreaHeight = contentHeight;
+        var targetHeight = contentHeight + (nowVisible ? TitleBarExpandedHeight : 0);
+
+        // 向下延长时避免超出工作区底部：必要时略微上移，优先保证内容完整
+        var workArea = WindowBoundsHelper.GetWorkArea(this);
+        var maxBottom = workArea.Bottom;
+        var newBottom = Top + targetHeight;
+        var newTop = Top;
+        if (newBottom > maxBottom)
+        {
+            newTop = Math.Max(workArea.Top, maxBottom - targetHeight);
+            // 工作区不够高时，只压缩窗口外框，不改写内容区真源（避免来回漂移）
+            targetHeight = Math.Min(targetHeight, Math.Max(MinHeight, maxBottom - newTop));
+        }
+
+        _adjustingTitleBarBounds = true;
+        try
+        {
+            if (Math.Abs(newTop - Top) > 0.1)
+            {
+                Top = newTop;
+            }
+
+            // 与当前 Height 相同则跳过，减少无意义布局与 SizeChanged
+            if (Math.Abs(Height - targetHeight) > 0.1)
+            {
+                Height = targetHeight;
+            }
+        }
+        finally
+        {
+            _adjustingTitleBarBounds = false;
+        }
     }
 
     private void ApplyWindowOpacity(double opacity)

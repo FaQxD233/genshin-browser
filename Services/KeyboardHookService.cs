@@ -56,8 +56,8 @@ public sealed class KeyboardHookService : IDisposable
 
     public event EventHandler? ModeTogglePressed;
 
-    // 由 UI 层维护：固定模式下用户在游戏中，K 必须全局生效；
-    // 自由模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
+    // 由 UI 层维护：浮窗模式下用户在游戏中，K 必须全局生效；
+    // 浏览模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
     private volatile bool _isGamingMode;
     private volatile bool _isAppActive = true;
 
@@ -144,7 +144,7 @@ public sealed class KeyboardHookService : IDisposable
 
                 if (isFirstKeyDown && vkCode == _togglePlaybackVk && IsModifierPressed(_togglePlaybackModifiers))
                 {
-                    // 固定模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入
+                    // 浮窗模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入
                     if (IsGameOrBrowserForeground())
                     {
                         Raise(KPressed);
@@ -213,7 +213,7 @@ public sealed class KeyboardHookService : IDisposable
             return true;
         }
 
-        // 2. 如果处于固定模式（游戏模式），且前台窗口是非排他性进程（即可能是任意游戏），允许触发
+        // 2. 如果处于浮窗模式，且前台窗口是非排他性进程（即可能是任意游戏），允许触发
         if (_isGamingMode)
         {
             try
@@ -230,7 +230,7 @@ public sealed class KeyboardHookService : IDisposable
             catch
             {
                 // 如果无法获取进程信息（通常是高权限进程，比如管理员身份运行的游戏），
-                // 且当前正处于置顶固定模式下，我们默认将其视为游戏，允许触发。
+                // 且当前正处于置顶浮窗模式下，我们默认将其视为游戏，允许触发。
                 // 这样即使用户以管理员运行了其他游戏，热键也能正常工作。
                 return true;
             }

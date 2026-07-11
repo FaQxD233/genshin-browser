@@ -5,13 +5,19 @@
   <sys:String x:Key="App.Title">Genshin Browser</sys:String>
   <sys:String x:Key="Control.Title">Genshin Browser Control</sys:String>
 
-  <!-- Mode -->
-  <sys:String x:Key="Mode.Free">Free mode</sys:String>
-  <sys:String x:Key="Mode.Fixed">Fixed mode</sys:String>
-  <sys:String x:Key="Mode.ToggleTooltip">Toggle window mode (F8)</sys:String>
-  <sys:String x:Key="Mode.ToggleName">Toggle window mode</sys:String>
-  <sys:String x:Key="Mode.FixedOn">Fixed mode on. Press F8 to return to free mode.</sys:String>
-  <sys:String x:Key="Mode.FreeOn">Free mode. Control window is open. You can move the window, browse history, and edit the address.</sys:String>
+  <!-- Mode: UI labels Browsing / Floating; internal enum remains Free / Fixed -->
+  <sys:String x:Key="Mode.Free">Browsing</sys:String>
+  <sys:String x:Key="Mode.Fixed">Floating</sys:String>
+  <sys:String x:Key="Mode.ToggleTooltip">Switch Browsing / Floating (F8)</sys:String>
+  <sys:String x:Key="Mode.ToggleName">Switch Browsing and Floating</sys:String>
+  <!-- Action-style tooltip: describe the destination, not just “toggle” -->
+  <sys:String x:Key="Mode.SwitchToFloatingTooltip">Switch to Floating (always on top, hide control panel) (F8)</sys:String>
+  <sys:String x:Key="Mode.SwitchToBrowsingTooltip">Return to Browsing (show control panel) (F8)</sys:String>
+  <sys:String x:Key="Mode.FixedOn">Floating on: always on top, control panel hidden. Press F8 to return to Browsing.</sys:String>
+  <sys:String x:Key="Mode.FreeOn">Browsing: window is movable, control panel is open.</sys:String>
+  <sys:String x:Key="Mode.ToastFloating">Floating</sys:String>
+  <sys:String x:Key="Mode.ToastBrowsing">Browsing</sys:String>
+  <sys:String x:Key="Mode.FirstFloatingHint">Floating on: always on top, control panel hidden. Press F8 to return to Browsing; move to the top edge to show the title bar.</sys:String>
 
   <!-- Top toolbar -->
   <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video (K)</sys:String>
@@ -31,7 +37,7 @@
   <sys:String x:Key="Settings.ZoomInName">Zoom in</sys:String>
   <sys:String x:Key="Settings.ZoomResetTooltip">Reset zoom (Ctrl+0)</sys:String>
   <sys:String x:Key="Settings.ZoomReset">Reset</sys:String>
-  <sys:String x:Key="Settings.ToggleMode">Toggle mode</sys:String>
+  <sys:String x:Key="Settings.ToggleMode">Browsing ⇄ Floating</sys:String>
   <sys:String x:Key="Settings.Playback">Play / pause</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
@@ -41,6 +47,35 @@
   <sys:String x:Key="Settings.Language">Language</sys:String>
   <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
   <sys:String x:Key="Settings.LanguageEn">English</sys:String>
+  <sys:String x:Key="Settings.WindowSize">Window size</sys:String>
+  <sys:String x:Key="Settings.Width">W</sys:String>
+  <sys:String x:Key="Settings.Height">H</sys:String>
+  <sys:String x:Key="Settings.ApplySize">Apply</sys:String>
+  <sys:String x:Key="Settings.ApplySizeTooltip">Apply width/height to the browser window</sys:String>
+  <sys:String x:Key="Settings.MoveTopRight">TR</sys:String>
+  <sys:String x:Key="Settings.MoveTopRightTooltip">Snap to top-right (no gap)</sys:String>
+  <sys:String x:Key="Settings.Appearance">Appearance</sys:String>
+  <sys:String x:Key="Settings.Window">Window</sys:String>
+  <sys:String x:Key="Settings.Display">Display</sys:String>
+  <sys:String x:Key="Settings.Hotkeys">Hotkeys</sys:String>
+  <sys:String x:Key="Settings.PercentUnit">%</sys:String>
+  <sys:String x:Key="Toast.MovedTopRight">Moved to top-right</sys:String>
+  <sys:String x:Key="Toast.InvalidWindowSize">Enter a valid window width/height (px)</sys:String>
+  <sys:String x:Key="Toast.WindowSizeApplied">Window size set to {0} × {1}</sys:String>
+
+
+  <sys:String x:Key="Settings.MoveCorner">Snap</sys:String>
+  <sys:String x:Key="Settings.MoveTopLeft">TL</sys:String>
+  <sys:String x:Key="Settings.MoveBottomLeft">BL</sys:String>
+  <sys:String x:Key="Settings.MoveBottomRight">BR</sys:String>
+  <sys:String x:Key="Settings.MoveTopLeftTooltip">Snap to top-left (no gap)</sys:String>
+  <sys:String x:Key="Settings.MoveBottomLeftTooltip">Snap to bottom-left (no gap)</sys:String>
+  <sys:String x:Key="Settings.MoveBottomRightTooltip">Snap to bottom-right (no gap)</sys:String>
+  <sys:String x:Key="Toast.MovedTopLeft">Moved to top-left</sys:String>
+  <sys:String x:Key="Toast.MovedBottomLeft">Moved to bottom-left</sys:String>
+  <sys:String x:Key="Toast.MovedBottomRight">Moved to bottom-right</sys:String>
+  <sys:String x:Key="Toast.InvalidOpacity">Enter opacity 10–100</sys:String>
+  <sys:String x:Key="Toast.InvalidZoom">Enter zoom 25–500%</sys:String>
 
   <!-- Downloads -->
   <sys:String x:Key="Downloads.Title">Downloads</sys:String>
@@ -91,12 +126,12 @@
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
-  <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “toggle mode” (Esc to cancel)</sys:String>
+  <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “Browsing ⇄ Floating” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">Press a hotkey for “video playback” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordCanceled">Recording canceled.</sys:String>
   <sys:String x:Key="Toast.HotkeyUsedByPlayback">That hotkey is already used by video playback!</sys:String>
-  <sys:String x:Key="Toast.HotkeyUsedByMode">That hotkey is already used by toggle mode!</sys:String>
-  <sys:String x:Key="Toast.ToggleModeSet">“Toggle mode” set to {0}</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByMode">That hotkey is already used by “Browsing ⇄ Floating”!</sys:String>
+  <sys:String x:Key="Toast.ToggleModeSet">“Browsing ⇄ Floating” set to {0}</sys:String>
   <sys:String x:Key="Toast.PlaybackSet">“Video playback” set to {0}</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
   <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
@@ -110,7 +145,7 @@
   <sys:String x:Key="Status.InstallingWebView2">Installing WebView2 Runtime...</sys:String>
   <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions and cache are kept automatically.</sys:String>
   <sys:String x:Key="Status.InitFailed">Initialization failed: {0}</sys:String>
-  <sys:String x:Key="Status.PageLoaded">Page loaded. Press K to play/pause video, F8 to toggle fixed/free mode.</sys:String>
+  <sys:String x:Key="Status.PageLoaded">Page loaded. Press K to play/pause video, F8 to switch Browsing/Floating.</sys:String>
   <sys:String x:Key="Status.LoadFailed">Load failed: {0}</sys:String>
   <sys:String x:Key="Status.RecordStateFailed">Failed to record page state: {0}</sys:String>
   <sys:String x:Key="Status.AddressUpdateFailed">Failed to update address: {0}</sys:String>

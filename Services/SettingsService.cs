@@ -15,6 +15,29 @@ public sealed class SettingsService : IDisposable
         _settingsPath = settingsPath;
     }
 
+    /// <summary>
+    /// 同步读取配置。用于主窗构造阶段，在窗口首次显示前恢复位置，
+    /// 避免异步 Loaded 期间默认坐标被写回 settings.json。
+    /// </summary>
+    public AppSettings Load()
+    {
+        if (!File.Exists(_settingsPath))
+        {
+            return new AppSettings();
+        }
+
+        try
+        {
+            var json = File.ReadAllText(_settingsPath);
+            return JsonSerializer.Deserialize<AppSettings>(json, _jsonOptions) ?? new AppSettings();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+            FileLogger.LogException(ex, "Load settings (sync)");
+            return new AppSettings();
+        }
+    }
+
     public async Task<AppSettings> LoadAsync()
     {
         if (!File.Exists(_settingsPath))
@@ -25,7 +48,7 @@ public sealed class SettingsService : IDisposable
         try
         {
             await using var stream = File.OpenRead(_settingsPath);
-            return await JsonSerializer.DeserializeAsync<AppSettings>(stream).ConfigureAwait(false) ?? new AppSettings();
+            return await JsonSerializer.DeserializeAsync<AppSettings>(stream, _jsonOptions).ConfigureAwait(false) ?? new AppSettings();
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -56,6 +79,7 @@ public sealed class SettingsService : IDisposable
             TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
+            HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
         };
 
         await _saveGate.WaitAsync().ConfigureAwait(false);

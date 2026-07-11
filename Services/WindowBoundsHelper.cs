@@ -15,11 +15,52 @@ internal static class WindowBoundsHelper
             : Forms.Screen.FromHandle(handle);
 
         var workArea = screen.WorkingArea;
-        var transform = PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var transform = GetDeviceToDipTransform(window);
         var topLeft = transform.Transform(new System.Windows.Point(workArea.Left, workArea.Top));
         var bottomRight = transform.Transform(new System.Windows.Point(workArea.Right, workArea.Bottom));
 
         return new Rect(topLeft, bottomRight);
+    }
+
+    /// <summary>
+    /// 设备像素 → DIP。窗口尚未挂上 PresentationSource 时，回退到系统 DPI，
+    /// 避免高分屏上把物理像素工作区当成 DIP 导致 clamp 错位。
+    /// </summary>
+    private static Matrix GetDeviceToDipTransform(Window window)
+    {
+        var fromSource = PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice;
+        if (fromSource is { } matrix && !matrix.IsIdentity)
+        {
+            return matrix;
+        }
+
+        try
+        {
+            var dpi = VisualTreeHelper.GetDpi(window);
+            if (dpi.DpiScaleX > 0 && dpi.DpiScaleY > 0)
+            {
+                return new Matrix(1.0 / dpi.DpiScaleX, 0, 0, 1.0 / dpi.DpiScaleY, 0, 0);
+            }
+        }
+        catch
+        {
+            // 视觉树未就绪时忽略
+        }
+
+        try
+        {
+            using var graphics = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
+            if (graphics.DpiX > 0 && graphics.DpiY > 0)
+            {
+                return new Matrix(96.0 / graphics.DpiX, 0, 0, 96.0 / graphics.DpiY, 0, 0);
+            }
+        }
+        catch
+        {
+            // 回退 Identity
+        }
+
+        return Matrix.Identity;
     }
 
     public static void ClampToWorkArea(Window window)

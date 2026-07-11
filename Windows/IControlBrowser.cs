@@ -71,6 +71,11 @@ public interface IControlBrowser
 
     void ToggleWindowMode();
 
+    /// <summary>
+    /// 切换到指定窗口模式（浏览 / 浮窗）。已是目标模式时为 no-op。
+    /// </summary>
+    void SetWindowMode(WindowMode mode);
+
     Task ToggleVideoPlaybackAsync();
 
     void ReloadPage();
@@ -101,6 +106,22 @@ public interface IControlBrowser
     /// 当前界面语言：zh-CN / en-US。
     /// </summary>
     string UiLanguage { get; set; }
+
+    /// <summary>
+    /// 浏览器主窗当前宽度（逻辑像素）。
+    /// </summary>
+    double BrowserWindowWidth { get; set; }
+
+    /// <summary>
+    /// 浏览器主窗当前高度（逻辑像素）。
+    /// </summary>
+    double BrowserWindowHeight { get; set; }
+
+    /// <summary>
+    /// 将浏览器主窗贴到当前显示器工作区指定角（无边距）。
+    /// corner: TopLeft / TopRight / BottomLeft / BottomRight
+    /// </summary>
+    void MoveBrowserToCorner(string corner);
 
     void CancelDownload(DownloadItem item);
 

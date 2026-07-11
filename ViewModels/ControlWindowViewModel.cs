@@ -15,7 +15,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private readonly DispatcherTimer _toastTimer;
     private readonly List<ControlItemViewModel> _allHistoryItems = new();
     private readonly List<ControlItemViewModel> _allFavoriteItems = new();
-    private string _modeText = LocalizationService.Get("Mode.Free", "自由模式");
+    private string _modeText = LocalizationService.Get("Mode.Free", "浏览");
     private string _modeToggleIcon = "\uE718";
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private string _currentAddress = string.Empty;
@@ -35,6 +35,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         _browser = browser;
         ToggleModeCommand = new RelayCommand(_browser.ToggleWindowMode);
+        SetBrowsingModeCommand = new RelayCommand(() => _browser.SetWindowMode(WindowMode.Free));
+        SetFloatingModeCommand = new RelayCommand(() => _browser.SetWindowMode(WindowMode.Fixed));
         TogglePlaybackCommand = new AsyncRelayCommand(_browser.ToggleVideoPlaybackAsync);
         ReloadCommand = new RelayCommand(_browser.ReloadPage);
         NavigateCommand = new RelayCommand(parameter => _browser.NavigateTo(parameter as string));
@@ -62,6 +64,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
         SetThemeLightCommand = new RelayCommand(() => SetTheme(ThemeService.Light));
         SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
         SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
+        MoveBrowserToCornerCommand = new RelayCommand(MoveBrowserToCorner);
+        ApplyWindowSizeCommand = new RelayCommand(ApplyWindowSizeFromInput);
+        ApplyOpacityCommand = new RelayCommand(ApplyOpacityFromInput);
+        ApplyZoomCommand = new RelayCommand(ApplyZoomFromInput);
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         _toastTimer.Tick += ToastTimer_OnTick;
@@ -71,6 +77,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _browser.Downloads.CollectionChanged += Downloads_CollectionChanged;
         LocalizationService.LanguageChanged += Localization_OnLanguageChanged;
         UpdateDownloadsBadge();
+        SyncWindowSizeTexts();
+        SyncOpacityZoomTexts();
         RefreshThemeLanguageFlags();
     }
 
@@ -83,6 +91,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand GoForwardCommand { get; }
 
     public RelayCommand ToggleModeCommand { get; }
+
+    public RelayCommand SetBrowsingModeCommand { get; }
+
+    public RelayCommand SetFloatingModeCommand { get; }
 
     public AsyncRelayCommand TogglePlaybackCommand { get; }
 
@@ -132,6 +144,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public RelayCommand SetLanguageEnCommand { get; }
 
+    public RelayCommand MoveBrowserToCornerCommand { get; }
+
+    public RelayCommand ApplyWindowSizeCommand { get; }
+
+    public RelayCommand ApplyOpacityCommand { get; }
+
+    public RelayCommand ApplyZoomCommand { get; }
+
     public string ModeText
     {
         get => _modeText;
@@ -143,6 +163,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
         get => _modeToggleIcon;
         private set => SetProperty(ref _modeToggleIcon, value);
     }
+
+    /// <summary>当前是否为浏览模式（分段控件高亮）。</summary>
+    public bool IsBrowsingMode => _browser.CurrentMode == WindowMode.Free;
+
+    /// <summary>当前是否为浮窗模式（分段控件高亮）。</summary>
+    public bool IsFloatingMode => _browser.CurrentMode == WindowMode.Fixed;
 
     public string StatusMessage
     {
@@ -345,9 +371,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
         var previousStatus = StatusMessage;
 
         ModeText = _browser.CurrentMode == WindowMode.Fixed
-            ? LocalizationService.Get("Mode.Fixed", "固定模式")
-            : LocalizationService.Get("Mode.Free", "自由模式");
+            ? LocalizationService.Get("Mode.Fixed", "浮窗")
+            : LocalizationService.Get("Mode.Free", "浏览");
         ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "\uE785" : "\uE718";
+        OnPropertyChanged(nameof(IsBrowsingMode));
+        OnPropertyChanged(nameof(IsFloatingMode));
         StatusMessage = _browser.StatusMessage;
         CurrentAddress = _browser.CurrentAddress;
 
@@ -375,6 +403,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
         GoBackCommand.RaiseCanExecuteChanged();
         GoForwardCommand.RaiseCanExecuteChanged();
         OnPropertyChanged(nameof(ZoomPercentageText));
+        OnPropertyChanged(nameof(OpacityPercentageText));
+        OnPropertyChanged(nameof(WindowOpacity));
+        // 仅在输入框为空时回填，避免刷新覆盖用户正在编辑的数字。
+        // 窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
+        if (string.IsNullOrWhiteSpace(_opacityPercentText) || string.IsNullOrWhiteSpace(_zoomPercentText))
+        {
+            SyncOpacityZoomTexts();
+        }
     }
 
     public void Dispose()
@@ -441,6 +477,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void Browser_OnZoomChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(ZoomPercentageText));
+        SyncOpacityZoomTexts();
     }
 
     private void Browser_OnDownloadsChanged(object? sender, EventArgs e)
@@ -480,6 +517,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         _browser.RestoreDefaultSettings();
         RefreshFromBrowser();
+        SyncOpacityZoomTexts();
+        SyncWindowSizeTexts();
         ShowToast(LocalizationService.Get("Toast.RestoredDefaults", "已恢复默认设置"));
     }
 
@@ -640,6 +679,157 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private bool _isRecordingTogglePlaybackKey;
     private ModifierKeys _currentRecordingModifiers;
 
+
+    public string BrowserWindowWidthText
+    {
+        get => _browserWindowWidthText;
+        set
+        {
+            if (SetProperty(ref _browserWindowWidthText, value ?? string.Empty))
+            {
+                // 输入中不立刻改窗体，失焦/回车由 Apply 提交
+            }
+        }
+    }
+
+    public string BrowserWindowHeightText
+    {
+        get => _browserWindowHeightText;
+        set => SetProperty(ref _browserWindowHeightText, value ?? string.Empty);
+    }
+
+    private string _browserWindowWidthText = string.Empty;
+    private string _browserWindowHeightText = string.Empty;
+
+    /// <summary>
+    /// 用主窗当前尺寸刷新设置里的宽高文本（调用方需确保用户未在编辑输入框）。
+    /// </summary>
+    public void SyncWindowSizeTexts()
+    {
+        var widthText = Math.Round(_browser.BrowserWindowWidth).ToString();
+        var heightText = Math.Round(_browser.BrowserWindowHeight).ToString();
+
+        if (string.Equals(_browserWindowWidthText, widthText, StringComparison.Ordinal)
+            && string.Equals(_browserWindowHeightText, heightText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _browserWindowWidthText = widthText;
+        _browserWindowHeightText = heightText;
+        OnPropertyChanged(nameof(BrowserWindowWidthText));
+        OnPropertyChanged(nameof(BrowserWindowHeightText));
+    }
+
+    private void ApplyWindowSizeFromInput(object? parameter = null)
+    {
+        if (!TryParseSize(_browserWindowWidthText, out var width) ||
+            !TryParseSize(_browserWindowHeightText, out var height))
+        {
+            SyncWindowSizeTexts();
+            ShowToast(LocalizationService.Get("Toast.InvalidWindowSize", "请输入有效的窗口宽高（像素）"));
+            return;
+        }
+
+        _browser.BrowserWindowWidth = width;
+        _browser.BrowserWindowHeight = height;
+        SyncWindowSizeTexts();
+        ShowToast(LocalizationService.Format("Toast.WindowSizeApplied", Math.Round(width), Math.Round(height)));
+    }
+
+    private static bool TryParseSize(string? text, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (!double.TryParse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) &&
+            !double.TryParse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out value))
+        {
+            return false;
+        }
+
+        return value >= 100 && value <= 10000;
+    }
+
+
+    public string OpacityPercentText
+    {
+        get => _opacityPercentText;
+        set => SetProperty(ref _opacityPercentText, value ?? string.Empty);
+    }
+
+    public string ZoomPercentText
+    {
+        get => _zoomPercentText;
+        set => SetProperty(ref _zoomPercentText, value ?? string.Empty);
+    }
+
+    private string _opacityPercentText = string.Empty;
+    private string _zoomPercentText = string.Empty;
+
+    private void SyncOpacityZoomTexts()
+    {
+        _opacityPercentText = Math.Round(_browser.WindowOpacity * 100).ToString();
+        _zoomPercentText = Math.Round(_browser.ZoomFactor * 100).ToString();
+        OnPropertyChanged(nameof(OpacityPercentText));
+        OnPropertyChanged(nameof(ZoomPercentText));
+        OnPropertyChanged(nameof(OpacityPercentageText));
+        OnPropertyChanged(nameof(ZoomPercentageText));
+    }
+
+    private void ApplyOpacityFromInput(object? parameter = null)
+    {
+        if (!TryParsePercent(_opacityPercentText, out var percent) || percent < 10 || percent > 100)
+        {
+            SyncOpacityZoomTexts();
+            ShowToast(LocalizationService.Get("Toast.InvalidOpacity", "请输入 10–100 的不透明度"));
+            return;
+        }
+
+        WindowOpacity = percent / 100.0;
+        SyncOpacityZoomTexts();
+    }
+
+    private void ApplyZoomFromInput(object? parameter = null)
+    {
+        if (!TryParsePercent(_zoomPercentText, out var percent) || percent < 25 || percent > 500)
+        {
+            SyncOpacityZoomTexts();
+            ShowToast(LocalizationService.Get("Toast.InvalidZoom", "请输入 25–500 的缩放百分比"));
+            return;
+        }
+
+        _browser.ZoomFactor = percent / 100.0;
+        SyncOpacityZoomTexts();
+    }
+
+    private void MoveBrowserToCorner(object? parameter)
+    {
+        var corner = parameter as string ?? "TopRight";
+        _browser.MoveBrowserToCorner(corner);
+    }
+
+    private static bool TryParsePercent(string? text, out double value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var raw = text.Trim().TrimEnd('%');
+        if (!double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) &&
+            !double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out value))
+        {
+            return false;
+        }
+
+        return !double.IsNaN(value) && !double.IsInfinity(value);
+    }
+
     public double WindowOpacity
     {
         get => _browser.WindowOpacity;
@@ -650,6 +840,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
                 _browser.WindowOpacity = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(OpacityPercentageText));
+                _opacityPercentText = Math.Round(value * 100).ToString();
+                OnPropertyChanged(nameof(OpacityPercentText));
             }
         }
     }
@@ -689,7 +881,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _currentRecordingModifiers = ModifierKeys.None;
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下“切换模式”快捷键（按 Esc 取消）"));
+        ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）"));
     }
 
     private void StartRecordingTogglePlaybackKey()
@@ -740,7 +932,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (key == _browser.ToggleModeKey && modifiers == _browser.ToggleModeModifiers)
             {
-                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被切换模式占用！"));
+                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被「浏览 ⇄ 浮窗」占用！"));
             }
             else
             {
@@ -806,8 +998,10 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void RefreshLocalizedTexts()
     {
         ModeText = _browser.CurrentMode == WindowMode.Fixed
-            ? LocalizationService.Get("Mode.Fixed", "固定模式")
-            : LocalizationService.Get("Mode.Free", "自由模式");
+            ? LocalizationService.Get("Mode.Fixed", "浮窗")
+            : LocalizationService.Get("Mode.Free", "浏览");
+        OnPropertyChanged(nameof(IsBrowsingMode));
+        OnPropertyChanged(nameof(IsFloatingMode));
         FavoriteToggleText = IsCurrentFavorite
             ? LocalizationService.Get("Fav.Added", "已收藏")
             : LocalizationService.Get("Fav.Add", "收藏当前页");

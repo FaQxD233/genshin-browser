@@ -50,6 +50,43 @@ public partial class ControlWindow : Window
         {
             SetAddressText(_viewModel.CurrentAddress);
         }
+
+        RefreshWindowSizeDisplay();
+    }
+
+    /// <summary>
+    /// 用主窗当前尺寸更新设置面板宽高显示；用户正在编辑输入框时跳过。
+    /// </summary>
+    public void RefreshWindowSizeDisplay()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(RefreshWindowSizeDisplay);
+            return;
+        }
+
+        if (BrowserWindowWidthBox.IsKeyboardFocusWithin || BrowserWindowHeightBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        _viewModel.SyncWindowSizeTexts();
+    }
+
+    private void OpacityPercentBox_OnLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_viewModel.ApplyOpacityCommand.CanExecute(null))
+        {
+            _viewModel.ApplyOpacityCommand.Execute(null);
+        }
+    }
+
+    private void ZoomPercentBox_OnLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_viewModel.ApplyZoomCommand.CanExecute(null))
+        {
+            _viewModel.ApplyZoomCommand.Execute(null);
+        }
     }
 
     public void ShowNearBrowserWindow()

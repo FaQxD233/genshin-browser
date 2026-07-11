@@ -5,13 +5,19 @@
   <sys:String x:Key="App.Title">Genshin Browser</sys:String>
   <sys:String x:Key="Control.Title">Genshin Browser Control</sys:String>
 
-  <!-- Mode -->
-  <sys:String x:Key="Mode.Free">自由模式</sys:String>
-  <sys:String x:Key="Mode.Fixed">固定模式</sys:String>
-  <sys:String x:Key="Mode.ToggleTooltip">切换窗口模式 (F8)</sys:String>
-  <sys:String x:Key="Mode.ToggleName">切换窗口模式</sys:String>
-  <sys:String x:Key="Mode.FixedOn">固定模式已开启。按 F8 返回自由模式。</sys:String>
-  <sys:String x:Key="Mode.FreeOn">自由模式。控制窗口已打开。可以移动窗口、查看历史并修改地址。</sys:String>
+  <!-- Mode：对外名「浏览 / 浮窗」；内部 enum 仍为 Free / Fixed -->
+  <sys:String x:Key="Mode.Free">浏览</sys:String>
+  <sys:String x:Key="Mode.Fixed">浮窗</sys:String>
+  <sys:String x:Key="Mode.ToggleTooltip">切换浏览 / 浮窗 (F8)</sys:String>
+  <sys:String x:Key="Mode.ToggleName">切换浏览与浮窗</sys:String>
+  <!-- 动作型 tooltip：写清点下去会变成什么，而不是只写「切换」 -->
+  <sys:String x:Key="Mode.SwitchToFloatingTooltip">切换到浮窗（置顶，隐藏控制台）(F8)</sys:String>
+  <sys:String x:Key="Mode.SwitchToBrowsingTooltip">返回浏览（显示控制台）(F8)</sys:String>
+  <sys:String x:Key="Mode.FixedOn">已进入浮窗：置顶，控制台已隐藏。按 F8 返回浏览。</sys:String>
+  <sys:String x:Key="Mode.FreeOn">浏览中：可拖动窗口，控制台已打开。</sys:String>
+  <sys:String x:Key="Mode.ToastFloating">浮窗</sys:String>
+  <sys:String x:Key="Mode.ToastBrowsing">浏览</sys:String>
+  <sys:String x:Key="Mode.FirstFloatingHint">已进入浮窗：置顶并隐藏控制台。按 F8 返回浏览；移到窗口顶部可显示标题栏。</sys:String>
 
   <!-- Top toolbar -->
   <sys:String x:Key="Toolbar.PlaybackTooltip">控制视频播放/暂停 (K)</sys:String>
@@ -31,7 +37,7 @@
   <sys:String x:Key="Settings.ZoomInName">放大</sys:String>
   <sys:String x:Key="Settings.ZoomResetTooltip">重置缩放 (Ctrl+0)</sys:String>
   <sys:String x:Key="Settings.ZoomReset">重置</sys:String>
-  <sys:String x:Key="Settings.ToggleMode">切换模式</sys:String>
+  <sys:String x:Key="Settings.ToggleMode">浏览 ⇄ 浮窗</sys:String>
   <sys:String x:Key="Settings.Playback">播放/暂停</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">恢复默认</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放与快捷键为默认值</sys:String>
@@ -41,6 +47,35 @@
   <sys:String x:Key="Settings.Language">语言</sys:String>
   <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
   <sys:String x:Key="Settings.LanguageEn">English</sys:String>
+  <sys:String x:Key="Settings.WindowSize">窗口大小</sys:String>
+  <sys:String x:Key="Settings.Width">宽</sys:String>
+  <sys:String x:Key="Settings.Height">高</sys:String>
+  <sys:String x:Key="Settings.ApplySize">应用</sys:String>
+  <sys:String x:Key="Settings.ApplySizeTooltip">应用输入的宽高到浏览器窗口</sys:String>
+  <sys:String x:Key="Settings.MoveTopRight">右上</sys:String>
+  <sys:String x:Key="Settings.MoveTopRightTooltip">贴到工作区右上角（无空隙）</sys:String>
+  <sys:String x:Key="Settings.Appearance">外观</sys:String>
+  <sys:String x:Key="Settings.Window">窗口</sys:String>
+  <sys:String x:Key="Settings.Display">显示</sys:String>
+  <sys:String x:Key="Settings.Hotkeys">快捷键</sys:String>
+  <sys:String x:Key="Settings.PercentUnit">%</sys:String>
+  <sys:String x:Key="Toast.MovedTopRight">已移动到右上角</sys:String>
+  <sys:String x:Key="Toast.InvalidWindowSize">请输入有效的窗口宽高（像素）</sys:String>
+  <sys:String x:Key="Toast.WindowSizeApplied">窗口大小已设为 {0} × {1}</sys:String>
+
+
+  <sys:String x:Key="Settings.MoveCorner">贴边</sys:String>
+  <sys:String x:Key="Settings.MoveTopLeft">左上</sys:String>
+  <sys:String x:Key="Settings.MoveBottomLeft">左下</sys:String>
+  <sys:String x:Key="Settings.MoveBottomRight">右下</sys:String>
+  <sys:String x:Key="Settings.MoveTopLeftTooltip">贴到工作区左上角（无空隙）</sys:String>
+  <sys:String x:Key="Settings.MoveBottomLeftTooltip">贴到工作区左下角（无空隙）</sys:String>
+  <sys:String x:Key="Settings.MoveBottomRightTooltip">贴到工作区右下角（无空隙）</sys:String>
+  <sys:String x:Key="Toast.MovedTopLeft">已移动到左上角</sys:String>
+  <sys:String x:Key="Toast.MovedBottomLeft">已移动到左下角</sys:String>
+  <sys:String x:Key="Toast.MovedBottomRight">已移动到右下角</sys:String>
+  <sys:String x:Key="Toast.InvalidOpacity">请输入 10–100 的不透明度</sys:String>
+  <sys:String x:Key="Toast.InvalidZoom">请输入 25–500 的缩放百分比</sys:String>
 
   <!-- Downloads -->
   <sys:String x:Key="Downloads.Title">下载任务</sys:String>
@@ -91,12 +126,12 @@
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">已恢复默认设置</sys:String>
-  <sys:String x:Key="Toast.RecordToggleMode">请按下“切换模式”快捷键（按 Esc 取消）</sys:String>
+  <sys:String x:Key="Toast.RecordToggleMode">请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">请按下“视频播放”快捷键（按 Esc 取消）</sys:String>
   <sys:String x:Key="Toast.RecordCanceled">已取消录制。</sys:String>
   <sys:String x:Key="Toast.HotkeyUsedByPlayback">该快捷键已被视频播放占用！</sys:String>
-  <sys:String x:Key="Toast.HotkeyUsedByMode">该快捷键已被切换模式占用！</sys:String>
-  <sys:String x:Key="Toast.ToggleModeSet">已将“切换模式”设为 {0}</sys:String>
+  <sys:String x:Key="Toast.HotkeyUsedByMode">该快捷键已被「浏览 ⇄ 浮窗」占用！</sys:String>
+  <sys:String x:Key="Toast.ToggleModeSet">已将「浏览 ⇄ 浮窗」设为 {0}</sys:String>
   <sys:String x:Key="Toast.PlaybackSet">已将“视频播放”设为 {0}</sys:String>
   <sys:String x:Key="Toast.ThemeDark">已切换到暗色主题</sys:String>
   <sys:String x:Key="Toast.ThemeLight">已切换到亮色主题</sys:String>
@@ -110,7 +145,7 @@
   <sys:String x:Key="Status.InstallingWebView2">正在安装 WebView2 Runtime...</sys:String>
   <sys:String x:Key="Status.BrowserReady">浏览器已就绪，登录态和缓存将自动保留。</sys:String>
   <sys:String x:Key="Status.InitFailed">初始化失败: {0}</sys:String>
-  <sys:String x:Key="Status.PageLoaded">页面已加载。按 K 控制视频播放/暂停，按 F8 切换固定/自由模式。</sys:String>
+  <sys:String x:Key="Status.PageLoaded">页面已加载。按 K 控制视频播放/暂停，按 F8 切换浏览/浮窗。</sys:String>
   <sys:String x:Key="Status.LoadFailed">加载失败: {0}</sys:String>
   <sys:String x:Key="Status.RecordStateFailed">记录页面状态失败: {0}</sys:String>
   <sys:String x:Key="Status.AddressUpdateFailed">地址更新失败: {0}</sys:String>

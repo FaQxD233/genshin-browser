@@ -12,9 +12,9 @@ public sealed class AppSettings
 
     public double WindowTop { get; set; } = 100;
 
-    public double WindowWidth { get; set; } = 648;
+    public double WindowWidth { get; set; } = 658;
 
-    public double WindowHeight { get; set; } = 400;
+    public double WindowHeight { get; set; } = 370;
 
     public double ControlWindowLeft { get; set; } = -1;
 
@@ -43,4 +43,9 @@ public sealed class AppSettings
     /// 界面语言：zh-CN / en-US。默认 zh-CN。
     /// </summary>
     public string Language { get; set; } = "zh-CN";
+
+    /// <summary>
+    /// 是否已展示过「首次进入浮窗」引导 toast。
+    /// </summary>
+    public bool HasSeenFloatingModeHint { get; set; }
 }

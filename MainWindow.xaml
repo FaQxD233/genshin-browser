@@ -7,32 +7,66 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="{DynamicResource App.Title}"
-        Width="648"
-        Height="400"
+        Width="658"
+        Height="370"
         MinWidth="640"
         MinHeight="360"
-        Background="Transparent"
+        Background="#01000000"
+        Cursor="Arrow"
         Foreground="{DynamicResource TextPrimary}"
         WindowStartupLocation="Manual"
         AllowsTransparency="True"
         WindowStyle="None">
-    <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome GlassFrameThickness="0" ResizeBorderThickness="6" CaptionHeight="0" UseAeroCaptionButtons="False" />
-    </shell:WindowChrome.WindowChrome>
-  <Grid Background="Transparent">
+  <!-- 近透明而非全 Transparent：分层窗 + Composition WebView 全透明时，
+       系统在视频/滚动条等区域偶发不绘制光标。Alpha=1 对肉眼不可见。 -->
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome GlassFrameThickness="0" ResizeBorderThickness="6" CaptionHeight="0" UseAeroCaptionButtons="False" />
+  </shell:WindowChrome.WindowChrome>
+  <!-- 行布局：标题栏显示时占一行；同时窗口 Height +30 向下延长，WebView 内容区高度不变 -->
+  <Grid Background="#01000000">
     <Grid.RowDefinitions>
-      <RowDefinition Height="30" />
-      <RowDefinition Height="*" />
+      <RowDefinition x:Name="TitleBarRow" Height="30"/>
+      <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
-    <Border x:Name="DragBar" Grid.Row="0" Background="{DynamicResource BackgroundTertiary}" Cursor="SizeAll"
-            BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1">
+
+    <!-- 顶部感应条：仅标题栏隐藏时启用（浮窗模式）；高度与标题栏一致 -->
+    <Border x:Name="TitleBarHitZone"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            Height="30"
+            VerticalAlignment="Top"
+            Background="#01000000"
+            Panel.ZIndex="2"
+            IsHitTestVisible="False"
+            MouseEnter="TitleBarArea_OnMouseEnter"/>
+
+    <Border x:Name="DragBar"
+            Grid.Row="0"
+            Height="30"
+            VerticalAlignment="Top"
+            Background="{DynamicResource BackgroundTertiary}"
+            BorderBrush="{DynamicResource BorderColor}"
+            BorderThickness="0,0,0,1"
+            Cursor="SizeAll"
+            ClipToBounds="True"
+            Panel.ZIndex="3"
+            MouseEnter="TitleBarArea_OnMouseEnter"
+            MouseLeave="TitleBarArea_OnMouseLeave">
       <Grid>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False">
-          <TextBlock Text="{DynamicResource App.Title}"
+          <TextBlock x:Name="TitleBarTitleText"
+                     Text="{DynamicResource App.Title}"
                      Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="SemiBold"
-                     VerticalAlignment="Center"/>
+                     VerticalAlignment="Center"
+                     TextTrimming="CharacterEllipsis"
+                     MaxWidth="360"/>
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Button x:Name="ModeToggleButton" Width="40" Height="30" Margin="0"
+                  Style="{StaticResource TitleBarButton}" Click="ModeToggleButton_OnClick"
+                  ToolTip="{DynamicResource Mode.ToggleTooltip}" AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
+            <TextBlock x:Name="ModeToggleIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE718;" FontSize="12" />
+          </Button>
           <Button x:Name="MinButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="MinButton_OnClick"
                   ToolTip="{DynamicResource TitleBar.Minimize}" AutomationProperties.Name="{DynamicResource TitleBar.Minimize}">
@@ -51,8 +85,51 @@
         </StackPanel>
       </Grid>
     </Border>
-    <Grid Grid.Row="1">
-      <wv2:WebView2CompositionControl x:Name="BrowserView" />
-    </Grid>
+
+    <!-- ForceCursor：避免网页 cursor:none / 透明分层窗在视频、滚动条上把光标藏掉 -->
+    <wv2:WebView2CompositionControl x:Name="BrowserView"
+                                    Grid.Row="1"
+                                    Cursor="Arrow"
+                                    ForceCursor="True" />
+
+    <!-- 模式切换描边闪：不拦截鼠标 -->
+    <Border x:Name="ModeFlashBorder"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            BorderThickness="2"
+            BorderBrush="Transparent"
+            Background="Transparent"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Panel.ZIndex="8"
+            CornerRadius="0"/>
+
+    <!-- 主窗微 toast：模式切换 / 首次浮窗提示；底/字跟主题走，避免亮色黑底黑字 -->
+    <Border x:Name="ModeToastBorder"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Margin="0,0,0,18"
+            Padding="14,8"
+            CornerRadius="8"
+            Background="{DynamicResource BackgroundTertiary}"
+            BorderBrush="{DynamicResource BorderColor}"
+            BorderThickness="1"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Panel.ZIndex="9"
+            Visibility="Collapsed">
+      <Border.RenderTransform>
+        <TranslateTransform Y="10"/>
+      </Border.RenderTransform>
+      <TextBlock x:Name="ModeToastText"
+                 FontSize="12"
+                 FontWeight="SemiBold"
+                 Foreground="{DynamicResource TextPrimary}"
+                 TextWrapping="Wrap"
+                 MaxWidth="420"
+                 TextAlignment="Center"/>
+    </Border>
   </Grid>
 </Window>

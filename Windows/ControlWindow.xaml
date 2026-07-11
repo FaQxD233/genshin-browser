@@ -94,41 +94,65 @@
       </EventTrigger>
     </Grid.Triggers>
 
-    <!-- Row 0: 顶栏 — 扁平；与下方区块间距 12 -->
+    <!-- Row 0: 顶栏 — 左侧 浏览|浮窗 分段，右侧工具 -->
     <Grid Grid.Row="0" Margin="0,0,0,12">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
-      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-        <Border Width="8" Height="8" CornerRadius="4" Margin="0,0,10,0" VerticalAlignment="Center">
-          <Border.Style>
-            <Style TargetType="Border">
-              <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding ModeToggleIcon}" Value="&#xE785;">
-                  <Setter Property="Background" Value="#F0A020"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Border.Style>
-        </Border>
-        <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}"
-                   Margin="0,0,8,0" FontSize="15" Foreground="{DynamicResource TextSecondary}"/>
-        <TextBlock FontSize="14" FontWeight="SemiBold"
-                   Foreground="{DynamicResource TextPrimary}"
-                   Text="{Binding ModeText}"
-                   VerticalAlignment="Center"/>
-      </StackPanel>
+      <Border HorizontalAlignment="Left"
+              Background="{DynamicResource BackgroundSecondary}"
+              BorderBrush="{DynamicResource BorderColor}"
+              BorderThickness="1"
+              CornerRadius="14"
+              Padding="3"
+              VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal">
+          <Button Command="{Binding SetBrowsingModeCommand}"
+                  Content="{DynamicResource Mode.Free}"
+                  ToolTip="{DynamicResource Mode.SwitchToBrowsingTooltip}"
+                  AutomationProperties.Name="{DynamicResource Mode.Free}"
+                  MinWidth="56" Height="26" Padding="10,0" FontSize="12" FontWeight="SemiBold"
+                  Cursor="Hand">
+            <Button.Style>
+              <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsBrowsingMode}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+          </Button>
+          <Button Command="{Binding SetFloatingModeCommand}"
+                  Content="{DynamicResource Mode.Fixed}"
+                  ToolTip="{DynamicResource Mode.SwitchToFloatingTooltip}"
+                  AutomationProperties.Name="{DynamicResource Mode.Fixed}"
+                  MinWidth="56" Height="26" Padding="10,0" FontSize="12" FontWeight="SemiBold"
+                  Cursor="Hand" Margin="2,0,0,0">
+            <Button.Style>
+              <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsFloatingMode}" Value="True">
+                    <Setter Property="Background" Value="#33F0A020"/>
+                    <Setter Property="Foreground" Value="#F0A020"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+          </Button>
+        </StackPanel>
+      </Border>
 
-      <!-- 四个工具按钮：统一 34x30、间距 6、图标居中 -->
       <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-        <Button Style="{StaticResource IconButton}" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
-                Command="{Binding ToggleModeCommand}" ToolTip="{DynamicResource Mode.ToggleTooltip}"
-                AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="{Binding ModeToggleIcon}" FontSize="13"/>
-        </Button>
         <Button Style="{StaticResource IconButton}" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
                 Command="{Binding TogglePlaybackCommand}" ToolTip="{DynamicResource Toolbar.PlaybackTooltip}"
                 AutomationProperties.Name="{DynamicResource Toolbar.PlaybackName}">
@@ -150,7 +174,6 @@
           </Button.Style>
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;" FontSize="13"/>
         </Button>
-        <!-- 下载：固定尺寸，图标居中；角标叠在右上角，避免把图标挤歪 -->
         <Button x:Name="DownloadsButton" Width="34" Height="30" Padding="0"
                 Command="{Binding ToggleDownloadsCommand}"
                 ToolTip="{DynamicResource Toolbar.DownloadsTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.DownloadsName}">
@@ -192,7 +215,7 @@
                 <BeginStoryboard>
                   <Storyboard>
                     <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
-                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="420" Duration="0:0:0.2"
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="340" Duration="0:0:0.2"
                                      EasingFunction="{StaticResource EaseOutCubic}"/>
                   </Storyboard>
                 </BeginStoryboard>
@@ -212,167 +235,274 @@
       </Border.Style>
       <Border Background="{DynamicResource BackgroundSecondary}"
               CornerRadius="6"
-              Padding="12"
+              Padding="10,8"
               Margin="0,0,0,12">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Text="{DynamicResource Settings.Title}" FontSize="12" FontWeight="SemiBold"
-                     Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,10"/>
-          <StackPanel Grid.Row="1">
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="44"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Opacity}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <Slider Grid.Column="1" Value="{Binding WindowOpacity, Mode=TwoWay}"
-                      Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True"
-                      VerticalAlignment="Center" Margin="8,0"/>
-              <TextBlock Grid.Column="2" Text="{Binding OpacityPercentageText}"
-                         HorizontalAlignment="Right" VerticalAlignment="Center"
-                         Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="Medium"/>
-            </Grid>
+          <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{DynamicResource Settings.Title}" FontSize="12" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Style="{StaticResource ModernButton}"
+                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Padding="8,3" Height="24" FontSize="11"
+                    Command="{Binding RestoreDefaultSettingsCommand}"
+                    ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,5,0" FontSize="11"/>
+                <TextBlock Text="{DynamicResource Settings.RestoreDefaults}" VerticalAlignment="Center" FontSize="11"/>
+              </StackPanel>
+            </Button>
+          </Grid>
+          <ScrollViewer Grid.Row="1"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled"
+                        MaxHeight="280"
+                        Padding="0,0,2,0">
+            <StackPanel>
+              <!-- 分组：窗口 -->
+              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Window}"/>
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="58"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="58"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.WindowSize}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <TextBox x:Name="BrowserWindowWidthBox" Grid.Column="1" Style="{StaticResource ModernTextBox}"
+                         Height="26" Padding="6,2" FontSize="11"
+                         VerticalContentAlignment="Center"
+                         ToolTip="{DynamicResource Settings.Width}"
+                         Text="{Binding BrowserWindowWidthText, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding ApplyWindowSizeCommand}"/>
+                  </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Grid.Column="2" Text="×" Foreground="{DynamicResource TextTertiary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="4,0"/>
+                <TextBox x:Name="BrowserWindowHeightBox" Grid.Column="3" Style="{StaticResource ModernTextBox}"
+                         Height="26" Padding="6,2" FontSize="11"
+                         VerticalContentAlignment="Center"
+                         ToolTip="{DynamicResource Settings.Height}"
+                         Text="{Binding BrowserWindowHeightText, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding ApplyWindowSizeCommand}"/>
+                  </TextBox.InputBindings>
+                </TextBox>
+                <Button Grid.Column="4" Style="{StaticResource ModernButton}" Padding="10,3" Margin="6,0,0,0"
+                        FontSize="11" Height="26"
+                        Command="{Binding ApplyWindowSizeCommand}"
+                        Content="{DynamicResource Settings.ApplySize}"
+                        ToolTip="{DynamicResource Settings.ApplySizeTooltip}"/>
+              </Grid>
 
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Zoom}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="30" Height="28" MinWidth="0" Padding="0"
-                      Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}" AutomationProperties.Name="{DynamicResource Settings.ZoomOutName}">
-                <TextBlock Text="−" FontSize="15" Foreground="{DynamicResource TextPrimary}"/>
-              </Button>
-              <TextBlock Grid.Column="2" Text="{Binding ZoomPercentageText}"
-                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                         Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="Medium"/>
-              <Button Grid.Column="3" Style="{StaticResource ModernButton}" Width="30" Height="28" MinWidth="0" Padding="0" Margin="4,0,0,0"
-                      Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}" AutomationProperties.Name="{DynamicResource Settings.ZoomInName}">
-                <TextBlock Text="+" FontSize="15" Foreground="{DynamicResource TextPrimary}"/>
-              </Button>
-              <Button Grid.Column="4" Style="{StaticResource ModernButton}" Padding="10,5" Margin="8,0,0,0"
-                      Command="{Binding ResetZoomCommand}" ToolTip="{DynamicResource Settings.ZoomResetTooltip}" FontSize="11" Content="{DynamicResource Settings.ZoomReset}"/>
-            </Grid>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.MoveCorner}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <!-- ↖↗↙↘ 方向一目了然，避免 MDL2 图标语义错位 -->
+                <Button Grid.Column="1" Style="{StaticResource ModernButton}" Height="26" Margin="0,0,4,0"
+                        Padding="0" FontSize="14" FontWeight="SemiBold"
+                        Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="TopLeft"
+                        Content="↖"
+                        ToolTip="{DynamicResource Settings.MoveTopLeftTooltip}"
+                        AutomationProperties.Name="{DynamicResource Settings.MoveTopLeft}"/>
+                <Button Grid.Column="2" Style="{StaticResource ModernButton}" Height="26" Margin="0,0,4,0"
+                        Padding="0" FontSize="14" FontWeight="SemiBold"
+                        Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="TopRight"
+                        Content="↗"
+                        ToolTip="{DynamicResource Settings.MoveTopRightTooltip}"
+                        AutomationProperties.Name="{DynamicResource Settings.MoveTopRight}"/>
+                <Button Grid.Column="3" Style="{StaticResource ModernButton}" Height="26" Margin="0,0,4,0"
+                        Padding="0" FontSize="14" FontWeight="SemiBold"
+                        Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="BottomLeft"
+                        Content="↙"
+                        ToolTip="{DynamicResource Settings.MoveBottomLeftTooltip}"
+                        AutomationProperties.Name="{DynamicResource Settings.MoveBottomLeft}"/>
+                <Button Grid.Column="4" Style="{StaticResource ModernButton}" Height="26"
+                        Padding="0" FontSize="14" FontWeight="SemiBold"
+                        Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="BottomRight"
+                        Content="↘"
+                        ToolTip="{DynamicResource Settings.MoveBottomRightTooltip}"
+                        AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
+              </Grid>
 
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <Button Grid.Column="1" Content="{Binding ToggleModeKeyText}"
-                      Command="{Binding RecordToggleModeKeyCommand}"
-                      Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                      Padding="8,6" FontSize="11"/>
-              <TextBlock Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <Button Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
-                      Command="{Binding RecordTogglePlaybackKeyCommand}"
-                      Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                      Padding="8,6" FontSize="11"/>
-            </Grid>
+              <!-- 分组：显示 -->
+              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Display}"/>
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="48"/>
+                  <ColumnDefinition Width="14"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Opacity}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Slider Grid.Column="1" Value="{Binding WindowOpacity, Mode=TwoWay}"
+                        Minimum="0.1" Maximum="1.0" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                        VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBox x:Name="OpacityPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
+                         Height="26" Padding="4,2" FontSize="11"
+                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                         Text="{Binding OpacityPercentText, UpdateSourceTrigger=PropertyChanged}"
+                         LostKeyboardFocus="OpacityPercentBox_OnLostKeyboardFocus">
+                  <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding ApplyOpacityCommand}"/>
+                  </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Grid.Column="3" Text="{DynamicResource Settings.PercentUnit}"
+                           FontSize="11" Foreground="{DynamicResource TextTertiary}"
+                           VerticalAlignment="Center" Margin="2,0,0,0"/>
+              </Grid>
 
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Theme}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
-                <Button MinWidth="64" Padding="12,6" Margin="0,0,8,0"
-                        Command="{Binding SetThemeDarkCommand}"
-                        Content="{DynamicResource Settings.ThemeDark}">
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="48"/>
+                  <ColumnDefinition Width="14"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Zoom}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
+                        Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}">
+                  <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                </Button>
+                <TextBox x:Name="ZoomPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
+                         Height="26" Padding="4,2" FontSize="11" Margin="4,0"
+                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                         Text="{Binding ZoomPercentText, UpdateSourceTrigger=PropertyChanged}"
+                         LostKeyboardFocus="ZoomPercentBox_OnLostKeyboardFocus">
+                  <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding ApplyZoomCommand}"/>
+                  </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Grid.Column="3" Text="{DynamicResource Settings.PercentUnit}"
+                           FontSize="11" Foreground="{DynamicResource TextTertiary}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="4" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
+                        Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}">
+                  <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                </Button>
+                <Button Grid.Column="5" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
+                        Height="26" FontSize="11"
+                        Command="{Binding ResetZoomCommand}" ToolTip="{DynamicResource Settings.ZoomResetTooltip}"
+                        Content="{DynamicResource Settings.ZoomReset}"/>
+              </Grid>
+
+              <!-- 分组：外观 + 快捷键 -->
+              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Appearance}"/>
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="12"/>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Theme}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Margin="0,0,4,0" Command="{Binding SetThemeDarkCommand}" Content="{DynamicResource Settings.ThemeDark}">
                   <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding IsThemeDark}" Value="True">
                           <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
                           <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
                         </DataTrigger>
                       </Style.Triggers>
                     </Style>
                   </Button.Style>
                 </Button>
-                <Button MinWidth="64" Padding="12,6"
-                        Command="{Binding SetThemeLightCommand}"
-                        Content="{DynamicResource Settings.ThemeLight}">
+                <Button Grid.Column="2" Command="{Binding SetThemeLightCommand}" Content="{DynamicResource Settings.ThemeLight}">
                   <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding IsThemeLight}" Value="True">
                           <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
                           <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
                         </DataTrigger>
                       </Style.Triggers>
                     </Style>
                   </Button.Style>
                 </Button>
-              </StackPanel>
-            </Grid>
-
-            <Grid Margin="0,0,0,12">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="76"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
-                         FontSize="12" VerticalAlignment="Center"/>
-              <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
-                <Button MinWidth="64" Padding="12,6" Margin="0,0,8,0"
-                        Command="{Binding SetLanguageZhCommand}"
-                        Content="{DynamicResource Settings.LanguageZh}">
+                <TextBlock Grid.Column="4" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Button Grid.Column="5" Margin="0,0,4,0" Command="{Binding SetLanguageZhCommand}" Content="{DynamicResource Settings.LanguageZh}">
                   <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding IsLanguageZh}" Value="True">
                           <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
                           <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
                         </DataTrigger>
                       </Style.Triggers>
                     </Style>
                   </Button.Style>
                 </Button>
-                <Button MinWidth="64" Padding="12,6"
-                        Command="{Binding SetLanguageEnCommand}"
-                        Content="{DynamicResource Settings.LanguageEn}">
+                <Button Grid.Column="6" Command="{Binding SetLanguageEnCommand}" Content="{DynamicResource Settings.LanguageEn}">
                   <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource ModernButton}">
+                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
                         <DataTrigger Binding="{Binding IsLanguageEn}" Value="True">
                           <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
                           <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
                         </DataTrigger>
                       </Style.Triggers>
                     </Style>
                   </Button.Style>
                 </Button>
-              </StackPanel>
-            </Grid>
+              </Grid>
 
-                        <Button Style="{StaticResource ModernButton}" HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Center" Padding="10,7"
-                    Command="{Binding RestoreDefaultSettingsCommand}"
-                    ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}">
-              <StackPanel Orientation="Horizontal">
-                <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,8,0" FontSize="13"/>
-                <TextBlock Text="{DynamicResource Settings.RestoreDefaults}" VerticalAlignment="Center"/>
-              </StackPanel>
-            </Button>
-          </StackPanel>
+              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}" Margin="0,4,0,6"/>
+              <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="8"/>
+                  <ColumnDefinition Width="52"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Content="{Binding ToggleModeKeyText}"
+                        Command="{Binding RecordToggleModeKeyCommand}"
+                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                        Height="26" Padding="6,2" FontSize="11"/>
+                <TextBlock Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center"/>
+                <Button Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
+                        Command="{Binding RecordTogglePlaybackKeyCommand}"
+                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                        Height="26" Padding="6,2" FontSize="11"/>
+              </Grid>
+            </StackPanel>
+          </ScrollViewer>
         </Grid>
       </Border>
     </Border>
@@ -451,37 +581,36 @@
       </Border>
     </Border>
 
-    <!-- Row 3: 地址栏 -->
+    <!-- Row 3: 地址栏 — 主次动作分层；进度条与地址框对齐 -->
     <Grid Grid.Row="3" Margin="0,0,0,12">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="Auto"/>
-      </Grid.RowDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
 
-      <Grid Grid.Row="0">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0" VerticalAlignment="Top">
+        <Button Style="{StaticResource IconButton}" Width="34" Height="32" Margin="0,0,6,0"
+                Command="{Binding GoBackCommand}"
+                IsEnabled="{Binding CanGoBack}"
+                ToolTip="{DynamicResource Nav.Back}" AutomationProperties.Name="{DynamicResource Nav.Back}">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72B;" FontSize="13"/>
+        </Button>
+        <Button Style="{StaticResource IconButton}" Width="34" Height="32"
+                Command="{Binding GoForwardCommand}"
+                IsEnabled="{Binding CanGoForward}"
+                ToolTip="{DynamicResource Nav.Forward}" AutomationProperties.Name="{DynamicResource Nav.Forward}">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72A;" FontSize="13"/>
+        </Button>
+      </StackPanel>
 
-        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,8,0">
-          <Button Style="{StaticResource IconButton}" Width="34" Height="32" Margin="0,0,6,0"
-                  Command="{Binding GoBackCommand}"
-                  IsEnabled="{Binding CanGoBack}"
-                  ToolTip="{DynamicResource Nav.Back}" AutomationProperties.Name="{DynamicResource Nav.Back}">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72B;" FontSize="13"/>
-          </Button>
-          <Button Style="{StaticResource IconButton}" Width="34" Height="32"
-                  Command="{Binding GoForwardCommand}"
-                  IsEnabled="{Binding CanGoForward}"
-                  ToolTip="{DynamicResource Nav.Forward}" AutomationProperties.Name="{DynamicResource Nav.Forward}">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72A;" FontSize="13"/>
-          </Button>
-        </StackPanel>
-
+      <Grid Grid.Column="1">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
         <TextBox x:Name="AddressBarTextBox"
-                 Grid.Column="1"
+                 Grid.Row="0"
                  Height="32"
                  VerticalContentAlignment="Center"
                  Style="{StaticResource ModernTextBox}"
@@ -494,40 +623,42 @@
                         CommandParameter="{Binding Text, ElementName=AddressBarTextBox}" />
           </TextBox.InputBindings>
         </TextBox>
-
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
-          <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
-                  Command="{Binding NavigateFromAddressBarCommand}"
-                  CommandParameter="{Binding Text, ElementName=AddressBarTextBox}"
-                  Content="{DynamicResource Nav.Open}"/>
-          <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
-                  Command="{Binding ReloadCommand}"
-                  Content="{DynamicResource Nav.Reload}"/>
-          <Button Style="{StaticResource IconButton}" Width="34" Height="32"
-                  Command="{Binding ToggleFavoriteCommand}"
-                  ToolTip="{Binding FavoriteToggleText}"
-                  AutomationProperties.Name="{Binding FavoriteToggleText}">
-            <TextBlock>
-              <TextBlock.Style>
-                <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
-                  <Setter Property="Text" Value="&#xE734;"/>
-                  <Setter Property="FontSize" Value="13"/>
-                  <Style.Triggers>
-                    <DataTrigger Binding="{Binding IsCurrentFavorite}" Value="True">
-                      <Setter Property="Text" Value="&#xE735;"/>
-                      <Setter Property="Foreground" Value="#FFC83D"/>
-                    </DataTrigger>
-                  </Style.Triggers>
-                </Style>
-              </TextBlock.Style>
-            </TextBlock>
-          </Button>
-        </StackPanel>
+        <ProgressBar Grid.Row="1" Margin="0,4,0,0" Height="2"
+                     Style="{StaticResource AddressBarProgressBar}"
+                     Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
       </Grid>
 
-      <ProgressBar Grid.Row="1" Margin="76,6,98,0" Height="2"
-                   Style="{StaticResource AddressBarProgressBar}"
-                   Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Top">
+        <Button Style="{StaticResource PrimaryButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
+                Command="{Binding NavigateFromAddressBarCommand}"
+                CommandParameter="{Binding Text, ElementName=AddressBarTextBox}"
+                Content="{DynamicResource Nav.Open}"
+                ToolTip="{DynamicResource Nav.Open}"/>
+        <Button Style="{StaticResource IconButton}" Width="34" Height="32" Margin="0,0,6,0" Padding="0"
+                Command="{Binding ReloadCommand}"
+                ToolTip="{DynamicResource Nav.Reload}" AutomationProperties.Name="{DynamicResource Nav.Reload}">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" FontSize="13"/>
+        </Button>
+        <Button Style="{StaticResource IconButton}" Width="34" Height="32" Padding="0"
+                Command="{Binding ToggleFavoriteCommand}"
+                ToolTip="{Binding FavoriteToggleText}"
+                AutomationProperties.Name="{Binding FavoriteToggleText}">
+          <TextBlock>
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
+                <Setter Property="Text" Value="&#xE734;"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsCurrentFavorite}" Value="True">
+                    <Setter Property="Text" Value="&#xE735;"/>
+                    <Setter Property="Foreground" Value="#FFC83D"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+        </Button>
+      </StackPanel>
     </Grid>
 
     <!-- 顶栏/地址栏 与 列表区 的分隔：一条细线，不用卡片 -->

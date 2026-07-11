@@ -61,6 +61,11 @@ public static class AppConfig
         public const int SettingsSaveDebounceMs = 500;
 
         /// <summary>
+        /// 主窗移动/缩放后，控制窗尺寸显示与跟随位置的 UI 防抖（毫秒）
+        /// </summary>
+        public const int WindowBoundsUiDebounceMs = 120;
+
+        /// <summary>
         /// 搜索框占位符文本
         /// </summary>
         public const string SearchPlaceholder = "搜索...";
