@@ -57,6 +57,11 @@ public partial class MainWindow : Window, IControlBrowser
     // 主窗移动/缩放时，控制窗尺寸显示与跟随位置的 UI 防抖
     private DispatcherTimer? _windowBoundsUiDebounceTimer;
 
+    // 下载进度通知节流：BytesReceivedChanged 高频触发，避免每字节都刷新角标
+    private long _lastDownloadProgressNotifyTicks;
+    private static readonly long DownloadProgressThrottleTicks =
+        System.Diagnostics.Stopwatch.Frequency / 10; // 100ms
+
     public event EventHandler? BrowserStateChanged;
     public event EventHandler? ZoomChanged;
     public event EventHandler? DownloadsChanged;
@@ -432,8 +437,8 @@ public partial class MainWindow : Window, IControlBrowser
                 var currentUrl = BrowserView.CoreWebView2.Source;
                 var title = BrowserView.CoreWebView2.DocumentTitle;
                 await _historyService.AddEntryAsync(currentUrl, string.IsNullOrWhiteSpace(title) ? currentUrl : title);
-                // SPA / 文档创建脚本漏绑时补一次
-                _ = BrowserView.CoreWebView2.ExecuteScriptAsync(PageBootstrapScript);
+                // PageBootstrapScript 已通过 AddScriptToExecuteOnDocumentCreatedAsync 注册，
+                // 会自动在每个新文档执行；脚本内部用 id 去重，无需在此重复执行。
             }
 
             if (e.IsSuccess)
@@ -658,7 +663,15 @@ public partial class MainWindow : Window, IControlBrowser
         {
             item.TotalBytes = (long)operation.TotalBytesToReceive;
         }
-        DownloadsChanged?.Invoke(this, EventArgs.Empty);
+
+        // 节流：距上次通知 >= 100ms 才触发 DownloadsChanged（角标/空态刷新）。
+        // StateChanged 会无条件触发，确保最终状态被通知。
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (now - _lastDownloadProgressNotifyTicks >= DownloadProgressThrottleTicks)
+        {
+            _lastDownloadProgressNotifyTicks = now;
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void OnDownloadStateChanged(DownloadItem item, CoreWebView2DownloadOperation operation)

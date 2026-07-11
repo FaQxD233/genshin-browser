@@ -250,11 +250,23 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (SetProperty(ref _searchText, NormalizeSearch(value)))
             {
-                FilterFavorites();
-                FilterHistory();
+                // 只过滤当前可见 Tab，另一 Tab 切换时再过滤
+                FilterCurrentTab();
                 OnPropertyChanged(nameof(FavoritesEmptyText));
                 OnPropertyChanged(nameof(HistoryEmptyText));
             }
+        }
+    }
+
+    private void FilterCurrentTab()
+    {
+        if (_isFavoritesTab)
+        {
+            FilterFavorites();
+        }
+        else
+        {
+            FilterHistory();
         }
     }
 
@@ -269,6 +281,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
             if (SetProperty(ref _isFavoritesTab, value))
             {
                 OnPropertyChanged(nameof(IsHistoryTab));
+                // 切换 Tab 时重新过滤新显示的列表（搜索文本可能已变）
+                FilterCurrentTab();
             }
         }
     }
