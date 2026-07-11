@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: true
+      release_notes:
+        description: 'Release 说明（本次更新内容，支持多行；留空则只显示默认模板）'
+        required: false
+        type: string
+        default: ''
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # 强制使用 Node.js 24
@@ -128,11 +133,7 @@ jobs:
 
           ### 🔧 本次更新
 
-          - 控制窗口引入轻量 MVVM，降低界面与浏览器逻辑耦合
-          - 新增 Toast 非阻塞提示和本地日志文件（`%LocalAppData%\GenshinBrowser\logs\`）
-          - 替换 emoji 图标为稳定的 Segoe MDL2 图标字形
-          - 新增按钮、Toast、控制窗口显示等 WPF 过渡动画
-          - 修复列表同 URL 信息刷新、右键菜单命中项、控制窗口防抖保存重复订阅问题
+          ${{ github.event.inputs.release_notes }}
 
           ---
 
