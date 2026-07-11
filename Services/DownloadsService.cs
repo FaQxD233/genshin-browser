@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
@@ -36,6 +37,24 @@ public sealed class DownloadsService
         }
 
         Downloads.Insert(0, item);
+        TrimFinishedExcess();
+    }
+
+    /// <summary>
+    /// 下载列表超过上限时，从尾部移除最旧的已完成/取消/中断项，
+    /// 避免长期累积占用内存。进行中的任务不会被自动移除。
+    /// </summary>
+    private void TrimFinishedExcess()
+    {
+        var max = AppConfig.Data.MaxDownloadItems;
+        for (var i = Downloads.Count - 1; i >= 0 && Downloads.Count > max; i--)
+        {
+            var state = Downloads[i].State;
+            if (state is DownloadState.Completed or DownloadState.Canceled or DownloadState.Interrupted)
+            {
+                Downloads.RemoveAt(i);
+            }
+        }
     }
 
     public bool TryCancel(DownloadItem item)

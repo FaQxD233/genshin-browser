@@ -8,7 +8,6 @@ namespace GenshinBrowser.Services;
 public sealed class HistoryService : IDisposable
 {
     private readonly string _historyPath;
-    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<HistoryEntry> _entries = new();
@@ -105,7 +104,7 @@ public sealed class HistoryService : IDisposable
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await JsonFileWriter.WriteAtomicAsync(_historyPath, snapshot, _jsonOptions).ConfigureAwait(false);
+            await JsonFileWriter.WriteAtomicAsync(_historyPath, snapshot, JsonFileWriter.SharedOptions).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

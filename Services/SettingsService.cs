@@ -7,7 +7,6 @@ namespace GenshinBrowser.Services;
 public sealed class SettingsService : IDisposable
 {
     private readonly string _settingsPath;
-    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private readonly SemaphoreSlim _saveGate = new(1, 1);
 
     public SettingsService(string settingsPath)
@@ -29,7 +28,7 @@ public sealed class SettingsService : IDisposable
         try
         {
             var json = File.ReadAllText(_settingsPath);
-            return JsonSerializer.Deserialize<AppSettings>(json, _jsonOptions) ?? new AppSettings();
+            return JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions) ?? new AppSettings();
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -48,7 +47,7 @@ public sealed class SettingsService : IDisposable
         try
         {
             await using var stream = File.OpenRead(_settingsPath);
-            return await JsonSerializer.DeserializeAsync<AppSettings>(stream, _jsonOptions).ConfigureAwait(false) ?? new AppSettings();
+            return await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonFileWriter.SharedOptions).ConfigureAwait(false) ?? new AppSettings();
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -85,7 +84,7 @@ public sealed class SettingsService : IDisposable
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await JsonFileWriter.WriteAtomicAsync(_settingsPath, snapshot, _jsonOptions).ConfigureAwait(false);
+            await JsonFileWriter.WriteAtomicAsync(_settingsPath, snapshot, JsonFileWriter.SharedOptions).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

@@ -15,6 +15,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private readonly DispatcherTimer _toastTimer;
     private readonly List<ControlItemViewModel> _allHistoryItems = new();
     private readonly List<ControlItemViewModel> _allFavoriteItems = new();
+    // Sync 方法复用的临时集合，避免每次刷新都 new List/Dictionary（UI 线程独占，无需加锁）
+    private readonly List<ControlItemViewModel> _syncScratchList = new();
+    private readonly Dictionary<string, ControlItemViewModel> _syncScratchDict = new(StringComparer.OrdinalIgnoreCase);
     private string _modeText = LocalizationService.Get("Mode.Free", "浏览");
     private string _modeToggleIcon = "\uE718";
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
@@ -613,29 +616,37 @@ public sealed class ControlWindowViewModel : ViewModelBase
             item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
-    private static void SyncObservableCollection(ObservableCollection<ControlItemViewModel> target, IReadOnlyList<ControlItemViewModel> source)
+    private void SyncObservableCollection(ObservableCollection<ControlItemViewModel> target, IReadOnlyList<ControlItemViewModel> source)
     {
-        var sourceUrls = source
-            .Select(item => item.Url)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // 复用 scratch dict 作为 sourceUrls 集合
+        _syncScratchDict.Clear();
+        for (var i = 0; i < source.Count; i++)
+        {
+            _syncScratchDict[source[i].Url] = source[i];
+        }
 
         for (var targetIndex = target.Count - 1; targetIndex >= 0; targetIndex--)
         {
-            if (!sourceUrls.Contains(target[targetIndex].Url))
+            if (!_syncScratchDict.ContainsKey(target[targetIndex].Url))
             {
                 target.RemoveAt(targetIndex);
             }
         }
 
-        var targetByUrl = target.ToDictionary(item => item.Url, StringComparer.OrdinalIgnoreCase);
+        // 复用 scratch dict 作为 targetByUrl
+        _syncScratchDict.Clear();
+        for (var i = 0; i < target.Count; i++)
+        {
+            _syncScratchDict[target[i].Url] = target[i];
+        }
 
         for (var sourceIndex = 0; sourceIndex < source.Count; sourceIndex++)
         {
             var sourceItem = source[sourceIndex];
-            if (!targetByUrl.TryGetValue(sourceItem.Url, out var existingItem))
+            if (!_syncScratchDict.TryGetValue(sourceItem.Url, out var existingItem))
             {
                 target.Insert(sourceIndex, sourceItem);
-                targetByUrl[sourceItem.Url] = sourceItem;
+                _syncScratchDict[sourceItem.Url] = sourceItem;
                 continue;
             }
 
@@ -648,28 +659,34 @@ public sealed class ControlWindowViewModel : ViewModelBase
         }
     }
 
-    private static void SyncSourceItems<T>(List<ControlItemViewModel> target, IReadOnlyList<T> source, Func<T, ControlItemViewModel> create, Action<ControlItemViewModel, T> update)
+    private void SyncSourceItems<T>(List<ControlItemViewModel> target, IReadOnlyList<T> source, Func<T, ControlItemViewModel> create, Action<ControlItemViewModel, T> update)
         where T : class
     {
-        var targetByUrl = target.ToDictionary(item => item.Url, StringComparer.OrdinalIgnoreCase);
-        var nextItems = new List<ControlItemViewModel>(source.Count);
+        _syncScratchDict.Clear();
+        for (var i = 0; i < target.Count; i++)
+        {
+            _syncScratchDict[target[i].Url] = target[i];
+        }
+
+        _syncScratchList.Clear();
+        _syncScratchList.EnsureCapacity(source.Count);
 
         for (var sourceIndex = 0; sourceIndex < source.Count; sourceIndex++)
         {
             var sourceItem = source[sourceIndex];
             var sourceUrl = GetUrl(sourceItem);
-            if (!targetByUrl.TryGetValue(sourceUrl, out var existingItem))
+            if (!_syncScratchDict.TryGetValue(sourceUrl, out var existingItem))
             {
-                nextItems.Add(create(sourceItem));
+                _syncScratchList.Add(create(sourceItem));
                 continue;
             }
 
             update(existingItem, sourceItem);
-            nextItems.Add(existingItem);
+            _syncScratchList.Add(existingItem);
         }
 
         target.Clear();
-        target.AddRange(nextItems);
+        target.AddRange(_syncScratchList);
     }
 
     private static string GetUrl<T>(T item) where T : class

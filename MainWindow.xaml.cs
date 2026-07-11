@@ -1253,9 +1253,11 @@ public partial class MainWindow : Window, IControlBrowser
             tt.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
         }
 
-        _modeToastTimer ??= new DispatcherTimer();
-        _modeToastTimer.Tick -= ModeToastTimer_OnTick;
-        _modeToastTimer.Tick += ModeToastTimer_OnTick;
+        if (_modeToastTimer is null)
+        {
+            _modeToastTimer = new DispatcherTimer();
+            _modeToastTimer.Tick += ModeToastTimer_OnTick;
+        }
         _modeToastTimer.Interval = duration;
         _modeToastTimer.Stop();
         _modeToastTimer.Start();
@@ -1468,12 +1470,14 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        _windowBoundsUiDebounceTimer ??= new DispatcherTimer
+        if (_windowBoundsUiDebounceTimer is null)
         {
-            Interval = TimeSpan.FromMilliseconds(AppConfig.Ui.WindowBoundsUiDebounceMs),
-        };
-        _windowBoundsUiDebounceTimer.Tick -= WindowBoundsUiDebounceTimer_OnTick;
-        _windowBoundsUiDebounceTimer.Tick += WindowBoundsUiDebounceTimer_OnTick;
+            _windowBoundsUiDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(AppConfig.Ui.WindowBoundsUiDebounceMs),
+            };
+            _windowBoundsUiDebounceTimer.Tick += WindowBoundsUiDebounceTimer_OnTick;
+        }
         _windowBoundsUiDebounceTimer.Stop();
         _windowBoundsUiDebounceTimer.Start();
     }
@@ -1836,12 +1840,14 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 离开后 1 秒再收回：窗口高度减回，内容区尺寸不变
-        _titleBarHideTimer ??= new DispatcherTimer
+        if (_titleBarHideTimer is null)
         {
-            Interval = TimeSpan.FromSeconds(1),
-        };
-        _titleBarHideTimer.Tick -= TitleBarHideTimer_OnTick;
-        _titleBarHideTimer.Tick += TitleBarHideTimer_OnTick;
+            _titleBarHideTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1),
+            };
+            _titleBarHideTimer.Tick += TitleBarHideTimer_OnTick;
+        }
         _titleBarHideTimer.Stop();
         _titleBarHideTimer.Start();
     }

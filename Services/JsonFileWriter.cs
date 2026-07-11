@@ -5,6 +5,12 @@ namespace GenshinBrowser.Services;
 
 internal static class JsonFileWriter
 {
+    /// <summary>
+    /// 共享的 JSON 序列化选项，避免每个服务各持一份实例。
+    /// JsonSerializerOptions 用于序列化时是线程安全的。
+    /// </summary>
+    public static readonly JsonSerializerOptions SharedOptions = new() { WriteIndented = true };
+
     public static async Task WriteAtomicAsync<T>(string path, T value, JsonSerializerOptions options)
     {
         var directory = Path.GetDirectoryName(path);

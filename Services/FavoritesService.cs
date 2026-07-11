@@ -8,7 +8,6 @@ namespace GenshinBrowser.Services;
 public sealed class FavoritesService : IDisposable
 {
     private readonly string _favoritesPath;
-    private readonly JsonSerializerOptions _jsonOptions = new() { WriteIndented = true };
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<FavoriteEntry> _entries = new();
@@ -101,7 +100,7 @@ public sealed class FavoritesService : IDisposable
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, _jsonOptions).ConfigureAwait(false);
+            await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, JsonFileWriter.SharedOptions).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

@@ -28,6 +28,12 @@ public static class AppConfig
         /// 最大收藏条数
         /// </summary>
         public const int MaxFavoriteEntries = 100;
+
+        /// <summary>
+        /// 下载列表最大条数。超过此数量时自动移除最旧的已完成项，
+        /// 避免长期累积占用内存（进行中的任务不会被自动移除）。
+        /// </summary>
+        public const int MaxDownloadItems = 50;
     }
 
     /// <summary>
