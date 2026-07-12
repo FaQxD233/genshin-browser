@@ -44,6 +44,8 @@
   <sys:String x:Key="Settings.Playback">Play / pause</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, service workers, autofill, and saved passwords (login cookies, browsing history, download history, and favorites are preserved)</sys:String>
   <sys:String x:Key="Settings.Theme">Theme</sys:String>
   <sys:String x:Key="Settings.ThemeDark">Dark</sys:String>
   <sys:String x:Key="Settings.ThemeLight">Light</sys:String>
@@ -129,6 +131,7 @@
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
+  <sys:String x:Key="Toast.BrowsingDataCleared">Browsing data cleared</sys:String>
   <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “Browsing ⇄ Floating” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">Press a hotkey for “video playback” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordCanceled">Recording canceled.</sys:String>
@@ -180,7 +183,10 @@
   <sys:String x:Key="Status.StartupFailed">Startup failed:\n{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">Automatic WebView2 Runtime install failed. Please install it manually.</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">Please download and install: https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
-  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB. You can clean it manually at %LOCALAPPDATA%\GenshinBrowser\WebViewProfile.</sys:String>
+  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB, auto-cleaning...</sys:String>
+  <sys:String x:Key="Status.ClearingBrowsingData">Clearing browsing data...</sys:String>
+  <sys:String x:Key="Status.BrowsingDataCleared">Browsing data cleared.</sys:String>
+  <sys:String x:Key="Status.ClearBrowsingDataFailed">Failed to clear browsing data: {0}</sys:String>
   <sys:String x:Key="Status.UnhandledException">Unhandled exception:\n{0}: {1}\n\nDetails were written to the log.</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser Error</sys:String>
 </ResourceDictionary>

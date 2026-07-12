@@ -18,6 +18,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
     // Sync 方法复用的临时集合，避免每次刷新都 new List/Dictionary（UI 线程独占，无需加锁）
     private readonly List<ControlItemViewModel> _syncScratchList = new();
     private readonly Dictionary<string, ControlItemViewModel> _syncScratchDict = new(StringComparer.OrdinalIgnoreCase);
+    // 单次扫描用：源端 URL 集合，配合 _syncScratchDict 一次完成 target 清理 + source 插入
+    private readonly HashSet<string> _syncScratchSet = new(StringComparer.OrdinalIgnoreCase);
+    // 搜索过滤复用缓冲：FilterItems 返回的 IReadOnlyList 在 SyncObservableCollection 内同步期间被消费，
+    // 同步返回后即可复用。避免每次搜索 Where(...).ToList() 分配新 List。
+    private readonly List<ControlItemViewModel> _filterBuffer = new();
     private string _modeText = LocalizationService.Get("Mode.Free", "浏览");
     private string _modeToggleIcon = "\uE718";
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
@@ -28,6 +33,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private string _searchText = string.Empty;
     private bool _isFavoritesTab = true;
     private string _toastMessage = string.Empty;
+    private StatusLevel _toastSeverity = StatusLevel.Info;
     private bool _isToastVisible;
     private Visibility _toastVisibility = Visibility.Collapsed;
     private bool _canGoBack;
@@ -63,6 +69,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         OpacityOutCommand = new RelayCommand(() => WindowOpacity = Math.Clamp(WindowOpacity - 0.05, 0.1, 1.0));
         ResetOpacityCommand = new RelayCommand(() => WindowOpacity = 1.0);
         RestoreDefaultSettingsCommand = new RelayCommand(RestoreDefaults);
+        ClearBrowsingDataCommand = new AsyncRelayCommand(ClearBrowsingDataAsync);
         CancelDownloadCommand = new RelayCommand(parameter => CancelDownload(parameter));
         OpenDownloadFileCommand = new RelayCommand(parameter => OpenDownloadFile(parameter));
         OpenDownloadFolderCommand = new RelayCommand(parameter => OpenDownloadFolder(parameter));
@@ -87,6 +94,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         SyncWindowSizeTexts();
         SyncOpacityZoomTexts();
         RefreshThemeLanguageFlags();
+        // 首次全量对齐
+        RefreshFromBrowser(BrowserStateChangeKind.All);
     }
 
     public ObservableCollection<ControlItemViewModel> HistoryItems { get; } = new();
@@ -140,6 +149,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand ResetOpacityCommand { get; }
 
     public RelayCommand RestoreDefaultSettingsCommand { get; }
+
+    public AsyncRelayCommand ClearBrowsingDataCommand { get; }
 
     public RelayCommand CancelDownloadCommand { get; }
 
@@ -319,6 +330,16 @@ public sealed class ControlWindowViewModel : ViewModelBase
         private set => SetProperty(ref _toastMessage, value);
     }
 
+    /// <summary>
+    /// 当前 Toast 的严重度（Info/Success/Warning/Error）。
+    /// XAML 端用 DataTrigger 据此切换图标与强调色。
+    /// </summary>
+    public StatusLevel ToastSeverity
+    {
+        get => _toastSeverity;
+        private set => SetProperty(ref _toastSeverity, value);
+    }
+
     public bool IsToastVisible
     {
         get => _isToastVisible;
@@ -401,6 +422,18 @@ public sealed class ControlWindowViewModel : ViewModelBase
     /// <summary>是否显示下载角标（有进行中任务时）。</summary>
     public bool HasDownloadsBadge => !string.IsNullOrEmpty(DownloadsBadgeText);
 
+    /// <summary>
+    /// 是否存在中断的下载任务（用于角标变红警示，提醒用户重试或处理）。
+    /// 仅在角标可见（仍有进行中任务）时联动显示。
+    /// </summary>
+    public bool HasInterruptedDownloads
+    {
+        get => _hasInterruptedDownloads;
+        private set => SetProperty(ref _hasInterruptedDownloads, value);
+    }
+
+    private bool _hasInterruptedDownloads;
+
     /// <summary>下载列表是否为空（用于空状态展示）。</summary>
     public bool HasNoDownloads => Downloads.Count == 0;
 
@@ -411,51 +444,96 @@ public sealed class ControlWindowViewModel : ViewModelBase
         "Downloads.Empty",
         "暂无下载任务\n文件下载会出现在这里");
 
-    public void RefreshFromBrowser()
+    /// <summary>
+    /// 全量刷新（兼容旧调用点，如恢复默认设置）。
+    /// </summary>
+    public void RefreshFromBrowser() => RefreshFromBrowser(BrowserStateChangeKind.All);
+
+    /// <summary>
+    /// 按 <paramref name="kind"/> 增量刷新控制窗状态，避免状态文案变化时同步历史/收藏列表。
+    /// </summary>
+    public void RefreshFromBrowser(BrowserStateChangeKind kind)
     {
-        var previousStatus = StatusMessage;
-
-        ModeText = _browser.CurrentMode == WindowMode.Fixed
-            ? LocalizationService.Get("Mode.Fixed", "浮窗")
-            : LocalizationService.Get("Mode.Free", "浏览");
-        ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "\uE785" : "\uE718";
-        OnPropertyChanged(nameof(IsBrowsingMode));
-        OnPropertyChanged(nameof(IsFloatingMode));
-        NotifyHotkeyDependentTexts();
-        StatusMessage = _browser.StatusMessage;
-        CurrentAddress = _browser.CurrentAddress;
-
-        CanGoBack = _browser.CanGoBack;
-        CanGoForward = _browser.CanGoForward;
-        IsNavigating = _browser.IsNavigating;
-
-        IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
-        FavoriteToggleText = IsCurrentFavorite
-            ? LocalizationService.Get("Fav.Added", "已收藏")
-            : LocalizationService.Get("Fav.Add", "收藏当前页");
-        FavoriteToggleIcon = IsCurrentFavorite ? "\uE734" : "\uE735";
-
-        SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
-        FilterFavorites();
-
-        SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
-        FilterHistory();
-
-        if (!string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal) && ShouldToast(_browser.LastStatusLevel))
+        if (kind == BrowserStateChangeKind.None)
         {
-            ShowToast(StatusMessage);
+            return;
         }
 
-        GoBackCommand.RaiseCanExecuteChanged();
-        GoForwardCommand.RaiseCanExecuteChanged();
-        OnPropertyChanged(nameof(ZoomPercentageText));
-        OnPropertyChanged(nameof(OpacityPercentageText));
-        OnPropertyChanged(nameof(WindowOpacity));
-        // 仅在输入框为空时回填，避免刷新覆盖用户正在编辑的数字。
-        // 窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
-        if (string.IsNullOrWhiteSpace(_opacityPercentText) || string.IsNullOrWhiteSpace(_zoomPercentText))
+        var previousStatus = StatusMessage;
+
+        if (kind.HasFlag(BrowserStateChangeKind.Mode))
         {
-            SyncOpacityZoomTexts();
+            ModeText = _browser.CurrentMode == WindowMode.Fixed
+                ? LocalizationService.Get("Mode.Fixed", "浮窗")
+                : LocalizationService.Get("Mode.Free", "浏览");
+            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
+            OnPropertyChanged(nameof(IsBrowsingMode));
+            OnPropertyChanged(nameof(IsFloatingMode));
+            NotifyHotkeyDependentTexts();
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.Status))
+        {
+            StatusMessage = _browser.StatusMessage;
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.Navigation))
+        {
+            CurrentAddress = _browser.CurrentAddress;
+            CanGoBack = _browser.CanGoBack;
+            CanGoForward = _browser.CanGoForward;
+            IsNavigating = _browser.IsNavigating;
+
+            IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
+            FavoriteToggleText = IsCurrentFavorite
+                ? LocalizationService.Get("Fav.Added", "已收藏")
+                : LocalizationService.Get("Fav.Add", "收藏当前页");
+            FavoriteToggleIcon = IsCurrentFavorite ? "" : "";
+
+            GoBackCommand.RaiseCanExecuteChanged();
+            GoForwardCommand.RaiseCanExecuteChanged();
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.Favorites))
+        {
+            SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+            FilterFavorites();
+
+            // 收藏列表变更时同步当前页星标（即使未带 Navigation）
+            if (!kind.HasFlag(BrowserStateChangeKind.Navigation))
+            {
+                IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
+                FavoriteToggleText = IsCurrentFavorite
+                    ? LocalizationService.Get("Fav.Added", "已收藏")
+                    : LocalizationService.Get("Fav.Add", "收藏当前页");
+                FavoriteToggleIcon = IsCurrentFavorite ? "" : "";
+            }
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.History))
+        {
+            SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+            FilterHistory();
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.Status)
+            && !string.Equals(previousStatus, StatusMessage, StringComparison.Ordinal)
+            && ShouldToast(_browser.LastStatusLevel))
+        {
+            ShowToast(StatusMessage, _browser.LastStatusLevel);
+        }
+
+        if (kind.HasFlag(BrowserStateChangeKind.Appearance))
+        {
+            OnPropertyChanged(nameof(ZoomPercentageText));
+            OnPropertyChanged(nameof(OpacityPercentageText));
+            OnPropertyChanged(nameof(WindowOpacity));
+            // 仅在输入框为空时回填，避免刷新覆盖用户正在编辑的数字。
+            // 窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
+            if (string.IsNullOrWhiteSpace(_opacityPercentText) || string.IsNullOrWhiteSpace(_zoomPercentText))
+            {
+                SyncOpacityZoomTexts();
+            }
         }
     }
 
@@ -518,7 +596,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         }
     }
 
-    private void Browser_OnBrowserStateChanged(object? sender, EventArgs e) => RefreshFromBrowser();
+    private void Browser_OnBrowserStateChanged(object? sender, BrowserStateChangedEventArgs e)
+        => RefreshFromBrowser(e.Kind);
 
     private void Browser_OnZoomChanged(object? sender, EventArgs e)
     {
@@ -555,8 +634,16 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private void UpdateDownloadsBadge()
     {
-        var inProgress = _browser.Downloads.Count(item => item.State == DownloadState.InProgress);
+        var inProgress = 0;
+        var interrupted = 0;
+        foreach (var item in _browser.Downloads)
+        {
+            if (item.State == DownloadState.InProgress) inProgress++;
+            else if (item.State == DownloadState.Interrupted) interrupted++;
+        }
         DownloadsBadgeText = inProgress > 0 ? inProgress.ToString() : string.Empty;
+        // 仅有进行中任务时才显示角标，因此中断状态也只在此时联动；无进行中时清掉红色
+        HasInterruptedDownloads = inProgress > 0 && interrupted > 0;
         OnPropertyChanged(nameof(HasDownloadsBadge));
         OnPropertyChanged(nameof(HasNoDownloads));
     }
@@ -567,7 +654,25 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RefreshFromBrowser();
         SyncOpacityZoomTexts();
         SyncWindowSizeTexts();
-        ShowToast(LocalizationService.Get("Toast.RestoredDefaults", "已恢复默认设置"));
+        ShowToast(LocalizationService.Get("Toast.RestoredDefaults", "已恢复默认设置"), StatusLevel.Success);
+    }
+
+    private async Task ClearBrowsingDataAsync()
+    {
+        // 不立刻禁用按钮：AsyncRelayCommand 默认支持并发保护；这里给个直观反馈
+        StatusMessage = LocalizationService.Get("Status.ClearingBrowsingData", "正在清理浏览数据...");
+        try
+        {
+            await _browser.ClearBrowsingDataAsync().ConfigureAwait(true);
+            StatusMessage = LocalizationService.Get("Status.BrowsingDataCleared", "已清理浏览数据。");
+            ShowToast(LocalizationService.Get("Toast.BrowsingDataCleared", "已清理浏览数据"), StatusLevel.Success);
+        }
+        catch (Exception ex)
+        {
+            var msg = LocalizationService.Format("Status.ClearBrowsingDataFailed", ex.Message);
+            StatusMessage = msg;
+            ShowToast(msg, StatusLevel.Error);
+        }
     }
 
     private void CancelDownload(object? parameter)
@@ -604,41 +709,63 @@ public sealed class ControlWindowViewModel : ViewModelBase
         SyncObservableCollection(HistoryItems, FilterItems(_allHistoryItems, SearchText));
     }
 
-    private static IReadOnlyList<ControlItemViewModel> FilterItems(IReadOnlyList<ControlItemViewModel> items, string searchText)
+    private IReadOnlyList<ControlItemViewModel> FilterItems(IReadOnlyList<ControlItemViewModel> items, string searchText)
     {
         if (string.IsNullOrWhiteSpace(searchText))
         {
+            // 无搜索条件：直接返回原集合，跳过 _filterBuffer 复制
             return items;
         }
 
-        return items.Where(item =>
-            item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-            item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase)).ToList();
+        // 复用 _filterBuffer，避免每次按键都 Where(...).ToList() 分配新 List。
+        // 由于 FilterFavorites/FilterHistory 在 UI 线程顺序调用、SyncObservableCollection 同步消费返回值，
+        // 两次调用之间 _filterBuffer 会被 Clear+重新填充，不存在交叉引用问题。
+        _filterBuffer.Clear();
+        _filterBuffer.EnsureCapacity(items.Count);
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            {
+                _filterBuffer.Add(item);
+            }
+        }
+        return _filterBuffer;
     }
 
     private void SyncObservableCollection(ObservableCollection<ControlItemViewModel> target, IReadOnlyList<ControlItemViewModel> source)
     {
-        // 复用 scratch dict 作为 sourceUrls 集合
-        _syncScratchDict.Clear();
+        // 单次扫描策略：
+        //   1) _syncScratchSet ← source URLs（仅用于判断 target 是否需要删除，集合够用）
+        //   2) 倒序扫 target：不在 set 的直接 Remove，仍在的同步登记进 _syncScratchDict（url → 现存 item），
+        //      这样删完一遍就把 dict 建好，省掉原本第二轮 target 重建 dict 的开销
+        //   3) 正序扫 source：dict 命中则 UpdateFrom + 必要时 Reorder，未命中则 Insert +登记进 dict
+        _syncScratchSet.EnsureCapacity(source.Count);
+        _syncScratchSet.Clear();
         for (var i = 0; i < source.Count; i++)
         {
-            _syncScratchDict[source[i].Url] = source[i];
+            _syncScratchSet.Add(source[i].Url);
         }
 
+        _syncScratchDict.EnsureCapacity(Math.Max(target.Count, source.Count));
+        _syncScratchDict.Clear();
         for (var targetIndex = target.Count - 1; targetIndex >= 0; targetIndex--)
         {
-            if (!_syncScratchDict.ContainsKey(target[targetIndex].Url))
+            var targetItem = target[targetIndex];
+            if (_syncScratchSet.Contains(targetItem.Url))
+            {
+                // 保留：同时登记到 dict，供后续 source 扫描做 O(1) 查找
+                _syncScratchDict[targetItem.Url] = targetItem;
+            }
+            else
             {
                 target.RemoveAt(targetIndex);
             }
         }
 
-        // 复用 scratch dict 作为 targetByUrl
-        _syncScratchDict.Clear();
-        for (var i = 0; i < target.Count; i++)
-        {
-            _syncScratchDict[target[i].Url] = target[i];
-        }
+        // _syncScratchSet 已完成使命，立刻清掉释放内部 bucket 引用（容量保留）
+        _syncScratchSet.Clear();
 
         for (var sourceIndex = 0; sourceIndex < source.Count; sourceIndex++)
         {
@@ -712,9 +839,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
         return level is StatusLevel.Success or StatusLevel.Warning or StatusLevel.Error;
     }
 
-    private void ShowToast(string message)
+    private void ShowToast(string message) => ShowToast(message, StatusLevel.Info);
+
+    private void ShowToast(string message, StatusLevel severity)
     {
         ToastMessage = message;
+        ToastSeverity = severity;
         IsToastVisible = true;
         ToastVisibility = Visibility.Visible;
         _toastTimer.Stop();
@@ -789,14 +919,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
             !TryParseSize(_browserWindowHeightText, out var height))
         {
             SyncWindowSizeTexts();
-            ShowToast(LocalizationService.Get("Toast.InvalidWindowSize", "请输入有效的窗口宽高（像素）"));
+            ShowToast(LocalizationService.Get("Toast.InvalidWindowSize", "请输入有效的窗口宽高（像素）"), StatusLevel.Warning);
             return;
         }
 
         _browser.BrowserWindowWidth = width;
         _browser.BrowserWindowHeight = height;
         SyncWindowSizeTexts();
-        ShowToast(LocalizationService.Format("Toast.WindowSizeApplied", Math.Round(width), Math.Round(height)));
+        ShowToast(LocalizationService.Format("Toast.WindowSizeApplied", Math.Round(width), Math.Round(height)), StatusLevel.Success);
     }
 
     private static bool TryParseSize(string? text, out double value)
@@ -847,7 +977,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         if (!TryParsePercent(_opacityPercentText, out var percent) || percent < 10 || percent > 100)
         {
             SyncOpacityZoomTexts();
-            ShowToast(LocalizationService.Get("Toast.InvalidOpacity", "请输入 10–100 的不透明度"));
+            ShowToast(LocalizationService.Get("Toast.InvalidOpacity", "请输入 10–100 的不透明度"), StatusLevel.Warning);
             return;
         }
 
@@ -860,7 +990,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         if (!TryParsePercent(_zoomPercentText, out var percent) || percent < 25 || percent > 500)
         {
             SyncOpacityZoomTexts();
-            ShowToast(LocalizationService.Get("Toast.InvalidZoom", "请输入 25–500 的缩放百分比"));
+            ShowToast(LocalizationService.Get("Toast.InvalidZoom", "请输入 25–500 的缩放百分比"), StatusLevel.Warning);
             return;
         }
 
@@ -943,7 +1073,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _currentRecordingModifiers = ModifierKeys.None;
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）"));
+        ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）"), StatusLevel.Info);
     }
 
     private void StartRecordingTogglePlaybackKey()
@@ -953,7 +1083,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _currentRecordingModifiers = ModifierKeys.None;
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        ShowToast(LocalizationService.Get("Toast.RecordPlayback", "请按下“视频播放”快捷键（按 Esc 取消）"));
+        ShowToast(LocalizationService.Get("Toast.RecordPlayback", "请按下“视频播放”快捷键（按 Esc 取消）"), StatusLevel.Info);
     }
 
     public void UpdateRecordingModifiers(ModifierKeys modifiers)
@@ -972,7 +1102,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
             _currentRecordingModifiers = ModifierKeys.None;
             OnPropertyChanged(nameof(ToggleModeKeyText));
             OnPropertyChanged(nameof(TogglePlaybackKeyText));
-            ShowToast(LocalizationService.Get("Toast.RecordCanceled", "已取消录制。"));
+            ShowToast(LocalizationService.Get("Toast.RecordCanceled", "已取消录制。"), StatusLevel.Warning);
             return;
         }
 
@@ -980,13 +1110,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (key == _browser.TogglePlaybackKey && modifiers == _browser.TogglePlaybackModifiers)
             {
-                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByPlayback", "该快捷键已被视频播放占用！"));
+                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByPlayback", "该快捷键已被视频播放占用！"), StatusLevel.Warning);
             }
             else
             {
                 _browser.ToggleModeKey = key;
                 _browser.ToggleModeModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", HotkeyFormatter.Format(key, modifiers)));
+                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", HotkeyFormatter.Format(key, modifiers)), StatusLevel.Success);
             }
             _isRecordingToggleModeKey = false;
         }
@@ -994,13 +1124,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (key == _browser.ToggleModeKey && modifiers == _browser.ToggleModeModifiers)
             {
-                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被「浏览 ⇄ 浮窗」占用！"));
+                ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被「浏览 ⇄ 浮窗」占用！"), StatusLevel.Warning);
             }
             else
             {
                 _browser.TogglePlaybackKey = key;
                 _browser.TogglePlaybackModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.PlaybackSet", HotkeyFormatter.Format(key, modifiers)));
+                ShowToast(LocalizationService.Format("Toast.PlaybackSet", HotkeyFormatter.Format(key, modifiers)), StatusLevel.Success);
             }
             _isRecordingTogglePlaybackKey = false;
         }
@@ -1024,7 +1154,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RefreshThemeLanguageFlags();
         ShowToast(mode == ThemeService.Light
             ? LocalizationService.Get("Toast.ThemeLight", "已切换到亮色主题")
-            : LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"));
+            : LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"), StatusLevel.Success);
     }
 
     private void SetLanguage(string language)
@@ -1034,7 +1164,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RefreshThemeLanguageFlags();
         ShowToast(language == LocalizationService.EnUs
             ? LocalizationService.Get("Toast.LanguageEn", "Language: English")
-            : LocalizationService.Get("Toast.LanguageZh", "界面语言：中文"));
+            : LocalizationService.Get("Toast.LanguageZh", "界面语言：中文"), StatusLevel.Success);
     }
 
     private void Localization_OnLanguageChanged(object? sender, EventArgs e)

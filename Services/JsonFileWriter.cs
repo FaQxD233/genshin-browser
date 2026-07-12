@@ -6,10 +6,15 @@ namespace GenshinBrowser.Services;
 internal static class JsonFileWriter
 {
     /// <summary>
-    /// 共享的 JSON 序列化选项，避免每个服务各持一份实例。
+    /// 共享的 JSON 序列化选项（带缩进），用于用户可能直接查看的配置文件（如 settings.json）。
     /// JsonSerializerOptions 用于序列化时是线程安全的。
     /// </summary>
     public static readonly JsonSerializerOptions SharedOptions = new() { WriteIndented = true };
+
+    /// <summary>
+    /// 紧凑（无缩进）序列化选项，用于历史/收藏等内部数据文件，减少磁盘占用。
+    /// </summary>
+    public static readonly JsonSerializerOptions CompactOptions = new() { WriteIndented = false };
 
     public static async Task WriteAtomicAsync<T>(string path, T value, JsonSerializerOptions options)
     {
@@ -42,8 +47,27 @@ internal static class JsonFileWriter
         {
             if (File.Exists(tempPath))
             {
-                File.Delete(tempPath);
+                try { File.Delete(tempPath); } catch { /* 忽略删除失败 */ }
             }
+        }
+    }
+
+    /// <summary>
+    /// 清理指定目录下残留的 stale 临时文件（命名模式：{原名}.{guid}.tmp）。
+    /// 进程崩溃 / 任务被取消可能在原子写流程中留下 .tmp 文件，启动时调用一次回收磁盘。
+    /// </summary>
+    /// <param name="directory">数据根目录，递归扫描其下所有 .tmp 文件。</param>
+    public static void PurgeStaleTempFiles(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(directory, "*.tmp", SearchOption.AllDirectories))
+        {
+            try { File.Delete(file); }
+            catch { /* 单个文件删除失败不影响其他文件 */ }
         }
     }
 }

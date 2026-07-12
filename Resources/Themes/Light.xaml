@@ -12,6 +12,8 @@
   <Color x:Key="ColorAccentSuccessDark">#1F883D</Color>
   <Color x:Key="ColorAccentSuccessBorder">#2DA44E</Color>
   <Color x:Key="ColorAccentDanger">#CF222E</Color>
+  <Color x:Key="ColorAccentWarning">#BF8700</Color>
+  <Color x:Key="ColorCloseButtonPressed">#B62324</Color>
   <!-- 模式强调色：浏览=蓝，浮窗=橙（分段高亮 / 主窗描边闪） -->
   <Color x:Key="ColorModeBrowsingAccent">#0969DA</Color>
   <Color x:Key="ColorModeFloatingAccent">#BF8700</Color>
@@ -33,6 +35,8 @@
   <SolidColorBrush x:Key="AccentSuccessDark" Color="{StaticResource ColorAccentSuccessDark}"/>
   <SolidColorBrush x:Key="AccentSuccessBorder" Color="{StaticResource ColorAccentSuccessBorder}"/>
   <SolidColorBrush x:Key="AccentDanger" Color="{StaticResource ColorAccentDanger}"/>
+  <SolidColorBrush x:Key="AccentWarning" Color="{StaticResource ColorAccentWarning}"/>
+  <SolidColorBrush x:Key="CloseButtonPressed" Color="{StaticResource ColorCloseButtonPressed}"/>
   <SolidColorBrush x:Key="ModeBrowsingAccent" Color="{StaticResource ColorModeBrowsingAccent}"/>
   <SolidColorBrush x:Key="ModeFloatingAccent" Color="{StaticResource ColorModeFloatingAccent}"/>
   <SolidColorBrush x:Key="ModeFloatingAccentSoft" Color="{StaticResource ColorModeFloatingAccentSoft}"/>

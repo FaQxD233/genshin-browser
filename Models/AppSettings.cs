@@ -48,4 +48,11 @@ public sealed class AppSettings
     /// 是否已展示过「首次进入浮窗」引导 toast。
     /// </summary>
     public bool HasSeenFloatingModeHint { get; set; }
+
+    /// <summary>
+    /// 上次执行 WebView2 缓存大小检查的 UTC 时间。用于限制检查频率（每 24 小时一次），
+    /// 避免每次启动都递归枚举 WebViewProfile 目录。
+    /// 默认 DateTime.MinValue 表示从未检查过，下次启动会执行。
+    /// </summary>
+    public DateTime LastWebView2CacheCheckUtc { get; set; } = DateTime.MinValue;
 }

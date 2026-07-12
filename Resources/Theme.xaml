@@ -162,7 +162,7 @@
         <Setter Property="Foreground" Value="White"/>
       </Trigger>
       <Trigger Property="IsPressed" Value="True">
-        <Setter Property="Background" Value="#B62324"/>
+        <Setter Property="Background" Value="{DynamicResource CloseButtonPressed}"/>
         <Setter Property="Foreground" Value="White"/>
       </Trigger>
     </Style.Triggers>
@@ -214,19 +214,31 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TextBox">
-          <Border x:Name="TextBoxChrome"
+          <Grid>
+            <!-- 底层：始终 1px 边框，避免 focus 时 1→2 厚度切换造成布局抖动 -->
+            <Border x:Name="TextBoxChrome"
                    Background="{TemplateBinding Background}"
                    BorderBrush="{TemplateBinding BorderBrush}"
                    BorderThickness="{TemplateBinding BorderThickness}"
                    CornerRadius="{StaticResource CornerRadiusSm}">
-            <ScrollViewer x:Name="PART_ContentHost"
-                          Padding="{TemplateBinding Padding}"
-                          VerticalAlignment="Center"/>
-          </Border>
+              <ScrollViewer x:Name="PART_ContentHost"
+                            Padding="{TemplateBinding Padding}"
+                            VerticalAlignment="Center"/>
+            </Border>
+            <!-- 顶层：focus 时显示 2px 外圈描边（外扩 1px，不影响内部布局） -->
+            <Border x:Name="FocusRing"
+                   BorderBrush="Transparent"
+                   BorderThickness="2"
+                   CornerRadius="{StaticResource CornerRadiusSm}"
+                   IsHitTestVisible="False"/>
+          </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsFocused" Value="True">
-              <Setter TargetName="TextBoxChrome" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-              <Setter TargetName="TextBoxChrome" Property="BorderThickness" Value="2"/>
+              <Setter TargetName="TextBoxChrome" Property="BorderBrush" Value="Transparent"/>
+              <Setter TargetName="FocusRing" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="TextBoxChrome" Property="BorderBrush" Value="{DynamicResource BorderColorStrong}"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -253,35 +265,41 @@
 
   <Style x:Key="ModernListBoxItem" TargetType="ListBoxItem">
     <Setter Property="Padding" Value="12,10"/>
-    <Setter Property="Margin" Value="0"/>
+    <Setter Property="Margin" Value="2,1"/>
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="ListBoxItem">
-          <Grid>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <Border x:Name="ListItemChrome" Grid.Row="0"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="6"
-                    Margin="2,2"
-                    Padding="{TemplateBinding Padding}">
-              <ContentPresenter/>
-            </Border>
-            <Border Grid.Row="1" Height="1" Margin="10,0" Background="#0AFFFFFF"/>
-          </Grid>
+          <!-- 单层 Border：去掉下方 1px 分割线（末项也画的问题），改用 Margin + 圆角留白形成视觉分隔 -->
+          <Border x:Name="ListItemChrome"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="0"
+                  CornerRadius="6"
+                  Padding="{TemplateBinding Padding}">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <!-- 选中态左侧 3px accent 色条：未选中时透明，不占额外宽度（叠在 padding 上） -->
+                <ColumnDefinition Width="3"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Border x:Name="SelectionAccentBar" Grid.Column="0"
+                      Background="Transparent"
+                      CornerRadius="2"
+                      Margin="0,2,0,2"
+                      IsHitTestVisible="False"/>
+              <ContentPresenter Grid.Column="1" Margin="6,0,0,0"/>
+            </Grid>
+          </Border>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
               <Setter TargetName="ListItemChrome" Property="Background" Value="{DynamicResource BackgroundHover}"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
               <Setter TargetName="ListItemChrome" Property="Background" Value="{DynamicResource BackgroundTertiary}"/>
+              <Setter TargetName="SelectionAccentBar" Property="Background" Value="{DynamicResource AccentPrimary}"/>
               <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
             </Trigger>
           </ControlTemplate.Triggers>

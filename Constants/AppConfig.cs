@@ -41,9 +41,20 @@ public static class AppConfig
         public const int LogRetentionDays = 14;
 
         /// <summary>
-        /// WebView2 缓存大小阈值（MB）。超过时在状态栏提示用户清理。
+        /// WebView2 用户数据目录大小阈值（MB）。启动时检查超过此值则静默自动清理
+        /// （缓存 / DOM / Service Worker / 自动填充等；保留 Cookie、浏览历史、下载记录）。
         /// </summary>
         public const int WebView2CacheThresholdMb = 500;
+
+        /// <summary>
+        /// 历史/收藏标题最大长度。超长标题入库前截断，防止超长字符串占用内存与磁盘。
+        /// </summary>
+        public const int MaxEntryTitleLength = 200;
+
+        /// <summary>
+        /// 历史记录落盘防抖（毫秒）。SPA 连续切页时合并写盘，降低 IO。
+        /// </summary>
+        public const int HistorySaveDebounceMs = 500;
     }
 
     /// <summary>

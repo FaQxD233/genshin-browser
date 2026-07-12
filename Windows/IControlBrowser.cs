@@ -7,7 +7,11 @@ namespace GenshinBrowser.Windows;
 
 public interface IControlBrowser
 {
-    event EventHandler? BrowserStateChanged;
+    /// <summary>
+    /// 浏览器状态变化。订阅方应根据 <see cref="BrowserStateChangedEventArgs.Kind"/> 做增量刷新，
+    /// 避免每次状态文案变化都同步历史/收藏列表。
+    /// </summary>
+    event EventHandler<BrowserStateChangedEventArgs>? BrowserStateChanged;
 
     WindowMode CurrentMode { get; }
 
@@ -130,4 +134,11 @@ public interface IControlBrowser
     void OpenDownloadFolder(DownloadItem item);
 
     void ClearFinishedDownloads();
+
+    /// <summary>
+    /// 清理 WebView2 浏览数据（磁盘缓存、DOM 存储、Service Worker、自动填充等）。
+    /// 保留 Cookie、浏览历史、下载记录；应用内收藏夹/历史不受影响。
+    /// </summary>
+    /// <param name="silent">为 true 时不写状态栏、不刷新控制窗（启动自动清理用）。</param>
+    Task ClearBrowsingDataAsync(bool silent = false);
 }

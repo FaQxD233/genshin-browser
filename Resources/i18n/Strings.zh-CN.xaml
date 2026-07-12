@@ -44,6 +44,8 @@
   <sys:String x:Key="Settings.Playback">播放/暂停</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">恢复默认</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放与快捷键为默认值</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingData">清理缓存</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">清理磁盘缓存、站点本地数据、Service Worker、自动填充与已保存密码（保留登录 Cookie、浏览历史、下载记录与收藏夹）</sys:String>
   <sys:String x:Key="Settings.Theme">主题</sys:String>
   <sys:String x:Key="Settings.ThemeDark">暗色</sys:String>
   <sys:String x:Key="Settings.ThemeLight">亮色</sys:String>
@@ -129,6 +131,7 @@
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">已恢复默认设置</sys:String>
+  <sys:String x:Key="Toast.BrowsingDataCleared">已清理浏览数据</sys:String>
   <sys:String x:Key="Toast.RecordToggleMode">请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">请按下“视频播放”快捷键（按 Esc 取消）</sys:String>
   <sys:String x:Key="Toast.RecordCanceled">已取消录制。</sys:String>
@@ -180,7 +183,10 @@
   <sys:String x:Key="Status.StartupFailed">启动失败：\n{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">WebView2 Runtime 自动安装失败，请手动安装。</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">请手动下载安装：https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
-  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 缓存已达 {0} MB，可在 %LOCALAPPDATA%\GenshinBrowser\WebViewProfile 手动清理。</sys:String>
+  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 缓存已达 {0} MB，正在自动清理...</sys:String>
+  <sys:String x:Key="Status.ClearingBrowsingData">正在清理浏览数据...</sys:String>
+  <sys:String x:Key="Status.BrowsingDataCleared">已清理浏览数据。</sys:String>
+  <sys:String x:Key="Status.ClearBrowsingDataFailed">清理失败：{0}</sys:String>
   <sys:String x:Key="Status.UnhandledException">发生未处理异常：\n{0}: {1}\n\n详情已写入日志。</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser 错误</sys:String>
 </ResourceDictionary>

@@ -12,7 +12,8 @@
         Foreground="{DynamicResource TextPrimary}"
         WindowStartupLocation="Manual"
         AllowsTransparency="False"
-        WindowStyle="SingleBorderWindow">
+        WindowStyle="SingleBorderWindow"
+        Focusable="True">
   <Window.Resources>
     <services:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
 
@@ -191,8 +192,16 @@
           <Grid Width="18" Height="18">
             <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE896;" FontSize="13"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            <Border Style="{StaticResource DownloadsBadgeBorder}"
-                    Visibility="{Binding HasDownloadsBadge, Converter={StaticResource BoolToVisibility}}">
+            <Border Visibility="{Binding HasDownloadsBadge, Converter={StaticResource BoolToVisibility}}">
+              <Border.Style>
+                <Style TargetType="Border" BasedOn="{StaticResource DownloadsBadgeBorder}">
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding HasInterruptedDownloads}" Value="True">
+                      <Setter Property="Background" Value="{DynamicResource AccentDanger}"/>
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </Border.Style>
               <TextBlock Text="{Binding DownloadsBadgeText}"
                          FontSize="9" FontWeight="SemiBold"
                          Foreground="White"
@@ -252,16 +261,28 @@
             </Grid.ColumnDefinitions>
             <TextBlock Text="{DynamicResource Settings.Title}" FontSize="12" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-            <Button Grid.Column="1" Style="{StaticResource ModernButton}"
-                    HorizontalAlignment="Right" VerticalAlignment="Center"
-                    Padding="8,3" Height="24" FontSize="11"
-                    Command="{Binding RestoreDefaultSettingsCommand}"
-                    ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}">
-              <StackPanel Orientation="Horizontal">
-                <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,5,0" FontSize="11"/>
-                <TextBlock Text="{DynamicResource Settings.RestoreDefaults}" VerticalAlignment="Center" FontSize="11"/>
-              </StackPanel>
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+              <Button Style="{StaticResource ModernButton}"
+                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                      Padding="8,3" Height="24" FontSize="11" Margin="0,0,6,0"
+                      Command="{Binding ClearBrowsingDataCommand}"
+                      ToolTip="{DynamicResource Settings.ClearBrowsingDataTooltip}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE74D;" Margin="0,0,5,0" FontSize="11"/>
+                  <TextBlock Text="{DynamicResource Settings.ClearBrowsingData}" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+              </Button>
+              <Button Style="{StaticResource ModernButton}"
+                      HorizontalAlignment="Right" VerticalAlignment="Center"
+                      Padding="8,3" Height="24" FontSize="11"
+                      Command="{Binding RestoreDefaultSettingsCommand}"
+                      ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,5,0" FontSize="11"/>
+                  <TextBlock Text="{DynamicResource Settings.RestoreDefaults}" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+              </Button>
+            </StackPanel>
           </Grid>
           <ScrollViewer Grid.Row="1"
                         VerticalScrollBarVisibility="Auto"
@@ -350,74 +371,84 @@
               <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Display}"/>
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="40"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="12"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="40"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="Auto"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Opacity}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
-                        Command="{Binding OpacityOutCommand}" ToolTip="{DynamicResource Settings.OpacityOutTooltip}">
-                  <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
-                </Button>
-                <TextBox x:Name="OpacityPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
-                         Height="26" Padding="2,2" FontSize="11" Margin="4,0"
-                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                         Text="{Binding OpacityPercentText, UpdateSourceTrigger=PropertyChanged}"
-                         LostKeyboardFocus="OpacityPercentBox_OnLostKeyboardFocus">
-                  <TextBox.InputBindings>
-                    <KeyBinding Key="Enter" Command="{Binding ApplyOpacityCommand}"/>
-                  </TextBox.InputBindings>
-                </TextBox>
-                <TextBlock Grid.Column="3" Text="{DynamicResource Settings.PercentUnit}"
-                           FontSize="11" Foreground="{DynamicResource TextTertiary}"
-                           VerticalAlignment="Center"/>
-                <Button Grid.Column="4" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
-                        Command="{Binding OpacityInCommand}" ToolTip="{DynamicResource Settings.OpacityInTooltip}">
-                  <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
-                </Button>
-                <Button Grid.Column="5" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
-                        Height="26" FontSize="11"
-                        Command="{Binding ResetOpacityCommand}" ToolTip="{DynamicResource Settings.OpacityResetTooltip}"
-                        Content="{DynamicResource Settings.ZoomReset}"/>
-
-                <TextBlock Grid.Column="7" Text="{DynamicResource Settings.Zoom}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                <Button Grid.Column="8" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
-                        Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}">
-                  <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
-                </Button>
-                <TextBox x:Name="ZoomPercentBox" Grid.Column="9" Style="{StaticResource ModernTextBox}"
-                         Height="26" Padding="2,2" FontSize="11" Margin="4,0"
-                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
-                         Text="{Binding ZoomPercentText, UpdateSourceTrigger=PropertyChanged}"
-                         LostKeyboardFocus="ZoomPercentBox_OnLostKeyboardFocus">
-                  <TextBox.InputBindings>
-                    <KeyBinding Key="Enter" Command="{Binding ApplyZoomCommand}"/>
-                  </TextBox.InputBindings>
-                </TextBox>
-                <TextBlock Grid.Column="10" Text="{DynamicResource Settings.PercentUnit}"
-                           FontSize="11" Foreground="{DynamicResource TextTertiary}"
-                           VerticalAlignment="Center"/>
-                <Button Grid.Column="11" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
-                        Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}">
-                  <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
-                </Button>
-                <Button Grid.Column="12" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
-                        Height="26" FontSize="11"
-                        Command="{Binding ResetZoomCommand}" ToolTip="{DynamicResource Settings.ZoomResetTooltip}"
-                        Content="{DynamicResource Settings.ZoomReset}"/>
+                <!-- 不透明度组：label − [输入] % + 重置 -->
+                <Grid Grid.Column="0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Opacity}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
+                          Command="{Binding OpacityOutCommand}" ToolTip="{DynamicResource Settings.OpacityOutTooltip}">
+                    <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                  </Button>
+                  <TextBox x:Name="OpacityPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
+                           Height="26" Padding="2,2" FontSize="11" Margin="4,0"
+                           VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                           Text="{Binding OpacityPercentText, UpdateSourceTrigger=PropertyChanged}"
+                           LostKeyboardFocus="OpacityPercentBox_OnLostKeyboardFocus">
+                    <TextBox.InputBindings>
+                      <KeyBinding Key="Enter" Command="{Binding ApplyOpacityCommand}"/>
+                    </TextBox.InputBindings>
+                  </TextBox>
+                  <TextBlock Grid.Column="3" Text="{DynamicResource Settings.PercentUnit}"
+                             FontSize="11" Foreground="{DynamicResource TextTertiary}"
+                             VerticalAlignment="Center"/>
+                  <Button Grid.Column="4" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
+                          Command="{Binding OpacityInCommand}" ToolTip="{DynamicResource Settings.OpacityInTooltip}">
+                    <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                  </Button>
+                  <Button Grid.Column="5" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
+                          Height="26" FontSize="11"
+                          Command="{Binding ResetOpacityCommand}" ToolTip="{DynamicResource Settings.OpacityResetTooltip}"
+                          Content="{DynamicResource Settings.ZoomReset}"/>
+                </Grid>
+                <!-- 缩放组：label − [输入] % + 重置 -->
+                <Grid Grid.Column="2">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="40"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Zoom}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
+                          Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}">
+                    <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                  </Button>
+                  <TextBox x:Name="ZoomPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
+                           Height="26" Padding="2,2" FontSize="11" Margin="4,0"
+                           VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                           Text="{Binding ZoomPercentText, UpdateSourceTrigger=PropertyChanged}"
+                           LostKeyboardFocus="ZoomPercentBox_OnLostKeyboardFocus">
+                    <TextBox.InputBindings>
+                      <KeyBinding Key="Enter" Command="{Binding ApplyZoomCommand}"/>
+                    </TextBox.InputBindings>
+                  </TextBox>
+                  <TextBlock Grid.Column="3" Text="{DynamicResource Settings.PercentUnit}"
+                             FontSize="11" Foreground="{DynamicResource TextTertiary}"
+                             VerticalAlignment="Center"/>
+                  <Button Grid.Column="4" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
+                          Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}">
+                    <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
+                  </Button>
+                  <Button Grid.Column="5" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
+                          Height="26" FontSize="11"
+                          Command="{Binding ResetZoomCommand}" ToolTip="{DynamicResource Settings.ZoomResetTooltip}"
+                          Content="{DynamicResource Settings.ZoomReset}"/>
+                </Grid>
               </Grid>
 
               <!-- 分组：外观 + 快捷键 -->
@@ -664,7 +695,7 @@
                 <Style.Triggers>
                   <DataTrigger Binding="{Binding IsCurrentFavorite}" Value="True">
                     <Setter Property="Text" Value="&#xE735;"/>
-                    <Setter Property="Foreground" Value="#FFC83D"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentWarning}"/>
                   </DataTrigger>
                 </Style.Triggers>
               </Style>
@@ -707,12 +738,18 @@
       </StackPanel>
 
       <!-- 搜索 -->
-      <TextBox x:Name="SearchBox" Grid.Row="2" Style="{StaticResource SearchTextBox}"
-               Margin="0,0,0,10"
-               services:Placeholder.Text="{DynamicResource Search.Placeholder}"
-               services:Placeholder.Foreground="{DynamicResource TextTertiary}"
-               Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-               ToolTip="{DynamicResource Search.Tooltip}"/>
+      <Grid Grid.Row="2" Margin="0,0,0,10">
+        <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBox}"
+                 Padding="28,8,12,8"
+                 services:Placeholder.Text="{DynamicResource Search.Placeholder}"
+                 services:Placeholder.Foreground="{DynamicResource TextTertiary}"
+                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                 ToolTip="{DynamicResource Search.Tooltip}"/>
+        <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE721;"
+                   FontSize="13" Foreground="{DynamicResource TextTertiary}"
+                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                   Margin="12,0,0,0" IsHitTestVisible="False"/>
+      </Grid>
 
       <!-- 列表：直接铺在窗口背景上，不外包一层卡片 -->
       <Grid Grid.Row="3">
@@ -726,10 +763,28 @@
           <ListBox.Style>
             <Style TargetType="ListBox" BasedOn="{StaticResource ModernListBox}">
               <Setter Property="Background" Value="Transparent"/>
-              <Setter Property="Visibility" Value="Collapsed"/>
+              <!-- 保留 Visibility=Visible 让 Opacity 动画起效（Collapsed 会跳过渲染管线）；
+                   用 IsHitTestVisible=False 屏蔽非激活 Tab 的鼠标事件 -->
+              <Setter Property="Visibility" Value="Visible"/>
+              <Setter Property="Opacity" Value="0"/>
+              <Setter Property="IsHitTestVisible" Value="False"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
-                  <Setter Property="Visibility" Value="Visible"/>
+                  <Setter Property="IsHitTestVisible" Value="True"/>
+                  <DataTrigger.EnterActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" EasingFunction="{StaticResource EaseOutCubic}"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.EnterActions>
+                  <DataTrigger.ExitActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.ExitActions>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
@@ -750,9 +805,25 @@
             <Style TargetType="ListBox" BasedOn="{StaticResource ModernListBox}">
               <Setter Property="Background" Value="Transparent"/>
               <Setter Property="Visibility" Value="Visible"/>
+              <Setter Property="Opacity" Value="1"/>
+              <Setter Property="IsHitTestVisible" Value="True"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
-                  <Setter Property="Visibility" Value="Collapsed"/>
+                  <Setter Property="IsHitTestVisible" Value="False"/>
+                  <DataTrigger.EnterActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.EnterActions>
+                  <DataTrigger.ExitActions>
+                    <BeginStoryboard>
+                      <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" EasingFunction="{StaticResource EaseOutCubic}"/>
+                      </Storyboard>
+                    </BeginStoryboard>
+                  </DataTrigger.ExitActions>
                 </DataTrigger>
               </Style.Triggers>
             </Style>
@@ -807,19 +878,83 @@
     </Grid>
 
     <Border Grid.RowSpan="5"
-            Style="{StaticResource ToastBorderStyle}"
             Tag="{Binding IsToastVisible}"
             Visibility="{Binding ToastVisibility}"
             Background="{DynamicResource BackgroundTertiary}"
-            BorderBrush="{DynamicResource AccentPrimary}"
-            BorderThickness="1"
             CornerRadius="8"
-            Padding="14,12"
+            Padding="0"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             MaxWidth="360"
             Margin="0,0,8,8">
-      <TextBlock Text="{Binding ToastMessage}" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" FontSize="12"/>
+      <Border.Style>
+        <Style TargetType="Border" BasedOn="{StaticResource ToastBorderStyle}">
+          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+          <Setter Property="BorderThickness" Value="1"/>
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+              <Setter Property="BorderBrush" Value="{DynamicResource AccentSuccess}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+              <Setter Property="BorderBrush" Value="{DynamicResource AccentWarning}"/>
+            </DataTrigger>
+            <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+              <Setter Property="BorderBrush" Value="{DynamicResource AccentDanger}"/>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <!-- 左侧 4px 严重度色条：与 BorderBrush 联动，让 Toast 类型一眼可辨 -->
+          <ColumnDefinition Width="4"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Column="0" CornerRadius="2,0,0,2" Margin="0,6">
+          <Border.Style>
+            <Style TargetType="Border">
+              <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+                  <Setter Property="Background" Value="{DynamicResource AccentSuccess}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+                  <Setter Property="Background" Value="{DynamicResource AccentWarning}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+                  <Setter Property="Background" Value="{DynamicResource AccentDanger}"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Border.Style>
+        </Border>
+        <TextBlock Grid.Column="1" FontSize="14"
+                   VerticalAlignment="Center" Margin="12,12,8,12">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
+              <Setter Property="Text" Value="&#xE946;"/>
+              <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+                  <Setter Property="Text" Value="&#xE73E;"/>
+                  <Setter Property="Foreground" Value="{DynamicResource AccentSuccess}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+                  <Setter Property="Text" Value="&#xE7BA;"/>
+                  <Setter Property="Foreground" Value="{DynamicResource AccentWarning}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+                  <Setter Property="Text" Value="&#xE783;"/>
+                  <Setter Property="Foreground" Value="{DynamicResource AccentDanger}"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
+        <TextBlock Grid.Column="2" Text="{Binding ToastMessage}" Foreground="{DynamicResource TextPrimary}"
+                   TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" Margin="0,12,14,12"/>
+      </Grid>
     </Border>
   </Grid>
 </Window>

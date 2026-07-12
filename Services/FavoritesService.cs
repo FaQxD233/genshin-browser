@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
+using GenshinBrowser.Utils;
 
 namespace GenshinBrowser.Services;
 
@@ -11,6 +12,12 @@ public sealed class FavoritesService : IDisposable
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<FavoriteEntry> _entries = new();
+
+    /// <summary>
+    /// 缓存的只读快照。仅在 _entries 变更时重建，避免每次 GetEntries() 都 ToList() 分配新副本。
+    /// UI 读取用；落盘必须用 <see cref="CreatePersistSnapshot"/> 的独立拷贝。
+    /// </summary>
+    private IReadOnlyList<FavoriteEntry>? _snapshotCache;
 
     public FavoritesService(string favoritesPath)
     {
@@ -22,20 +29,23 @@ public sealed class FavoritesService : IDisposable
     {
         lock (_entriesLock)
         {
-            return _entries.ToList();
+            return _snapshotCache ??= _entries.AsReadOnly();
         }
     }
 
     public async Task AddOrUpdateAsync(string url, string title)
     {
-        List<FavoriteEntry> snapshot;
+        var normalizedUrl = UrlNormalizer.Normalize(url);
+        var safeTitle = EntryText.TruncateTitle(title);
+
+        IReadOnlyList<FavoriteEntry> snapshot;
         lock (_entriesLock)
         {
-            _entries.RemoveAll(item => string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase));
+            _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
             _entries.Insert(0, new FavoriteEntry
             {
-                Url = url,
-                Title = title,
+                Url = normalizedUrl,
+                Title = safeTitle,
                 SavedAt = DateTime.UtcNow,
             });
 
@@ -44,7 +54,9 @@ public sealed class FavoritesService : IDisposable
                 _entries.RemoveRange(AppConfig.Data.MaxFavoriteEntries, _entries.Count - AppConfig.Data.MaxFavoriteEntries);
             }
 
-            snapshot = _entries.ToList();
+            _snapshotCache = null;
+            snapshot = CreatePersistSnapshot();
+            _snapshotCache = _entries.AsReadOnly();
         }
 
         await SaveAsync(snapshot).ConfigureAwait(false);
@@ -52,11 +64,15 @@ public sealed class FavoritesService : IDisposable
 
     public async Task RemoveAsync(string url)
     {
-        List<FavoriteEntry> snapshot;
+        var normalizedUrl = UrlNormalizer.Normalize(url);
+
+        IReadOnlyList<FavoriteEntry> snapshot;
         lock (_entriesLock)
         {
-            _entries.RemoveAll(item => string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase));
-            snapshot = _entries.ToList();
+            _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            _snapshotCache = null;
+            snapshot = CreatePersistSnapshot();
+            _snapshotCache = _entries.AsReadOnly();
         }
 
         await SaveAsync(snapshot).ConfigureAwait(false);
@@ -64,15 +80,37 @@ public sealed class FavoritesService : IDisposable
 
     public bool Contains(string url)
     {
+        var normalizedUrl = UrlNormalizer.Normalize(url);
         lock (_entriesLock)
         {
-            return _entries.Any(item => string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase));
+            return _entries.Any(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
         }
     }
 
     public void Dispose()
     {
         _saveGate.Dispose();
+    }
+
+    /// <summary>
+    /// 在持锁状态下生成落盘用独立列表（条目浅拷贝）。
+    /// 禁止直接把 <c>_entries.AsReadOnly()</c> 交给异步序列化。
+    /// </summary>
+    private List<FavoriteEntry> CreatePersistSnapshot()
+    {
+        var copy = new List<FavoriteEntry>(_entries.Count);
+        for (var i = 0; i < _entries.Count; i++)
+        {
+            var e = _entries[i];
+            copy.Add(new FavoriteEntry
+            {
+                Url = e.Url,
+                Title = e.Title,
+                SavedAt = e.SavedAt,
+            });
+        }
+
+        return copy;
     }
 
     private void LoadFromDisk()
@@ -100,7 +138,7 @@ public sealed class FavoritesService : IDisposable
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, JsonFileWriter.SharedOptions).ConfigureAwait(false);
+            await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, JsonFileWriter.CompactOptions).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {

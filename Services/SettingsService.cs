@@ -79,6 +79,7 @@ public sealed class SettingsService : IDisposable
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
+            LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
         };
 
         await _saveGate.WaitAsync().ConfigureAwait(false);

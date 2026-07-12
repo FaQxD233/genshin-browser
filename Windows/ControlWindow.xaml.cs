@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using GenshinBrowser.Constants;
+using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 using GenshinBrowser.ViewModels;
 
@@ -27,9 +28,16 @@ public partial class ControlWindow : Window
         DataContext = _viewModel;
         Owner = _browserOwner;
 
+        // 地址栏不走双向绑定（避免与用户输入打架），跟随 ViewModel.CurrentAddress 推送；
+        // 用户正在编辑时跳过，行为与常见浏览器一致。
+        _viewModel.PropertyChanged += ViewModel_OnPropertyChanged;
+        SyncAddressBarFromViewModel(force: true);
+
         Loaded += ControlWindow_OnLoaded;
         LocationChanged += ControlWindow_OnLocationOrSizeChanged;
         SizeChanged += ControlWindow_OnLocationOrSizeChanged;
+        // 点击空白区域时让输入框失焦（WPF 默认点到 Panel/Border 不会挪走键盘焦点）
+        PreviewMouseDown += ControlWindow_OnPreviewMouseDown;
 
         EnableSmoothScrolling(HistoryListBox);
         EnableSmoothScrolling(FavoritesListBox);
@@ -39,19 +47,30 @@ public partial class ControlWindow : Window
 
     public void RefreshFromBrowser()
     {
+        RefreshFromBrowser(BrowserStateChangeKind.All);
+    }
+
+    public void RefreshFromBrowser(BrowserStateChangeKind kind)
+    {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(RefreshFromBrowser);
+            _ = Dispatcher.InvokeAsync(() => RefreshFromBrowser(kind));
             return;
         }
 
-        _viewModel.RefreshFromBrowser();
-        if (!AddressBarTextBox.IsKeyboardFocusWithin)
+        _viewModel.RefreshFromBrowser(kind);
+
+        // CurrentAddress 变更也会经 PropertyChanged → SyncAddressBarFromViewModel；
+        // 这里在 Navigation 时再兜底一次，覆盖「同 URL 仅加载态变化」等未触发属性变更的情况。
+        if (kind.HasFlag(BrowserStateChangeKind.Navigation))
         {
-            SetAddressText(_viewModel.CurrentAddress);
+            SyncAddressBarFromViewModel();
         }
 
-        RefreshWindowSizeDisplay();
+        if (kind.HasFlag(BrowserStateChangeKind.Appearance))
+        {
+            RefreshWindowSizeDisplay();
+        }
     }
 
     /// <summary>
@@ -161,6 +180,8 @@ public partial class ControlWindow : Window
         {
             _boundsDebounceTimer.Tick -= BoundsDebounceTimer_OnTick;
         }
+        PreviewMouseDown -= ControlWindow_OnPreviewMouseDown;
+        _viewModel.PropertyChanged -= ViewModel_OnPropertyChanged;
         _viewModel.Dispose();
 
         base.OnClosing(e);
@@ -362,13 +383,129 @@ public partial class ControlWindow : Window
         SaveWindowBounds();
     }
 
+    private void ControlWindow_OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // 仅当键盘焦点在可编辑输入上时才处理
+        if (Keyboard.FocusedElement is not DependencyObject focused || !IsEditableInput(focused))
+        {
+            return;
+        }
+
+        if (e.OriginalSource is not DependencyObject clicked)
+        {
+            return;
+        }
+
+        // 点在当前输入控件内部：保持焦点
+        if (IsDescendantOf(clicked, focused))
+        {
+            return;
+        }
+
+        // 点在另一个可编辑输入上：交给系统自然切换
+        if (FindEditableInputAncestor(clicked) is not null)
+        {
+            return;
+        }
+
+        // 点空白 / 标签 / 面板等非编辑区域：清除键盘焦点。
+        // 在 Preview 阶段先失焦，便于设置框 LostKeyboardFocus 提交数值后再响应按钮 Click。
+        ClearInputFocus();
+    }
+
+    /// <summary>
+    /// 将键盘焦点从输入框移到窗口本身，触发 LostKeyboardFocus（提交设置数值、恢复地址栏同步等）。
+    /// </summary>
+    private void ClearInputFocus()
+    {
+        try
+        {
+            FocusManager.SetFocusedElement(this, this);
+            Keyboard.Focus(this);
+        }
+        catch
+        {
+            // 焦点操作失败时仍尝试清空，避免输入框“粘住”
+            Keyboard.ClearFocus();
+        }
+    }
+
+    private static bool IsEditableInput(DependencyObject element)
+    {
+        return element is System.Windows.Controls.Primitives.TextBoxBase
+            or System.Windows.Controls.PasswordBox
+            or System.Windows.Controls.ComboBox;
+    }
+
+    private static DependencyObject? FindEditableInputAncestor(DependencyObject? node)
+    {
+        while (node is not null)
+        {
+            if (IsEditableInput(node))
+            {
+                return node;
+            }
+
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+
+        return null;
+    }
+
+    private static bool IsDescendantOf(DependencyObject? node, DependencyObject ancestor)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, ancestor))
+            {
+                return true;
+            }
+
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+
+        return false;
+    }
+
+    private void ViewModel_OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ControlWindowViewModel.CurrentAddress))
+        {
+            SyncAddressBarFromViewModel();
+        }
+    }
+
+    /// <summary>
+    /// 将 ViewModel 中的当前页 URL 推到地址栏，模拟普通浏览器地址栏随导航更新。
+    /// 用户正在地址栏输入时不覆盖（除非 <paramref name="force"/>）。
+    /// </summary>
+    private void SyncAddressBarFromViewModel(bool force = false)
+    {
+        if (!force && AddressBarTextBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        SetAddressText(_viewModel.CurrentAddress);
+    }
+
     /// <summary>
     /// 仅设置地址栏文本，占位符由 <see cref="Services.Placeholder"/> 附加属性通过 Adorner 渲染。
     /// 当地址为空时，文本被清空，Adorner 会自动显示提示文字。
     /// </summary>
     private void SetAddressText(string address)
     {
-        AddressBarTextBox.Text = string.IsNullOrWhiteSpace(address) ? string.Empty : address;
+        var text = string.IsNullOrWhiteSpace(address) ? string.Empty : address;
+        if (string.Equals(AddressBarTextBox.Text, text, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        AddressBarTextBox.Text = text;
     }
 
     protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
