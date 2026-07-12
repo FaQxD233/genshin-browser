@@ -13,3 +13,6 @@ dist/
 
 # Temp/tool-generated folder
 .omo/
+
+# Local Claude Code / agent workspace (never ship)
+.claude/
