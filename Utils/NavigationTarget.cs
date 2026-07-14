@@ -12,9 +12,9 @@ public static class NavigationTarget
     /// </summary>
     public static string GetStartupUrl(string? savedUrl)
     {
-        if (Uri.TryCreate(savedUrl?.Trim(), UriKind.Absolute, out var uri) && IsHttpOrHttps(uri))
+        if (EntryText.TryNormalizeHttpUrl(savedUrl, out var normalizedUrl))
         {
-            return uri.ToString();
+            return normalizedUrl;
         }
 
         return AppConfig.Browser.DefaultUrl;
@@ -32,11 +32,16 @@ public static class NavigationTarget
             return null;
         }
 
+        if (target.Length > AppConfig.Data.MaxEntryUrlLength)
+        {
+            return null;
+        }
+
         if (Uri.TryCreate(target, UriKind.Absolute, out var absoluteUri))
         {
             if (IsHttpOrHttps(absoluteUri))
             {
-                return absoluteUri.ToString();
+                return LimitLength(absoluteUri.ToString());
             }
 
             if (target.Contains("://", StringComparison.Ordinal))
@@ -53,17 +58,20 @@ public static class NavigationTarget
 
             if (Uri.TryCreate(prefixedTarget, UriKind.Absolute, out var uri) && IsHttpOrHttps(uri))
             {
-                return uri.ToString();
+                return LimitLength(uri.ToString());
             }
         }
 
-        return string.Format(AppConfig.Browser.SearchUrlTemplate, Uri.EscapeDataString(target));
+        return LimitLength(string.Format(AppConfig.Browser.SearchUrlTemplate, Uri.EscapeDataString(target)));
     }
 
     public static bool IsHttpOrHttps(Uri uri)
     {
         return uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps;
     }
+
+    private static string? LimitLength(string url) =>
+        url.Length <= AppConfig.Data.MaxEntryUrlLength ? url : null;
 
     private static bool LooksLikeWebAddress(string input)
     {
