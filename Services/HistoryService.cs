@@ -33,7 +33,10 @@ public sealed class HistoryService : IDisposable
     public HistoryService(string historyPath)
     {
         _historyPath = historyPath;
-        LoadFromDisk();
+        if (LoadFromDisk())
+        {
+            QueueDebouncedSave();
+        }
     }
 
     public IReadOnlyList<HistoryEntry> GetEntries()
@@ -49,8 +52,16 @@ public sealed class HistoryService : IDisposable
     /// </summary>
     public Task AddEntryAsync(string url, string title)
     {
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
+        {
+            return Task.CompletedTask;
+        }
+
         var safeTitle = EntryText.TruncateTitle(title);
+        if (safeTitle.Length == 0)
+        {
+            safeTitle = normalizedUrl;
+        }
 
         lock (_entriesLock)
         {
@@ -77,7 +88,10 @@ public sealed class HistoryService : IDisposable
 
     public async Task RemoveAsync(string url)
     {
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
+        {
+            return;
+        }
 
         IReadOnlyList<HistoryEntry> snapshot;
         int version;
@@ -118,20 +132,23 @@ public sealed class HistoryService : IDisposable
     {
         CancelDebouncedSave();
 
-        IReadOnlyList<HistoryEntry>? snapshot = null;
-        var version = 0;
-        lock (_entriesLock)
+        while (true)
         {
-            if (_version == _savedVersion)
+            IReadOnlyList<HistoryEntry> snapshot;
+            int version;
+            lock (_entriesLock)
             {
-                return;
+                if (_version == _savedVersion)
+                {
+                    return;
+                }
+
+                version = _version;
+                snapshot = CreatePersistSnapshot();
             }
 
-            version = _version;
-            snapshot = CreatePersistSnapshot();
+            await SaveAsync(snapshot, version).ConfigureAwait(false);
         }
-
-        await SaveAsync(snapshot, version).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -197,11 +214,15 @@ public sealed class HistoryService : IDisposable
                 _snapshotCache = _entries.AsReadOnly();
             }
 
-            await SaveAsync(snapshot, version).ConfigureAwait(false);
+            await SaveAsync(snapshot, version, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             // 被更新的写入请求取消，预期行为
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // SaveAsync 已记录具体异常；后台防抖任务不能留下未观察异常。
         }
     }
 
@@ -226,34 +247,50 @@ public sealed class HistoryService : IDisposable
         return copy;
     }
 
-    private void LoadFromDisk()
+    private bool LoadFromDisk()
     {
         if (!File.Exists(_historyPath))
         {
-            return;
+            return false;
         }
 
         try
         {
-            var json = File.ReadAllText(_historyPath);
-            _entries = JsonSerializer.Deserialize<List<HistoryEntry>>(json) ?? new List<HistoryEntry>();
-            _version = 0;
+            var json = JsonFileWriter.ReadAllTextBounded(_historyPath, AppConfig.Data.MaxHistoryFileSizeBytes);
+            var loaded = JsonSerializer.Deserialize<List<HistoryEntry?>>(json) ?? new List<HistoryEntry?>();
+            _entries = SanitizeEntries(loaded);
+            var changed = !EntriesMatch(loaded, _entries);
+            _version = changed ? 1 : 0;
             _savedVersion = 0;
+            return changed;
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load history");
             _entries = new List<HistoryEntry>();
             _version = 0;
             _savedVersion = 0;
+            return false;
         }
     }
 
-    private async Task SaveAsync(IReadOnlyList<HistoryEntry> snapshot, int version)
+    private async Task SaveAsync(
+        IReadOnlyList<HistoryEntry> snapshot,
+        int version,
+        CancellationToken cancellationToken = default)
     {
-        await _saveGate.WaitAsync().ConfigureAwait(false);
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_entriesLock)
+            {
+                if (version != _version)
+                {
+                    return;
+                }
+            }
+
             await JsonFileWriter.WriteAtomicAsync(_historyPath, snapshot, JsonFileWriter.CompactOptions).ConfigureAwait(false);
             lock (_entriesLock)
             {
@@ -273,5 +310,60 @@ public sealed class HistoryService : IDisposable
         {
             _saveGate.Release();
         }
+    }
+
+    private static List<HistoryEntry> SanitizeEntries(IEnumerable<HistoryEntry?> loaded)
+    {
+        var result = new List<HistoryEntry>(AppConfig.Data.MaxHistoryEntries);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fallbackTime = DateTime.UtcNow;
+
+        foreach (var entry in loaded)
+        {
+            if (entry is null ||
+                !EntryText.TryNormalizeHttpUrl(entry.Url, out var normalizedUrl) ||
+                !seen.Add(normalizedUrl))
+            {
+                continue;
+            }
+
+            var title = EntryText.TruncateTitle(entry.Title);
+            result.Add(new HistoryEntry
+            {
+                Url = normalizedUrl,
+                Title = title.Length == 0 ? normalizedUrl : title,
+                VisitedAt = EntryText.NormalizeUtcTimestamp(entry.VisitedAt, fallbackTime),
+            });
+
+            if (result.Count == AppConfig.Data.MaxHistoryEntries)
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static bool EntriesMatch(IReadOnlyList<HistoryEntry?> loaded, IReadOnlyList<HistoryEntry> sanitized)
+    {
+        if (loaded.Count != sanitized.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < sanitized.Count; i++)
+        {
+            var source = loaded[i];
+            var target = sanitized[i];
+            if (source is null ||
+                !string.Equals(source.Url, target.Url, StringComparison.Ordinal) ||
+                !string.Equals(source.Title, target.Title, StringComparison.Ordinal) ||
+                source.VisitedAt != target.VisitedAt)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

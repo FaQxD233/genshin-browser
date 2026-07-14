@@ -6,6 +6,8 @@ namespace GenshinBrowser.Services;
 
 public sealed class KeyboardHookService : IDisposable
 {
+    private const string ToggleModeRegistrationId = "toggle-mode";
+    private const string TogglePlaybackRegistrationId = "toggle-playback";
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
     private const int WmKeyUp = 0x0101;
@@ -20,28 +22,47 @@ public sealed class KeyboardHookService : IDisposable
     public int ToggleModeVk
     {
         get => _toggleModeVk;
-        set => _toggleModeVk = value;
+        set
+        {
+            _toggleModeVk = value;
+            UpdateBuiltInRegistration(ToggleModeRegistrationId);
+        }
     }
 
     public int TogglePlaybackVk
     {
         get => _togglePlaybackVk;
-        set => _togglePlaybackVk = value;
+        set
+        {
+            _togglePlaybackVk = value;
+            UpdateBuiltInRegistration(TogglePlaybackRegistrationId);
+        }
     }
 
     public ModifierKeys ToggleModeModifiers
     {
         get => _toggleModeModifiers;
-        set => _toggleModeModifiers = value;
+        set
+        {
+            _toggleModeModifiers = value;
+            UpdateBuiltInRegistration(ToggleModeRegistrationId);
+        }
     }
 
     public ModifierKeys TogglePlaybackModifiers
     {
         get => _togglePlaybackModifiers;
-        set => _togglePlaybackModifiers = value;
+        set
+        {
+            _togglePlaybackModifiers = value;
+            UpdateBuiltInRegistration(TogglePlaybackRegistrationId);
+        }
     }
 
     private readonly LowLevelKeyboardProc _proc;
+    private readonly object _registrationLock = new();
+    private readonly Dictionary<string, HotkeyRegistration> _registrations = new(StringComparer.Ordinal);
+    private HotkeySnapshot _hotkeySnapshot = HotkeySnapshot.Empty;
     private readonly HashSet<int> _pressedKeys = new();
     private readonly object _keyStateLock = new();
     private IntPtr _hookId = IntPtr.Zero;
@@ -50,6 +71,12 @@ public sealed class KeyboardHookService : IDisposable
     public KeyboardHookService()
     {
         _proc = HookCallback;
+        lock (_registrationLock)
+        {
+            _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
+            _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
+            PublishSnapshotLocked();
+        }
     }
 
     public event EventHandler? KPressed;
@@ -92,11 +119,66 @@ public sealed class KeyboardHookService : IDisposable
         return false;
     }
 
+    /// <summary>
+    /// 注册或更新一个全局快捷键。钩子热路径读取不可变快照，因此新增快捷键不需要修改回调分支。
+    /// </summary>
+    public void RegisterOrUpdateHotkey(
+        string id,
+        int virtualKey,
+        ModifierKeys modifiers,
+        Action callback,
+        Func<bool>? canExecute = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentNullException.ThrowIfNull(callback);
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            throw new ArgumentOutOfRangeException(nameof(virtualKey));
+        }
+
+        lock (_registrationLock)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            _registrations[id] = new HotkeyRegistration(virtualKey, modifiers, callback, canExecute);
+            PublishSnapshotLocked();
+        }
+    }
+
+    public bool UnregisterHotkey(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        lock (_registrationLock)
+        {
+            if (!_registrations.Remove(id))
+            {
+                return false;
+            }
+
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    internal int GetRegistrationCountForVirtualKey(int virtualKey)
+    {
+        var snapshot = Volatile.Read(ref _hotkeySnapshot);
+        return snapshot.ByVirtualKey.TryGetValue(virtualKey, out var registrations)
+            ? registrations.Length
+            : 0;
+    }
+
     public void Dispose()
     {
-        if (_isDisposed)
+        lock (_registrationLock)
         {
-            return;
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+            _registrations.Clear();
+            Volatile.Write(ref _hotkeySnapshot, HotkeySnapshot.Empty);
         }
 
         if (_hookId != IntPtr.Zero)
@@ -110,7 +192,6 @@ public sealed class KeyboardHookService : IDisposable
             _pressedKeys.Clear();
         }
 
-        _isDisposed = true;
         GC.SuppressFinalize(this);
     }
 
@@ -126,6 +207,11 @@ public sealed class KeyboardHookService : IDisposable
         if (nCode >= 0)
         {
             var vkCode = Marshal.ReadInt32(lParam);
+            var snapshot = Volatile.Read(ref _hotkeySnapshot);
+            if (!snapshot.ByVirtualKey.TryGetValue(vkCode, out var registrations))
+            {
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+            }
 
             if (wParam == (IntPtr)WmKeyUp || wParam == (IntPtr)WmSysKeyUp)
             {
@@ -142,17 +228,23 @@ public sealed class KeyboardHookService : IDisposable
                     isFirstKeyDown = _pressedKeys.Add(vkCode);
                 }
 
-                if (isFirstKeyDown && vkCode == _togglePlaybackVk && IsModifierPressed(_togglePlaybackModifiers))
+                if (isFirstKeyDown)
                 {
-                    // 浮窗模式下且前台为任意游戏，或应用本身处于前台时才触发，避免影响其它软件输入
-                    if (IsGameOrBrowserForeground())
+                    foreach (var registration in registrations)
                     {
-                        Raise(KPressed);
+                        try
+                        {
+                            if (IsModifierPressed(registration.Modifiers) &&
+                                (registration.CanExecute?.Invoke() ?? true))
+                            {
+                                registration.Callback();
+                            }
+                        }
+                        catch
+                        {
+                            // Global hook callbacks must return quickly and never propagate.
+                        }
                     }
-                }
-                else if (isFirstKeyDown && vkCode == _toggleModeVk && IsModifierPressed(_toggleModeModifiers))
-                {
-                    Raise(ModeTogglePressed);
                 }
             }
         }
@@ -210,7 +302,7 @@ public sealed class KeyboardHookService : IDisposable
         // 1. 如果前台窗口是我们自己的进程，允许触发
         if (pid == currentPid)
         {
-            return true;
+            return _isAppActive;
         }
 
         // 2. 如果处于浮窗模式，且前台窗口是非排他性进程（即可能是任意游戏），允许触发
@@ -251,6 +343,69 @@ public sealed class KeyboardHookService : IDisposable
         }
     }
 
+    private void UpdateBuiltInRegistration(string id)
+    {
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _registrations[id] = CreateBuiltInRegistration(id);
+            PublishSnapshotLocked();
+        }
+    }
+
+    private HotkeyRegistration CreateBuiltInRegistration(string id)
+    {
+        return id switch
+        {
+            ToggleModeRegistrationId => new HotkeyRegistration(
+                _toggleModeVk,
+                _toggleModeModifiers,
+                () => Raise(ModeTogglePressed),
+                CanExecute: null),
+            TogglePlaybackRegistrationId => new HotkeyRegistration(
+                _togglePlaybackVk,
+                _togglePlaybackModifiers,
+                () => Raise(KPressed),
+                IsGameOrBrowserForeground),
+            _ => throw new ArgumentOutOfRangeException(nameof(id)),
+        };
+    }
+
+    private void PublishSnapshotLocked()
+    {
+        var byVirtualKey = _registrations.Values
+            .GroupBy(registration => registration.VirtualKey)
+            .ToDictionary(group => group.Key, group => group.ToArray());
+        Volatile.Write(ref _hotkeySnapshot, new HotkeySnapshot(byVirtualKey));
+
+        lock (_keyStateLock)
+        {
+            _pressedKeys.Clear();
+        }
+    }
+
+    private sealed record HotkeyRegistration(
+        int VirtualKey,
+        ModifierKeys Modifiers,
+        Action Callback,
+        Func<bool>? CanExecute);
+
+    private sealed class HotkeySnapshot
+    {
+        public static readonly HotkeySnapshot Empty = new(new Dictionary<int, HotkeyRegistration[]>());
+
+        public HotkeySnapshot(IReadOnlyDictionary<int, HotkeyRegistration[]> byVirtualKey)
+        {
+            ByVirtualKey = byVirtualKey;
+        }
+
+        public IReadOnlyDictionary<int, HotkeyRegistration[]> ByVirtualKey { get; }
+    }
+
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
@@ -258,9 +413,6 @@ public sealed class KeyboardHookService : IDisposable
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);

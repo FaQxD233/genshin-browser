@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace GenshinBrowser.Services;
 
 /// <summary>
@@ -14,16 +10,17 @@ public static class UrlNormalizer
     /// 已知的追踪 / 分析参数名（小写匹配，含通用 utm_* 与 B 站特有 spm_id_from / vd_source 等）。
     /// 同一视频带不同 t=（跳转时间戳）也会被合并，避免历史重复堆积。
     /// </summary>
-    private static readonly HashSet<string> StrippedParameters = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> GlobalTrackingParameters = new(StringComparer.OrdinalIgnoreCase)
     {
-        // 通用营销/分析
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
         "fbclid", "gclid", "mc_cid", "mc_eid", "igshid", "msclkid", "yclid",
-        // B 站分析/分享/上下文
+    };
+
+    private static readonly HashSet<string> BilibiliTrackingParameters = new(StringComparer.OrdinalIgnoreCase)
+    {
         "spm_id_from", "from_spmid", "from", "from_spm", "share_source", "share_medium",
         "share_plat", "share_tag", "share_session_id", "buvid", "vd_source", "up_id",
         "up_session_id", "is_story_h5", "ts", "unique_k", "share_times", "platform",
-        // B 站视频跳转时间戳（同视频不同时间点合并为一条历史）
         "t",
     };
 
@@ -54,14 +51,25 @@ public static class UrlNormalizer
             return uri.ToString();
         }
 
-        // Uri.Query 含前导 '?'；逐对解析并过滤
+        var isBilibili = IsBilibiliHost(uri.Host);
         var pairs = query.AsSpan(1).ToString().Split('&', StringSplitOptions.RemoveEmptyEntries);
         var kept = new List<string>(pairs.Length);
         foreach (var pair in pairs)
         {
             var eq = pair.IndexOf('=');
-            var name = eq < 0 ? pair : pair[..eq];
-            if (!StrippedParameters.Contains(name))
+            var encodedName = eq < 0 ? pair : pair[..eq];
+            string name;
+            try
+            {
+                name = Uri.UnescapeDataString(encodedName.Replace("+", " ", StringComparison.Ordinal));
+            }
+            catch (UriFormatException)
+            {
+                name = encodedName;
+            }
+
+            if (!GlobalTrackingParameters.Contains(name) &&
+                (!isBilibili || !BilibiliTrackingParameters.Contains(name)))
             {
                 kept.Add(pair);
             }
@@ -73,16 +81,18 @@ public static class UrlNormalizer
             return uri.ToString();
         }
 
-        var builder = new StringBuilder();
-        builder.Append(uri.Scheme).Append(Uri.SchemeDelimiter).Append(uri.Authority).Append(uri.AbsolutePath);
-        if (kept.Count > 0)
+        var builder = new UriBuilder(uri)
         {
-            builder.Append('?').Append(string.Join('&', kept));
-        }
-        if (!string.IsNullOrEmpty(uri.Fragment))
-        {
-            builder.Append(uri.Fragment);
-        }
-        return builder.ToString();
+            Query = kept.Count == 0 ? string.Empty : string.Join('&', kept),
+        };
+        return builder.Uri.ToString();
+    }
+
+    private static bool IsBilibiliHost(string host)
+    {
+        return host.Equals("bilibili.com", StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith(".bilibili.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("b23.tv", StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith(".b23.tv", StringComparison.OrdinalIgnoreCase);
     }
 }

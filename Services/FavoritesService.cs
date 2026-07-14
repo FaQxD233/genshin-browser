@@ -12,6 +12,9 @@ public sealed class FavoritesService : IDisposable
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<FavoriteEntry> _entries = new();
+    private int _version;
+    private int _savedVersion;
+    private bool _disposed;
 
     /// <summary>
     /// 缓存的只读快照。仅在 _entries 变更时重建，避免每次 GetEntries() 都 ToList() 分配新副本。
@@ -22,7 +25,7 @@ public sealed class FavoritesService : IDisposable
     public FavoritesService(string favoritesPath)
     {
         _favoritesPath = favoritesPath;
-        LoadFromDisk();
+        _version = LoadFromDisk() ? 1 : 0;
     }
 
     public IReadOnlyList<FavoriteEntry> GetEntries()
@@ -35,10 +38,19 @@ public sealed class FavoritesService : IDisposable
 
     public async Task AddOrUpdateAsync(string url, string title)
     {
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
+        {
+            return;
+        }
+
         var safeTitle = EntryText.TruncateTitle(title);
+        if (safeTitle.Length == 0)
+        {
+            safeTitle = normalizedUrl;
+        }
 
         IReadOnlyList<FavoriteEntry> snapshot;
+        int version;
         lock (_entriesLock)
         {
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
@@ -55,32 +67,44 @@ public sealed class FavoritesService : IDisposable
             }
 
             _snapshotCache = null;
+            _version++;
+            version = _version;
             snapshot = CreatePersistSnapshot();
             _snapshotCache = _entries.AsReadOnly();
         }
 
-        await SaveAsync(snapshot).ConfigureAwait(false);
+        await SaveAsync(snapshot, version).ConfigureAwait(false);
     }
 
     public async Task RemoveAsync(string url)
     {
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
+        {
+            return;
+        }
 
         IReadOnlyList<FavoriteEntry> snapshot;
+        int version;
         lock (_entriesLock)
         {
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
             _snapshotCache = null;
+            _version++;
+            version = _version;
             snapshot = CreatePersistSnapshot();
             _snapshotCache = _entries.AsReadOnly();
         }
 
-        await SaveAsync(snapshot).ConfigureAwait(false);
+        await SaveAsync(snapshot, version).ConfigureAwait(false);
     }
 
     public bool Contains(string url)
     {
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
+        {
+            return false;
+        }
+
         lock (_entriesLock)
         {
             return _entries.Any(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
@@ -89,7 +113,34 @@ public sealed class FavoritesService : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _saveGate.Dispose();
+    }
+
+    public async Task FlushAsync()
+    {
+        while (true)
+        {
+            IReadOnlyList<FavoriteEntry> snapshot;
+            int version;
+            lock (_entriesLock)
+            {
+                if (_version == _savedVersion)
+                {
+                    return;
+                }
+
+                version = _version;
+                snapshot = CreatePersistSnapshot();
+            }
+
+            await SaveAsync(snapshot, version).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -113,32 +164,50 @@ public sealed class FavoritesService : IDisposable
         return copy;
     }
 
-    private void LoadFromDisk()
+    private bool LoadFromDisk()
     {
         if (!File.Exists(_favoritesPath))
         {
-            return;
+            return false;
         }
 
         try
         {
-            var json = File.ReadAllText(_favoritesPath);
-            _entries = JsonSerializer.Deserialize<List<FavoriteEntry>>(json) ?? new List<FavoriteEntry>();
+            var json = JsonFileWriter.ReadAllTextBounded(_favoritesPath, AppConfig.Data.MaxFavoritesFileSizeBytes);
+            var loaded = JsonSerializer.Deserialize<List<FavoriteEntry?>>(json) ?? new List<FavoriteEntry?>();
+            _entries = SanitizeEntries(loaded);
+            return !EntriesMatch(loaded, _entries);
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load favorites");
             // 文件损坏或无法访问，从空列表开始
             _entries = new List<FavoriteEntry>();
+            return false;
         }
     }
 
-    private async Task SaveAsync(IReadOnlyList<FavoriteEntry> snapshot)
+    private async Task SaveAsync(IReadOnlyList<FavoriteEntry> snapshot, int version)
     {
         await _saveGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            lock (_entriesLock)
+            {
+                if (version != _version)
+                {
+                    return;
+                }
+            }
+
             await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, JsonFileWriter.CompactOptions).ConfigureAwait(false);
+            lock (_entriesLock)
+            {
+                if (version == _version)
+                {
+                    _savedVersion = version;
+                }
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -149,5 +218,60 @@ public sealed class FavoritesService : IDisposable
         {
             _saveGate.Release();
         }
+    }
+
+    private static List<FavoriteEntry> SanitizeEntries(IEnumerable<FavoriteEntry?> loaded)
+    {
+        var result = new List<FavoriteEntry>(AppConfig.Data.MaxFavoriteEntries);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fallbackTime = DateTime.UtcNow;
+
+        foreach (var entry in loaded)
+        {
+            if (entry is null ||
+                !EntryText.TryNormalizeHttpUrl(entry.Url, out var normalizedUrl) ||
+                !seen.Add(normalizedUrl))
+            {
+                continue;
+            }
+
+            var title = EntryText.TruncateTitle(entry.Title);
+            result.Add(new FavoriteEntry
+            {
+                Url = normalizedUrl,
+                Title = title.Length == 0 ? normalizedUrl : title,
+                SavedAt = EntryText.NormalizeUtcTimestamp(entry.SavedAt, fallbackTime),
+            });
+
+            if (result.Count == AppConfig.Data.MaxFavoriteEntries)
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static bool EntriesMatch(IReadOnlyList<FavoriteEntry?> loaded, IReadOnlyList<FavoriteEntry> sanitized)
+    {
+        if (loaded.Count != sanitized.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < sanitized.Count; i++)
+        {
+            var source = loaded[i];
+            var target = sanitized[i];
+            if (source is null ||
+                !string.Equals(source.Url, target.Url, StringComparison.Ordinal) ||
+                !string.Equals(source.Title, target.Title, StringComparison.Ordinal) ||
+                source.SavedAt != target.SavedAt)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

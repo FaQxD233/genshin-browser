@@ -1,7 +1,7 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
-using Forms = System.Windows.Forms;
 
 namespace GenshinBrowser.Services;
 
@@ -10,14 +10,21 @@ internal static class WindowBoundsHelper
     public static Rect GetWorkArea(Window window)
     {
         var handle = new WindowInteropHelper(window).Handle;
-        var screen = handle == IntPtr.Zero
-            ? Forms.Screen.PrimaryScreen!
-            : Forms.Screen.FromHandle(handle);
+        if (handle == IntPtr.Zero)
+        {
+            return SystemParameters.WorkArea;
+        }
 
-        var workArea = screen.WorkingArea;
+        var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            return SystemParameters.WorkArea;
+        }
+
         var transform = GetDeviceToDipTransform(window);
-        var topLeft = transform.Transform(new System.Windows.Point(workArea.Left, workArea.Top));
-        var bottomRight = transform.Transform(new System.Windows.Point(workArea.Right, workArea.Bottom));
+        var topLeft = transform.Transform(new System.Windows.Point(monitorInfo.WorkArea.Left, monitorInfo.WorkArea.Top));
+        var bottomRight = transform.Transform(new System.Windows.Point(monitorInfo.WorkArea.Right, monitorInfo.WorkArea.Bottom));
 
         return new Rect(topLeft, bottomRight);
     }
@@ -29,7 +36,7 @@ internal static class WindowBoundsHelper
     private static Matrix GetDeviceToDipTransform(Window window)
     {
         var fromSource = PresentationSource.FromVisual(window)?.CompositionTarget?.TransformFromDevice;
-        if (fromSource is { } matrix && !matrix.IsIdentity)
+        if (fromSource is { } matrix)
         {
             return matrix;
         }
@@ -47,21 +54,10 @@ internal static class WindowBoundsHelper
             // 视觉树未就绪时忽略
         }
 
-        try
-        {
-            using var graphics = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
-            if (graphics.DpiX > 0 && graphics.DpiY > 0)
-            {
-                return new Matrix(96.0 / graphics.DpiX, 0, 0, 96.0 / graphics.DpiY, 0, 0);
-            }
-        }
-        catch
-        {
-            // 回退 Identity
-        }
-
         return Matrix.Identity;
     }
+
+    public static bool HasHandle(Window window) => new WindowInteropHelper(window).Handle != IntPtr.Zero;
 
     public static void ClampToWorkArea(Window window)
     {
@@ -99,4 +95,31 @@ internal static class WindowBoundsHelper
 
         return Math.Min(Math.Max(value, min), max);
     }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect MonitorArea;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr windowHandle, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitorHandle, ref MonitorInfo monitorInfo);
 }
