@@ -79,6 +79,7 @@ public sealed class SettingsService : IDisposable
             ControlWindowWidth = settings.ControlWindowWidth,
             ControlWindowHeight = settings.ControlWindowHeight,
             WindowOpacity = settings.WindowOpacity,
+            ZoomFactor = settings.ZoomFactor,
             ToggleModeKey = settings.ToggleModeKey,
             ToggleModeModifiers = settings.ToggleModeModifiers,
             TogglePlaybackKey = settings.TogglePlaybackKey,
@@ -147,6 +148,9 @@ public sealed class SettingsService : IDisposable
         settings.WindowOpacity = double.IsFinite(settings.WindowOpacity)
             ? Math.Clamp(settings.WindowOpacity, 0.1, 1.0)
             : defaults.WindowOpacity;
+        settings.ZoomFactor = double.IsFinite(settings.ZoomFactor)
+            ? Math.Clamp(settings.ZoomFactor, 0.25, 5.0)
+            : defaults.ZoomFactor;
         settings.ToggleModeKey = IsValidHotkey(settings.ToggleModeKey) ? settings.ToggleModeKey : defaults.ToggleModeKey;
         settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
         settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);

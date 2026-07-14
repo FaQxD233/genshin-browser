@@ -75,6 +75,7 @@ public partial class MainWindow : Window, IControlBrowser
     private double _contentAreaHeight = 370;
     private DispatcherTimer? _titleBarHideTimer;
     private DispatcherTimer? _modeToastTimer;
+    private bool _isApplyingZoom;
 
     // 主窗移动/缩放时，控制窗尺寸显示与跟随位置的 UI 防抖
     private DispatcherTimer? _windowBoundsUiDebounceTimer;
@@ -234,11 +235,11 @@ public partial class MainWindow : Window, IControlBrowser
             // WebView2 初始化前访问 ZoomFactor 会抛异常；控制窗 VM 构造时就会读一次。
             try
             {
-                return BrowserView.CoreWebView2 is null ? 1.0 : BrowserView.ZoomFactor;
+                return BrowserView.CoreWebView2 is null ? _settings.ZoomFactor : BrowserView.ZoomFactor;
             }
             catch
             {
-                return 1.0;
+                return _settings.ZoomFactor;
             }
         }
         set => SetZoom(value);
@@ -451,13 +452,14 @@ public partial class MainWindow : Window, IControlBrowser
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.AreDefaultContextMenusEnabled = true;
             core.Settings.AreDevToolsEnabled = true;
-            // 关闭 Chromium 默认加速键（Ctrl+F/P/缩放等），避免与全局热键及游戏输入冲突；
-            // 缩放/刷新等由应用自身控制台与快捷键提供。
-            core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+            // 浏览模式保留 Ctrl+F/F5/Ctrl+R 等浏览器快捷键；
+            // 浮窗模式禁用，避免与游戏输入和全局热键冲突。
+            core.Settings.AreBrowserAcceleratorKeysEnabled = ShouldEnableBrowserAcceleratorKeys(_settings.WindowMode);
             // CompositionControl + 透明浮窗必须用真正的 Transparent，非 0 alpha 会导致白屏/合成失败。
             // 光标问题用窗口近透明背景解决，切勿把 DefaultBackgroundColor 改成 Alpha>0。
             browser.DefaultBackgroundColor = System.Drawing.Color.Transparent;
             ApplyWindowOpacity(_settings.WindowOpacity);
+            ApplyStoredZoom(browser);
             UpdateWebViewMemoryTargetLevel(core);
 
             // 页面初始化脚本：透明背景 + 取消播放器 cursor:none
@@ -506,6 +508,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         browser.NavigationStarting += BrowserView_OnNavigationStarting;
         browser.NavigationCompleted += BrowserView_OnNavigationCompleted;
+        browser.ZoomFactorChanged += BrowserView_OnZoomFactorChanged;
         core.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
         core.SourceChanged += BrowserView_OnSourceChanged;
         core.NewWindowRequested += BrowserView_OnNewWindowRequested;
@@ -528,6 +531,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             browser.NavigationStarting -= BrowserView_OnNavigationStarting;
             browser.NavigationCompleted -= BrowserView_OnNavigationCompleted;
+            browser.ZoomFactorChanged -= BrowserView_OnZoomFactorChanged;
         }
         catch
         {
@@ -1238,6 +1242,25 @@ public partial class MainWindow : Window, IControlBrowser
         QueueDownloadProgress(operation);
     }
 
+    private void BrowserView_OnZoomFactorChanged(object? sender, object e)
+    {
+        if (_isApplyingZoom || !IsCurrentBrowserEventSender(sender) || _isShuttingDown)
+        {
+            return;
+        }
+
+        try
+        {
+            var zoom = Math.Clamp(BrowserView.ZoomFactor, 0.25, 5.0);
+            StoreZoomFactor(zoom);
+            ZoomChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Capture WebView2 zoom factor");
+        }
+    }
+
     private void QueueDownloadProgress(CoreWebView2DownloadOperation operation)
     {
         if (_isShuttingDown || !_downloadItemsByOperation.TryGetValue(operation, out var item))
@@ -1507,6 +1530,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
+        UpdateBrowserAcceleratorKeys();
         // 浮窗叠游戏 / 失焦 / 最小化时降低 WebView 内存目标，前台浏览再恢复
         UpdateWebViewMemoryTargetLevel();
         // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
@@ -2261,6 +2285,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         // 退出前强制用当前页面 URL 刷新 LastUrl，避免 SPA 导航 / 防抖取消导致恢复到旧地址
         CaptureCurrentUrlToSettings();
+        CaptureCurrentZoomToSettings();
 
         try
         {
@@ -2799,16 +2824,97 @@ public partial class MainWindow : Window, IControlBrowser
         // 不再写 LogDebug：滑块拖动会高频触发，原本会让单日日志膨胀。
     }
 
-    private void SetZoom(double factor)
+    internal static bool ShouldEnableBrowserAcceleratorKeys(WindowMode mode) => mode == WindowMode.Free;
+
+    private void UpdateBrowserAcceleratorKeys(CoreWebView2? core = null)
     {
-        if (BrowserView.CoreWebView2 is null)
+        try
+        {
+            core ??= BrowserView.CoreWebView2;
+            if (core is not null)
+            {
+                core.Settings.AreBrowserAcceleratorKeysEnabled = ShouldEnableBrowserAcceleratorKeys(_settings.WindowMode);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Update browser accelerator keys");
+        }
+    }
+
+    private void ApplyStoredZoom(WebView2CompositionControl browser)
+    {
+        var zoom = Math.Clamp(_settings.ZoomFactor, 0.25, 5.0);
+        _settings.ZoomFactor = zoom;
+        _isApplyingZoom = true;
+        try
+        {
+            browser.ZoomFactor = zoom;
+        }
+        finally
+        {
+            _isApplyingZoom = false;
+        }
+    }
+
+    private void StoreZoomFactor(double factor)
+    {
+        var clamped = Math.Clamp(factor, 0.25, 5.0);
+        if (Math.Abs(_settings.ZoomFactor - clamped) <= 0.0001)
         {
             return;
         }
 
+        _settings.ZoomFactor = clamped;
+        QueueSettingsSave();
+    }
+
+    private void CaptureCurrentZoomToSettings()
+    {
+        try
+        {
+            if (BrowserView.CoreWebView2 is not null)
+            {
+                _settings.ZoomFactor = Math.Clamp(BrowserView.ZoomFactor, 0.25, 5.0);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Capture zoom before close");
+        }
+    }
+
+    private void SetZoom(double factor)
+    {
         var clamped = Math.Clamp(factor, 0.25, 5.0);
-        BrowserView.ZoomFactor = clamped;
-        ZoomChanged?.Invoke(this, EventArgs.Empty);
+        var browserChanged = false;
+        try
+        {
+            if (BrowserView.CoreWebView2 is not null && Math.Abs(BrowserView.ZoomFactor - clamped) > 0.0001)
+            {
+                _isApplyingZoom = true;
+                try
+                {
+                    BrowserView.ZoomFactor = clamped;
+                    browserChanged = true;
+                }
+                finally
+                {
+                    _isApplyingZoom = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Set WebView2 zoom factor");
+        }
+
+        var storedChanged = Math.Abs(_settings.ZoomFactor - clamped) > 0.0001;
+        StoreZoomFactor(clamped);
+        if (browserChanged || storedChanged)
+        {
+            ZoomChanged?.Invoke(this, EventArgs.Empty);
+        }
         // ZoomChanged 已更新百分比；状态走 Status 切片即可
         SetStatusMessage(LocalizationService.Format("Status.Zoom", Math.Round(clamped * 100)), StatusLevel.Info);
     }

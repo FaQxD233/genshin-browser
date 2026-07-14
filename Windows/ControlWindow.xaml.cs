@@ -34,16 +34,41 @@ public partial class ControlWindow : Window
         SyncAddressBarFromViewModel(force: true);
 
         Loaded += ControlWindow_OnLoaded;
+        SourceInitialized += ControlWindow_OnSourceInitialized;
         LocationChanged += ControlWindow_OnLocationOrSizeChanged;
         SizeChanged += ControlWindow_OnLocationOrSizeChanged;
         // 点击空白区域时让输入框失焦（WPF 默认点到 Panel/Border 不会挪走键盘焦点）
         PreviewMouseDown += ControlWindow_OnPreviewMouseDown;
+        ThemeService.ThemeChanged += ThemeService_OnThemeChanged;
 
         EnableSmoothScrolling(HistoryListBox);
         EnableSmoothScrolling(FavoritesListBox);
     }
 
     public bool AllowClose { get; set; }
+
+    private void ControlWindow_OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyNativeTitleBarTheme();
+    }
+
+    private void ThemeService_OnThemeChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(ApplyNativeTitleBarTheme);
+            return;
+        }
+
+        ApplyNativeTitleBarTheme();
+    }
+
+    private void ApplyNativeTitleBarTheme()
+    {
+        NativeTitleBarService.Apply(
+            this,
+            string.Equals(ThemeService.Current, ThemeService.Dark, StringComparison.OrdinalIgnoreCase));
+    }
 
     public void RefreshFromBrowser()
     {
@@ -175,6 +200,8 @@ public partial class ControlWindow : Window
 
         LocationChanged -= ControlWindow_OnLocationOrSizeChanged;
         SizeChanged -= ControlWindow_OnLocationOrSizeChanged;
+        SourceInitialized -= ControlWindow_OnSourceInitialized;
+        ThemeService.ThemeChanged -= ThemeService_OnThemeChanged;
         _boundsDebounceTimer?.Stop();
         if (_boundsDebounceTimer is not null)
         {

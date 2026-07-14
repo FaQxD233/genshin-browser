@@ -1,4 +1,5 @@
 using System.Windows;
+using GenshinBrowser.Services;
 
 namespace GenshinBrowser.Windows;
 
@@ -9,6 +10,9 @@ public partial class ThemedMessageBox : Window
     public ThemedMessageBox()
     {
         InitializeComponent();
+
+        SourceInitialized += ThemedMessageBox_OnSourceInitialized;
+        ThemeService.ThemeChanged += ThemeService_OnThemeChanged;
 
         YesButton.Click += (_, _) =>
         {
@@ -30,6 +34,36 @@ public partial class ThemedMessageBox : Window
                 _result = MessageBoxResult.No;
             }
         };
+    }
+
+    private void ThemedMessageBox_OnSourceInitialized(object? sender, EventArgs e)
+    {
+        ApplyNativeTitleBarTheme();
+    }
+
+    private void ThemeService_OnThemeChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(ApplyNativeTitleBarTheme);
+            return;
+        }
+
+        ApplyNativeTitleBarTheme();
+    }
+
+    private void ApplyNativeTitleBarTheme()
+    {
+        NativeTitleBarService.Apply(
+            this,
+            string.Equals(ThemeService.Current, ThemeService.Dark, StringComparison.OrdinalIgnoreCase));
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        ThemeService.ThemeChanged -= ThemeService_OnThemeChanged;
+        SourceInitialized -= ThemedMessageBox_OnSourceInitialized;
+        base.OnClosed(e);
     }
 
     /// <summary>

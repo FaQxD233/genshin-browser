@@ -29,6 +29,7 @@ public sealed class JsonAndEntryServiceTests
             ControlWindowLeft = -1920,
             ControlWindowTop = -200,
             WindowOpacity = 5,
+            ZoomFactor = 10,
         }));
 
         using (var settingsService = new SettingsService(settingsPath))
@@ -38,6 +39,15 @@ public sealed class JsonAndEntryServiceTests
             Assert.Equal(-1920, settings.ControlWindowLeft);
             Assert.Equal(string.Empty, settings.LastUrl);
             Assert.Equal(1, settings.WindowOpacity);
+            Assert.Equal(5, settings.ZoomFactor);
+
+            settings.ZoomFactor = 1.75;
+            await settingsService.SaveAsync(settings);
+        }
+
+        using (var reloadedSettingsService = new SettingsService(settingsPath))
+        {
+            Assert.Equal(1.75, reloadedSettingsService.Load().ZoomFactor);
         }
 
         var historyPath = directory.GetPath("history.json");

@@ -28,6 +28,11 @@ public sealed class AppSettings
 
     public double WindowOpacity { get; set; } = 1.0;
 
+    /// <summary>
+    /// WebView2 页面缩放系数，1.0 = 100%。
+    /// </summary>
+    public double ZoomFactor { get; set; } = 1.0;
+
     public Key ToggleModeKey { get; set; } = Key.F8;
 
     public ModifierKeys ToggleModeModifiers { get; set; } = ModifierKeys.None;
