@@ -3,16 +3,27 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
-    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>GenshinBrowser</AssemblyName>
     <RootNamespace>GenshinBrowser</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 自包含发布只保留 en / 简中卫星资源，去掉 de/fr/ja 等约 8MB 本地化 DLL。应用 UI 自有 i18n 不受影响。 -->
+    <SatelliteResourceLanguages>en;zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <InternalsVisibleTo Include="GenshinBrowser.Tests" />
+  </ItemGroup>
+
+  <!-- Keep .NET/WPF self-contained while removing unused WinForms and dump assets. -->
+  <Target Name="CleanSelfContainedPublish" AfterTargets="Publish">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\release\clean-publish.ps1&quot; -PublishDirectory &quot;$(PublishDir).&quot;" />
+  </Target>
 </Project>

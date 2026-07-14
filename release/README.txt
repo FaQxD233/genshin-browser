@@ -10,7 +10,7 @@ Global hotkeys:
 - F8: open/close control panel
 
 Notes:
-- Login state, cache, history, and favorites are stored under:
+- Login state, autofill, saved passwords, history, favorites, and browser data are stored under:
   %LocalAppData%\GenshinBrowser\
 - Error logs are stored under:
   %LocalAppData%\GenshinBrowser\logs\
