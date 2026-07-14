@@ -10,6 +10,7 @@ using GenshinBrowser.Services;
 using GenshinBrowser.Utils;
 using GenshinBrowser.Windows;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using Application = System.Windows.Application;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
@@ -22,17 +23,25 @@ public partial class MainWindow : Window, IControlBrowser
     private readonly FavoritesService _favoritesService;
     private readonly WindowModeService _windowModeService;
     private readonly KeyboardHookService _keyboardHookService;
-    private readonly DownloadsService _downloadsService = new();
+    private readonly DownloadsService _downloadsService;
 
     private AppSettings _settings = new();
     private bool _browserReady;
+    private WebView2CompositionControl? _browserEventControl;
+    private CoreWebView2? _browserEventCore;
     private bool _isShuttingDown;
+    private bool _closeCleanupStarted;
     private bool _isRealClose;
     private bool _isNavigating;
+    private bool _browserRecoveryInProgress;
+    private int _rendererUnresponsiveCount;
+    private DateTime _lastRendererUnresponsiveUtc = DateTime.MinValue;
     /// <summary>
     /// 首屏 NavigationCompleted 后才触发自动缓存检查，避免与首屏加载抢 IO。
     /// </summary>
     private bool _autoCacheCheckScheduled;
+    private CancellationTokenSource? _cacheCheckCts;
+    private Task? _cacheCheckTask;
     private string? _webViewUserDataFolder;
     /// <summary>
     /// 为 false 时忽略 Location/SizeChanged 对边界的写回，
@@ -55,6 +64,7 @@ public partial class MainWindow : Window, IControlBrowser
     /// </summary>
     private System.ComponentModel.DependencyPropertyDescriptor? _cursorDescriptor;
     private EventHandler? _cursorForceArrowHandler;
+    private WebView2CompositionControl? _cursorGuardBrowser;
 
     // 标题栏：浏览模式常驻；浮窗模式自动隐藏（顶部感应唤出）。
     // 显示时窗口向下 +30，不挤占 WebView 内容高度。
@@ -69,10 +79,11 @@ public partial class MainWindow : Window, IControlBrowser
     // 主窗移动/缩放时，控制窗尺寸显示与跟随位置的 UI 防抖
     private DispatcherTimer? _windowBoundsUiDebounceTimer;
 
-    // 下载进度通知节流：BytesReceivedChanged 高频触发，避免每字节都刷新角标
-    private long _lastDownloadProgressNotifyTicks;
-    private static readonly long DownloadProgressThrottleTicks =
-        System.Diagnostics.Stopwatch.Frequency / 10; // 100ms
+    // WebView2 下载事件可能高频触发。这里只保留每个任务的最新状态，统一按 100ms 刷新 UI。
+    private readonly Dictionary<CoreWebView2DownloadOperation, DownloadItem> _downloadItemsByOperation = new();
+    private readonly Dictionary<DownloadItem, CoreWebView2DownloadOperation> _pendingDownloadProgress = new();
+    private DispatcherTimer? _downloadProgressTimer;
+    private PendingDownloadRetry? _pendingDownloadRetry;
 
     public event EventHandler<BrowserStateChangedEventArgs>? BrowserStateChanged;
     public event EventHandler? ZoomChanged;
@@ -88,6 +99,7 @@ public partial class MainWindow : Window, IControlBrowser
         _settingsService = new SettingsService(Path.Combine(dataRoot, "settings.json"));
         _historyService = new HistoryService(Path.Combine(dataRoot, "history.json"));
         _favoritesService = new FavoritesService(Path.Combine(dataRoot, "favorites.json"));
+        _downloadsService = new DownloadsService(Path.Combine(dataRoot, "downloads.json"));
         _windowModeService = new WindowModeService(this);
         _keyboardHookService = new KeyboardHookService();
 
@@ -103,6 +115,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         Loaded += MainWindow_OnLoaded;
         Closing += MainWindow_OnClosing;
+        StateChanged += MainWindow_OnStateChanged;
         DragBar.MouseLeftButtonDown += (_, e) =>
         {
             if (e.Source is System.Windows.Controls.Button) return;
@@ -282,30 +295,30 @@ public partial class MainWindow : Window, IControlBrowser
     {
         try
         {
-        // 配置已在构造函数同步加载并恢复；此处只接键盘钩子 / 控制窗 / WebView
-        _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
+            // 配置已在构造函数同步加载并恢复；此处只接键盘钩子 / 控制窗 / WebView
+            _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
 
-        _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
-        _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
-        _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey);
-        _keyboardHookService.TogglePlaybackModifiers = _settings.TogglePlaybackModifiers;
-        _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
-        UpdateWindowTitle();
+            _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
+            _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
+            _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey);
+            _keyboardHookService.TogglePlaybackModifiers = _settings.TogglePlaybackModifiers;
+            _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
+            UpdateWindowTitle();
 
-        _controlWindow = new ControlWindow(this);
-        UpdateControlWindowVisibility();
-        NotifyBrowserState(BrowserStateChangeKind.All);
+            _controlWindow = new ControlWindow(this);
+            UpdateControlWindowVisibility();
+            NotifyBrowserState(BrowserStateChangeKind.All);
 
-        await EnsureWebView2RuntimeAsync();
-        await InitializeBrowserAsync();
+            await EnsureWebView2RuntimeAsync();
+            await InitializeBrowserAsync();
 
-        _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
-        _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
-        StartKeyboardHook();
+            _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
+            _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
+            StartKeyboardHook();
 
-        // 跟踪应用前台状态：浏览模式下离开前台时禁用全局 K，避免影响其它软件输入
-        Application.Current.Activated += App_OnActivated;
-        Application.Current.Deactivated += App_OnDeactivated;
+            // 跟踪应用前台状态：浏览模式下离开前台时禁用全局 K，避免影响其它软件输入
+            Application.Current.Activated += App_OnActivated;
+            Application.Current.Deactivated += App_OnDeactivated;
         }
         catch (Exception ex)
         {
@@ -317,9 +330,61 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    private void App_OnActivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = true;
+    private void App_OnActivated(object? sender, EventArgs e)
+    {
+        _keyboardHookService.IsAppActive = true;
+        UpdateWebViewMemoryTargetLevel();
+    }
 
-    private void App_OnDeactivated(object? sender, EventArgs e) => _keyboardHookService.IsAppActive = false;
+    private void App_OnDeactivated(object? sender, EventArgs e)
+    {
+        _keyboardHookService.IsAppActive = false;
+        UpdateWebViewMemoryTargetLevel();
+    }
+
+    private void MainWindow_OnStateChanged(object? sender, EventArgs e) => UpdateWebViewMemoryTargetLevel();
+
+    /// <summary>
+    /// 浮窗叠游戏、应用失焦或窗口最小化时请求 WebView2 使用低内存目标；
+    /// 浏览模式且前台可见时恢复 Normal，减轻与游戏争用内存。
+    /// </summary>
+    private void UpdateWebViewMemoryTargetLevel(CoreWebView2? core = null)
+    {
+        try
+        {
+            core ??= BrowserView.CoreWebView2;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (core is null)
+        {
+            return;
+        }
+
+        var preferLow =
+            _settings.WindowMode == WindowMode.Fixed ||
+            WindowState == WindowState.Minimized ||
+            !_keyboardHookService.IsAppActive;
+
+        var target = preferLow
+            ? CoreWebView2MemoryUsageTargetLevel.Low
+            : CoreWebView2MemoryUsageTargetLevel.Normal;
+
+        try
+        {
+            if (core.MemoryUsageTargetLevel != target)
+            {
+                core.MemoryUsageTargetLevel = target;
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Set WebView2 MemoryUsageTargetLevel");
+        }
+    }
 
     private bool IsWebView2RuntimeInstalled()
     {
@@ -341,19 +406,20 @@ public partial class MainWindow : Window, IControlBrowser
         var bootstrapperPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "MicrosoftEdgeWebview2Setup.exe");
         if (!File.Exists(bootstrapperPath))
         {
-            var msg = "未检测到 WebView2 Runtime（浏览器核心组件），且未找到自动安装程序。\n\n" +
-                      "请手动下载安装：https://developer.microsoft.com/microsoft-edge/webview2/";
+            var msg = LocalizationService.Format(
+                "Status.WebView2MissingInstaller",
+                LocalizationService.Get("Status.WebView2ManualHint"));
             throw new InvalidOperationException(msg);
         }
 
         _statusMessage = LocalizationService.Get("Status.InstallingWebView2", "正在安装 WebView2 Runtime...");
         NotifyBrowserState(BrowserStateChangeKind.Status);
-        var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = bootstrapperPath,
             Arguments = "/silent",
             UseShellExecute = true
-        }) ?? throw new InvalidOperationException("无法启动 WebView2 安装程序。");
+        }) ?? throw new InvalidOperationException(LocalizationService.Get("Status.WebView2InstallerStartFailed"));
 
         await process.WaitForExitAsync();
 
@@ -361,79 +427,338 @@ public partial class MainWindow : Window, IControlBrowser
             throw new InvalidOperationException(LocalizationService.Get("Status.WebView2InstallFailed", "WebView2 Runtime 自动安装失败，请手动安装。"));
     }
 
-    private async Task InitializeBrowserAsync()
+    private async Task<bool> InitializeBrowserAsync(string? requestedStartUrl = null)
     {
+        if (_isShuttingDown)
+        {
+            return false;
+        }
+
+        var browser = BrowserView;
         try
         {
             var userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser", "WebViewProfile");
             _webViewUserDataFolder = userDataFolder;
             var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
-            await BrowserView.EnsureCoreWebView2Async(environment);
+            await browser.EnsureCoreWebView2Async(environment);
+            if (_isShuttingDown || !ReferenceEquals(browser, BrowserView))
+            {
+                return false;
+            }
 
-            BrowserView.CoreWebView2.Settings.IsStatusBarEnabled = false;
-            BrowserView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
-            BrowserView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            var core = browser.CoreWebView2
+                       ?? throw new InvalidOperationException(LocalizationService.Get("Status.WebView2CoreUnavailable"));
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.AreDefaultContextMenusEnabled = true;
+            core.Settings.AreDevToolsEnabled = true;
+            // 关闭 Chromium 默认加速键（Ctrl+F/P/缩放等），避免与全局热键及游戏输入冲突；
+            // 缩放/刷新等由应用自身控制台与快捷键提供。
+            core.Settings.AreBrowserAcceleratorKeysEnabled = false;
             // CompositionControl + 透明浮窗必须用真正的 Transparent，非 0 alpha 会导致白屏/合成失败。
             // 光标问题用窗口近透明背景解决，切勿把 DefaultBackgroundColor 改成 Alpha>0。
-            BrowserView.DefaultBackgroundColor = System.Drawing.Color.Transparent;
+            browser.DefaultBackgroundColor = System.Drawing.Color.Transparent;
             ApplyWindowOpacity(_settings.WindowOpacity);
+            UpdateWebViewMemoryTargetLevel(core);
 
             // 页面初始化脚本：透明背景 + 取消播放器 cursor:none
-            await BrowserView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageBootstrapScript);
-
-            // ForceCursor 已保证可见箭头；再兜底拦截 null/None
-            BrowserView.Cursor = System.Windows.Input.Cursors.Arrow;
-            _cursorDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
-                FrameworkElement.CursorProperty, typeof(FrameworkElement));
-            _cursorForceArrowHandler = (_, _) =>
+            await core.AddScriptToExecuteOnDocumentCreatedAsync(PageBootstrapScript);
+            if (_isShuttingDown || !ReferenceEquals(browser, BrowserView))
             {
-                if (BrowserView.Cursor is null ||
-                    ReferenceEquals(BrowserView.Cursor, System.Windows.Input.Cursors.None))
-                {
-                    BrowserView.Cursor = System.Windows.Input.Cursors.Arrow;
-                }
-            };
-            _cursorDescriptor?.AddValueChanged(BrowserView, _cursorForceArrowHandler);
+                return false;
+            }
 
-            BrowserView.NavigationStarting += BrowserView_OnNavigationStarting;
-            BrowserView.NavigationCompleted += BrowserView_OnNavigationCompleted;
-            BrowserView.CoreWebView2.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
-            BrowserView.CoreWebView2.SourceChanged += BrowserView_OnSourceChanged;
-            BrowserView.CoreWebView2.NewWindowRequested += BrowserView_OnNewWindowRequested;
-            BrowserView.CoreWebView2.HistoryChanged += BrowserView_OnHistoryChanged;
-            BrowserView.CoreWebView2.DownloadStarting += BrowserView_OnDownloadStarting;
+            AttachBrowserEvents(browser, core);
+            AttachCursorGuard(browser);
 
-            var startUrl = NavigationTarget.GetStartupUrl(_settings.LastUrl);
+            var startUrl = NavigationTarget.GetStartupUrl(requestedStartUrl ?? _settings.LastUrl);
             _currentAddress = startUrl;
+            _browserReady = true;
             SetNavigating(true);
-            BrowserView.CoreWebView2.Navigate(startUrl);
-            // 对初始已加载的页面补执行一次（文档创建脚本只作用于之后的导航）
-            _ = BrowserView.CoreWebView2.ExecuteScriptAsync(PageBootstrapScript);
+            core.Navigate(startUrl);
             // 按当前窗口模式应用标题栏（浏览常驻 / 浮窗隐藏）
             ApplyTitleBarForCurrentMode(forceHideInFixed: true);
-            _browserReady = true;
             UpdateWindowTitle();
             SetStatusMessage(
                 LocalizationService.Get("Status.BrowserReady"),
                 StatusLevel.Success,
                 BrowserStateChangeKind.Navigation | BrowserStateChangeKind.Mode | BrowserStateChangeKind.Appearance);
             // 自动缓存检查延后到首屏 NavigationCompleted，见 TryScheduleAutoCacheCheck
+            return true;
         }
         catch (Exception ex)
         {
+            DetachBrowserEvents(browser);
+            DetachCursorGuard(browser);
             FileLogger.LogException(ex, "Initialize browser");
+            if (!ReferenceEquals(browser, BrowserView) || _isShuttingDown)
+            {
+                return false;
+            }
+
+            _browserReady = false;
             SetNavigating(false);
             SetStatusMessage(LocalizationService.Format("Status.InitFailed", ex.Message), StatusLevel.Error);
+            return false;
         }
     }
 
+    private void AttachBrowserEvents(WebView2CompositionControl browser, CoreWebView2 core)
+    {
+        browser.NavigationStarting += BrowserView_OnNavigationStarting;
+        browser.NavigationCompleted += BrowserView_OnNavigationCompleted;
+        core.DocumentTitleChanged += BrowserView_OnDocumentTitleChanged;
+        core.SourceChanged += BrowserView_OnSourceChanged;
+        core.NewWindowRequested += BrowserView_OnNewWindowRequested;
+        core.HistoryChanged += BrowserView_OnHistoryChanged;
+        core.DownloadStarting += BrowserView_OnDownloadStarting;
+        core.ProcessFailed += BrowserView_OnProcessFailed;
+        _browserEventControl = browser;
+        _browserEventCore = core;
+    }
+
+    private bool IsCurrentBrowserEventSender(object? sender)
+    {
+        return ReferenceEquals(_browserEventControl, BrowserView) &&
+               (ReferenceEquals(sender, _browserEventControl) || ReferenceEquals(sender, _browserEventCore));
+    }
+
+    private void DetachBrowserEvents(WebView2CompositionControl browser)
+    {
+        try
+        {
+            browser.NavigationStarting -= BrowserView_OnNavigationStarting;
+            browser.NavigationCompleted -= BrowserView_OnNavigationCompleted;
+        }
+        catch
+        {
+            // 已释放的控件不再需要解绑 WPF 事件。
+        }
+
+        var isTrackedBrowser = ReferenceEquals(browser, _browserEventControl);
+        var core = isTrackedBrowser ? _browserEventCore : null;
+        if (core is null)
+        {
+            try { core = browser.CoreWebView2; }
+            catch { /* 浏览器进程退出后可能无法再读取 CoreWebView2。 */ }
+        }
+
+        if (core is not null)
+        {
+            try
+            {
+                core.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
+                core.SourceChanged -= BrowserView_OnSourceChanged;
+                core.NewWindowRequested -= BrowserView_OnNewWindowRequested;
+                core.HistoryChanged -= BrowserView_OnHistoryChanged;
+                core.DownloadStarting -= BrowserView_OnDownloadStarting;
+                core.ProcessFailed -= BrowserView_OnProcessFailed;
+            }
+            catch
+            {
+                // COM 进程已退出时解绑可能失败；控件随后会被释放。
+            }
+        }
+
+        if (isTrackedBrowser)
+        {
+            _browserEventControl = null;
+            _browserEventCore = null;
+        }
+    }
+
+    private void AttachCursorGuard(WebView2CompositionControl browser)
+    {
+        browser.Cursor = System.Windows.Input.Cursors.Arrow;
+        _cursorDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
+            FrameworkElement.CursorProperty, typeof(FrameworkElement));
+        _cursorForceArrowHandler = (_, _) =>
+        {
+            if (browser.Cursor is null || ReferenceEquals(browser.Cursor, System.Windows.Input.Cursors.None))
+            {
+                browser.Cursor = System.Windows.Input.Cursors.Arrow;
+            }
+        };
+        _cursorGuardBrowser = browser;
+        _cursorDescriptor?.AddValueChanged(browser, _cursorForceArrowHandler);
+    }
+
+    private void DetachCursorGuard(WebView2CompositionControl browser)
+    {
+        if (!ReferenceEquals(browser, _cursorGuardBrowser))
+        {
+            return;
+        }
+
+        if (_cursorDescriptor is not null && _cursorForceArrowHandler is not null)
+        {
+            try
+            {
+                _cursorDescriptor.RemoveValueChanged(browser, _cursorForceArrowHandler);
+            }
+            catch
+            {
+                // 浏览器进程异常退出时控件可能已处于释放状态。
+            }
+        }
+
+        _cursorDescriptor = null;
+        _cursorForceArrowHandler = null;
+        _cursorGuardBrowser = null;
+    }
+
+    private void BrowserView_OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
+        FileLogger.LogDebug(
+            $"WebView2 process failed: Kind={e.ProcessFailedKind}, Reason={e.Reason}, ExitCode={e.ExitCode}");
+
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        switch (e.ProcessFailedKind)
+        {
+            case CoreWebView2ProcessFailedKind.BrowserProcessExited:
+                _ = Dispatcher.InvokeAsync(() => _ = RecreateBrowserAsync());
+                break;
+            case CoreWebView2ProcessFailedKind.RenderProcessExited:
+                _ = Dispatcher.InvokeAsync(RecoverRendererProcess);
+                break;
+            case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
+                _ = Dispatcher.InvokeAsync(HandleRendererUnresponsive);
+                break;
+        }
+    }
+
+    private void RecoverRendererProcess()
+    {
+        if (_isShuttingDown || BrowserView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        try
+        {
+            SetStatusMessage(LocalizationService.Get("Status.RendererRecovering", "页面渲染进程异常，正在重新加载..."), StatusLevel.Warning);
+            BrowserView.Reload();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Recover WebView2 renderer");
+            _ = RecreateBrowserAsync();
+        }
+    }
+
+    private void HandleRendererUnresponsive()
+    {
+        var now = DateTime.UtcNow;
+        _rendererUnresponsiveCount = now - _lastRendererUnresponsiveUtc <= TimeSpan.FromSeconds(10)
+            ? _rendererUnresponsiveCount + 1
+            : 1;
+        _lastRendererUnresponsiveUtc = now;
+
+        if (_rendererUnresponsiveCount < 2 || BrowserView.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        _rendererUnresponsiveCount = 0;
+        try
+        {
+            SetStatusMessage(LocalizationService.Get("Status.RendererUnresponsive", "页面长时间无响应，正在重新加载..."), StatusLevel.Warning);
+            BrowserView.CoreWebView2.Stop();
+            BrowserView.Reload();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Recover unresponsive WebView2 renderer");
+            _ = RecreateBrowserAsync();
+        }
+    }
+
+    private async Task RecreateBrowserAsync()
+    {
+        if (_browserRecoveryInProgress || _isShuttingDown)
+        {
+            return;
+        }
+
+        _browserRecoveryInProgress = true;
+        var recoveryUrl = EntryText.TryNormalizeHttpUrl(_currentAddress, out var normalizedUrl)
+            ? normalizedUrl
+            : AppConfig.Browser.DefaultUrl;
+
+        try
+        {
+            SetStatusMessage(LocalizationService.Get("Status.BrowserRecovering", "浏览器进程异常，正在恢复..."), StatusLevel.Warning);
+            _browserReady = false;
+            SetNavigating(false);
+            _pendingDownloadRetry = null;
+            DetachAllDownloadOperations(markInterrupted: true);
+
+            var oldBrowser = BrowserView;
+            DetachBrowserEvents(oldBrowser);
+            DetachCursorGuard(oldBrowser);
+            BrowserHost.Children.Remove(oldBrowser);
+            try
+            {
+                oldBrowser.Dispose();
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Dispose failed WebView2 during recovery");
+            }
+
+            var replacement = CreateBrowserControl();
+            BrowserView = replacement;
+            BrowserHost.Children.Add(replacement);
+
+            await Task.Delay(300).ConfigureAwait(true);
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            if (await InitializeBrowserAsync(recoveryUrl).ConfigureAwait(true))
+            {
+                SetStatusMessage(LocalizationService.Get("Status.BrowserRecovered", "浏览器已恢复。"), StatusLevel.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Recreate WebView2");
+            SetStatusMessage(LocalizationService.Format("Status.BrowserRecoveryFailed", ex.Message), StatusLevel.Error);
+        }
+        finally
+        {
+            _browserRecoveryInProgress = false;
+        }
+    }
+
+    private WebView2CompositionControl CreateBrowserControl()
+    {
+        var browser = new WebView2CompositionControl
+        {
+            Cursor = System.Windows.Input.Cursors.Arrow,
+            ForceCursor = true,
+            DefaultBackgroundColor = System.Drawing.Color.Transparent,
+        };
+        ((FrameworkElement)browser).Opacity = Math.Clamp(_settings.WindowOpacity, 0.1, 1.0);
+        return browser;
+    }
+
     /// <summary>
-    /// 异步检查 WebView2 用户数据目录大小，超过阈值时静默自动清理浏览数据。
+    /// 异步检查 WebView2 可回收数据目录大小，超过阈值时静默自动清理浏览数据。
     /// 在后台线程计算，避免阻塞 UI。
     /// 24 小时内已检查过则跳过，避免每次启动都递归枚举 WebViewProfile 目录造成 IO 压力。
     /// 自动清理不弹状态提示，避免打扰正在浏览的用户。
     /// </summary>
-    private async Task CheckWebView2CacheSizeAsync(string userDataFolder)
+    private async Task CheckWebView2CacheSizeAsync(string userDataFolder, CancellationToken cancellationToken)
     {
         // 频率限制：上次检查时间戳在 _settings 中，24 小时内跳过
         var nowUtc = DateTime.UtcNow;
@@ -442,60 +767,59 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        _settings.LastWebView2CacheCheckUtc = nowUtc;
-        QueueSettingsSave();
-
-        long sizeBytes = 0;
-        await Task.Run(() =>
+        long? sizeBytes;
+        try
         {
-            try
-            {
-                var dir = new DirectoryInfo(userDataFolder);
-                if (!dir.Exists)
-                {
-                    return;
-                }
+            sizeBytes = await WebViewDataSizeCalculator.CalculateAsync(userDataFolder, cancellationToken)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
 
-                foreach (var file in dir.EnumerateFiles("*", SearchOption.AllDirectories))
-                {
-                    try
-                    {
-                        sizeBytes += file.Length;
-                    }
-                    catch
-                    {
-                        // 单个文件访问失败不影响总计
-                    }
-                }
-            }
-            catch
-            {
-                // 测量失败静默忽略
-            }
-        }).ConfigureAwait(true);
+        if (sizeBytes is null || cancellationToken.IsCancellationRequested || _isShuttingDown)
+        {
+            return;
+        }
 
-        var sizeMb = sizeBytes / (1024 * 1024);
-        if (sizeMb > AppConfig.Data.WebView2CacheThresholdMb)
+        if (sizeBytes.Value > AppConfig.Data.WebView2CacheThresholdBytes)
         {
             // 超阈值静默自动清理：不写状态栏，不 Toast
             await ClearBrowsingDataAsync(silent: true);
+            return;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        _settings.LastWebView2CacheCheckUtc = nowUtc;
+        QueueSettingsSave();
     }
 
     /// <summary>
-    /// 清理 WebView2 浏览数据：磁盘缓存、DOM 存储、Service Worker、自动填充与已保存密码。
+    /// 清理 WebView2 浏览数据：磁盘缓存、DOM 存储与 Service Worker。
+    /// 自动填充和已保存密码始终保留。
     /// 保留 Cookie（登录态）、浏览历史、下载记录；应用内收藏夹/历史不在 WebView2 数据内，不受影响。
     /// </summary>
     /// <param name="silent">为 true 时不写状态栏、不刷新控制窗（用于启动自动清理）。</param>
-    public async Task ClearBrowsingDataAsync(bool silent = false)
+    public async Task<bool> ClearBrowsingDataAsync(bool silent = false)
     {
-        if (BrowserView.CoreWebView2 is null)
+        CoreWebView2? core;
+        try
+        {
+            core = BrowserView.CoreWebView2;
+        }
+        catch
+        {
+            core = null;
+        }
+
+        if (core is null)
         {
             if (!silent)
             {
                 SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             }
-            return;
+            return false;
         }
 
         try
@@ -505,26 +829,28 @@ public partial class MainWindow : Window, IControlBrowser
                 SetStatusMessage(LocalizationService.Get("Status.ClearingBrowsingData"), StatusLevel.Info);
             }
 
-            // 清「可再生」数据；保留 Cookie / 浏览历史 / 下载记录
+            // 清「可再生」数据；保留 Cookie / 浏览历史 / 下载记录 / 自动填充 / 已保存密码
             // 注意：1.0.4022.49 版本枚举不含 NetworkCache，DiskCache 已覆盖磁盘缓存
             // AllDomStorage 覆盖 LocalStorage / IndexedDB / CacheStorage 等站点本地数据
             var kinds =
                 CoreWebView2BrowsingDataKinds.DiskCache |
                 CoreWebView2BrowsingDataKinds.AllDomStorage |
-                CoreWebView2BrowsingDataKinds.ServiceWorkers |
-                CoreWebView2BrowsingDataKinds.GeneralAutofill |
-                CoreWebView2BrowsingDataKinds.PasswordAutosave;
+                CoreWebView2BrowsingDataKinds.ServiceWorkers;
 
-            await BrowserView.CoreWebView2.Profile.ClearBrowsingDataAsync(kinds);
+            await core.Profile.ClearBrowsingDataAsync(kinds);
 
-            // 重置缓存检查时间戳，让下次启动重新测量以反映清理结果
-            _settings.LastWebView2CacheCheckUtc = DateTime.MinValue;
-            QueueSettingsSave();
+            if (!_isShuttingDown)
+            {
+                _settings.LastWebView2CacheCheckUtc = DateTime.UtcNow;
+                QueueSettingsSave();
+            }
 
             if (!silent)
             {
                 SetStatusMessage(LocalizationService.Get("Status.BrowsingDataCleared"), StatusLevel.Success);
             }
+
+            return true;
         }
         catch (Exception ex)
         {
@@ -533,11 +859,18 @@ public partial class MainWindow : Window, IControlBrowser
             {
                 SetStatusMessage(LocalizationService.Format("Status.ClearBrowsingDataFailed", ex.Message), StatusLevel.Error);
             }
+
+            return false;
         }
     }
 
     private void BrowserView_OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
         if (e.IsRedirected)
         {
             return;
@@ -548,7 +881,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     private async void BrowserView_OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
-        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        if (!IsCurrentBrowserEventSender(sender) || !_browserReady || BrowserView.CoreWebView2 is null)
         {
             return;
         }
@@ -604,16 +937,54 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         _autoCacheCheckScheduled = true;
-        _ = CheckWebView2CacheSizeAsync(_webViewUserDataFolder);
+        _cacheCheckCts = new CancellationTokenSource();
+        _cacheCheckTask = CheckWebView2CacheSizeAsync(_webViewUserDataFolder, _cacheCheckCts.Token);
+    }
+
+    private async Task StopAutoCacheCheckAsync()
+    {
+        var cts = _cacheCheckCts;
+        var task = _cacheCheckTask;
+        _cacheCheckCts = null;
+        _cacheCheckTask = null;
+
+        cts?.Cancel();
+        if (task is not null)
+        {
+            try
+            {
+                await task.ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown.
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Stop automatic WebView2 cache check");
+            }
+        }
+
+        cts?.Dispose();
     }
 
     private void BrowserView_OnDocumentTitleChanged(object? sender, object e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
         UpdateWindowTitle();
     }
 
     private void BrowserView_OnSourceChanged(object? sender, CoreWebView2SourceChangedEventArgs e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
         // 当页面 URL 改变时（包括用户点击链接、重定向、B 站 SPA 切集等），立即更新地址栏与 LastUrl
         if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
@@ -655,14 +1026,20 @@ public partial class MainWindow : Window, IControlBrowser
                 return false;
             }
 
-            if (string.Equals(_currentAddress, newUrl, StringComparison.Ordinal)
-                && string.Equals(_settings.LastUrl, newUrl, StringComparison.Ordinal))
+            var addressChanged = !string.Equals(_currentAddress, newUrl, StringComparison.Ordinal);
+            var canPersist = EntryText.TryNormalizeHttpUrl(newUrl, out var persistedUrl);
+            var persistedUrlChanged = canPersist &&
+                                      !string.Equals(_settings.LastUrl, persistedUrl, StringComparison.Ordinal);
+            if (!addressChanged && !persistedUrlChanged)
             {
                 return false;
             }
 
             _currentAddress = newUrl;
-            _settings.LastUrl = newUrl;
+            if (persistedUrlChanged)
+            {
+                _settings.LastUrl = persistedUrl;
+            }
             return true;
         }
         catch (Exception ex)
@@ -716,6 +1093,11 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void BrowserView_OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
         // 拦截「在新窗口打开」的链接，统一在当前浏览器内导航，避免弹出无控制窗口的裸 WebView2
         if (string.IsNullOrEmpty(e.Uri))
         {
@@ -731,6 +1113,11 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void BrowserView_OnHistoryChanged(object? sender, object e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
         // WebView 前进/后退栈变化，不涉及应用内 history.json
         NotifyBrowserState(BrowserStateChangeKind.Navigation);
     }
@@ -764,40 +1151,153 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void BrowserView_OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
     {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
+        CoreWebView2DownloadOperation? operation = null;
+        DownloadItem? item = null;
         try
         {
-            var operation = e.DownloadOperation;
+            operation = e.DownloadOperation;
             var filePath = e.ResultFilePath ?? string.Empty;
             var fileName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(filePath) : LocalizationService.Get("Downloads.DefaultFileName", "下载文件");
 
-            var item = new DownloadItem
+            var sourceUri = operation.Uri ?? string.Empty;
+            var totalBytes = operation.TotalBytesToReceive > 0 ? (long)operation.TotalBytesToReceive : 0;
+            var receivedBytes = (long)operation.BytesReceived;
+            var retryItem = TakePendingDownloadRetry(sourceUri);
+            if (retryItem is not null)
             {
-                FileName = fileName,
-                FilePath = filePath,
-                TotalBytes = operation.TotalBytesToReceive > 0 ? (long)operation.TotalBytesToReceive : 0,
-                ReceivedBytes = (long)operation.BytesReceived,
-            };
+                item = retryItem;
+                _downloadsService.Restart(
+                    item,
+                    operation,
+                    sourceUri,
+                    filePath,
+                    totalBytes,
+                    receivedBytes);
+            }
+            else
+            {
+                item = new DownloadItem
+                {
+                    FileName = fileName,
+                    FilePath = filePath,
+                    SourceUri = sourceUri,
+                    TotalBytes = totalBytes,
+                    ReceivedBytes = receivedBytes,
+                    StartedAtUtc = DateTime.UtcNow,
+                };
+                _downloadsService.Track(item, operation);
+            }
 
-            _downloadsService.Track(item, operation);
-
-            operation.BytesReceivedChanged += (_, _) => OnDownloadProgress(item, operation);
-            operation.StateChanged += (_, _) => OnDownloadStateChanged(item, operation);
+            _downloadItemsByOperation[operation] = item;
+            operation.BytesReceivedChanged += DownloadOperation_OnBytesReceivedChanged;
+            operation.StateChanged += DownloadOperation_OnStateChanged;
 
             SetStatusMessage(LocalizationService.Format("Status.DownloadStarted", item.FileName), StatusLevel.Info);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
+            if (operation is not null)
+            {
+                DetachDownloadOperation(operation);
+            }
+
+            if (item is not null)
+            {
+                _pendingDownloadProgress.Remove(item);
+                var isVisible = Downloads.Contains(item);
+                _downloadsService.MarkInterrupted(item);
+                if (isVisible)
+                {
+                    DownloadsChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+
             FileLogger.LogException(ex, "DownloadStarting");
         }
     }
 
-    private void OnDownloadProgress(DownloadItem item, CoreWebView2DownloadOperation operation)
+    private void DownloadOperation_OnBytesReceivedChanged(object? sender, object e)
     {
+        if (sender is not CoreWebView2DownloadOperation operation)
+        {
+            return;
+        }
+
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(() => OnDownloadProgress(item, operation));
+            _ = Dispatcher.InvokeAsync(() => QueueDownloadProgress(operation));
             return;
+        }
+
+        QueueDownloadProgress(operation);
+    }
+
+    private void QueueDownloadProgress(CoreWebView2DownloadOperation operation)
+    {
+        if (_isShuttingDown || !_downloadItemsByOperation.TryGetValue(operation, out var item))
+        {
+            return;
+        }
+
+        _pendingDownloadProgress[item] = operation;
+        _downloadProgressTimer ??= CreateDownloadProgressTimer();
+        if (!_downloadProgressTimer.IsEnabled)
+        {
+            _downloadProgressTimer.Start();
+        }
+    }
+
+    private DispatcherTimer CreateDownloadProgressTimer()
+    {
+        var timer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        timer.Tick += DownloadProgressTimer_OnTick;
+        return timer;
+    }
+
+    private void DownloadProgressTimer_OnTick(object? sender, EventArgs e)
+    {
+        _downloadProgressTimer?.Stop();
+        if (_isShuttingDown || _pendingDownloadProgress.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var pair in _pendingDownloadProgress)
+        {
+            try
+            {
+                ApplyDownloadProgress(pair.Key, pair.Value);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Update download progress");
+            }
+        }
+        _pendingDownloadProgress.Clear();
+        DownloadsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static void ApplyDownloadProgress(DownloadItem item, CoreWebView2DownloadOperation operation)
+    {
+        var resultFilePath = operation.ResultFilePath;
+        if (!string.IsNullOrWhiteSpace(resultFilePath) &&
+            !string.Equals(item.FilePath, resultFilePath, StringComparison.Ordinal))
+        {
+            item.FilePath = resultFilePath;
+            var fileName = Path.GetFileName(resultFilePath);
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                item.FileName = fileName;
+            }
         }
 
         item.ReceivedBytes = (long)operation.BytesReceived;
@@ -805,38 +1305,113 @@ public partial class MainWindow : Window, IControlBrowser
         {
             item.TotalBytes = (long)operation.TotalBytesToReceive;
         }
-
-        // 节流：距上次通知 >= 100ms 才触发 DownloadsChanged（角标/空态刷新）。
-        // StateChanged 会无条件触发，确保最终状态被通知。
-        var now = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (now - _lastDownloadProgressNotifyTicks >= DownloadProgressThrottleTicks)
-        {
-            _lastDownloadProgressNotifyTicks = now;
-            DownloadsChanged?.Invoke(this, EventArgs.Empty);
-        }
     }
 
-    private void OnDownloadStateChanged(DownloadItem item, CoreWebView2DownloadOperation operation)
+    private void DownloadOperation_OnStateChanged(object? sender, object e)
     {
-        if (!Dispatcher.CheckAccess())
+        if (sender is not CoreWebView2DownloadOperation operation)
         {
-            Dispatcher.Invoke(() => OnDownloadStateChanged(item, operation));
             return;
         }
+
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(() => HandleDownloadStateChanged(operation));
+            return;
+        }
+
+        HandleDownloadStateChanged(operation);
+    }
+
+    private void HandleDownloadStateChanged(CoreWebView2DownloadOperation operation)
+    {
+        if (!_downloadItemsByOperation.TryGetValue(operation, out var item))
+        {
+            return;
+        }
+
+        try
+        {
+            ApplyDownloadProgress(item, operation);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Read final download state");
+            _downloadsService.MarkInterrupted(item);
+            _pendingDownloadProgress.Remove(item);
+            DetachDownloadOperation(operation);
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        _pendingDownloadProgress.Remove(item);
 
         switch (operation.State)
         {
             case CoreWebView2DownloadState.Completed:
                 _downloadsService.MarkCompleted(item);
                 SetStatusMessage(LocalizationService.Format("Status.DownloadCompleted", item.FileName), StatusLevel.Success);
+                DetachDownloadOperation(operation);
                 break;
             case CoreWebView2DownloadState.Interrupted:
-                _downloadsService.MarkInterrupted(item);
-                SetStatusMessage(LocalizationService.Format("Status.DownloadInterrupted", item.FileName), StatusLevel.Warning);
+                if (item.State == DownloadState.Canceled ||
+                    operation.InterruptReason == CoreWebView2DownloadInterruptReason.UserCanceled)
+                {
+                    var wasAlreadyCanceled = item.State == DownloadState.Canceled;
+                    _downloadsService.MarkCanceled(item);
+                    if (!wasAlreadyCanceled)
+                    {
+                        SetStatusMessage(LocalizationService.Format("Status.DownloadCanceled", item.FileName), StatusLevel.Success);
+                    }
+                }
+                else
+                {
+                    _downloadsService.MarkInterrupted(item);
+                    SetStatusMessage(LocalizationService.Format("Status.DownloadInterrupted", item.FileName), StatusLevel.Warning);
+                }
+                DetachDownloadOperation(operation);
                 break;
         }
 
         DownloadsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DetachDownloadOperation(CoreWebView2DownloadOperation operation)
+    {
+        try { operation.BytesReceivedChanged -= DownloadOperation_OnBytesReceivedChanged; }
+        catch { /* 浏览器进程退出后 operation 可能已失效。 */ }
+
+        try { operation.StateChanged -= DownloadOperation_OnStateChanged; }
+        catch { /* 浏览器进程退出后 operation 可能已失效。 */ }
+
+        _downloadItemsByOperation.Remove(operation);
+    }
+
+    private void DetachAllDownloadOperations(bool markInterrupted = false)
+    {
+        _downloadProgressTimer?.Stop();
+        if (_downloadProgressTimer is not null)
+        {
+            _downloadProgressTimer.Tick -= DownloadProgressTimer_OnTick;
+            _downloadProgressTimer = null;
+        }
+
+        _pendingDownloadProgress.Clear();
+        var changed = false;
+        foreach (var pair in _downloadItemsByOperation.ToArray())
+        {
+            if (markInterrupted && pair.Value.State == DownloadState.InProgress)
+            {
+                _downloadsService.MarkInterrupted(pair.Value);
+                changed = true;
+            }
+
+            DetachDownloadOperation(pair.Key);
+        }
+
+        if (changed)
+        {
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void KeyboardHookService_OnKPressed(object? sender, EventArgs e)
@@ -932,6 +1507,8 @@ public partial class MainWindow : Window, IControlBrowser
 
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
+        // 浮窗叠游戏 / 失焦 / 最小化时降低 WebView 内存目标，前台浏览再恢复
+        UpdateWebViewMemoryTargetLevel();
         // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
         ApplyTitleBarForCurrentMode(forceHideInFixed: true);
         UpdateModeToggleButton();
@@ -1058,9 +1635,13 @@ public partial class MainWindow : Window, IControlBrowser
     {
         _settings.ControlWindowLeft = left;
         _settings.ControlWindowTop = top;
+        _settings.HasControlWindowPosition = true;
         _settings.ControlWindowWidth = width;
         _settings.ControlWindowHeight = height;
-        QueueSettingsSave();
+        if (!_isShuttingDown)
+        {
+            QueueSettingsSave();
+        }
     }
 
     public bool RestoreControlWindowBounds(Window controlWindow)
@@ -1076,7 +1657,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         var restoredPosition = false;
-        if (_settings.ControlWindowLeft >= 0 && _settings.ControlWindowTop >= 0)
+        if (_settings.HasControlWindowPosition)
         {
             controlWindow.Left = _settings.ControlWindowLeft;
             controlWindow.Top = _settings.ControlWindowTop;
@@ -1313,8 +1894,63 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (_downloadsService.TryCancel(item))
         {
+            _pendingDownloadProgress.Remove(item);
+            var operation = _downloadItemsByOperation.FirstOrDefault(pair => ReferenceEquals(pair.Value, item)).Key;
+            if (operation is not null)
+            {
+                DetachDownloadOperation(operation);
+            }
+
             SetStatusMessage(LocalizationService.Format("Status.DownloadCanceled", item.FileName), StatusLevel.Success);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void RetryDownload(DownloadItem item)
+    {
+        if (_isShuttingDown || !item.CanRetry ||
+            !EntryText.TryValidateHttpUrl(item.SourceUri, out var retryUri))
+        {
+            SetStatusMessage(LocalizationService.Get("Status.DownloadRetryUnavailable"), StatusLevel.Warning);
+            return;
+        }
+
+        CoreWebView2? core;
+        try
+        {
+            core = BrowserView.CoreWebView2;
+        }
+        catch
+        {
+            core = null;
+        }
+
+        if (core is null)
+        {
+            SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
+            return;
+        }
+
+        try
+        {
+            _pendingDownloadRetry = new PendingDownloadRetry(
+                item,
+                retryUri,
+                DateTime.UtcNow.AddSeconds(30));
+            SetNavigating(true);
+            core.Navigate(retryUri);
+            SetStatusMessage(
+                LocalizationService.Format("Status.DownloadRetrying", item.FileName),
+                StatusLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            _pendingDownloadRetry = null;
+            FileLogger.LogException(ex, "Retry download");
+            SetNavigating(false);
+            SetStatusMessage(
+                LocalizationService.Format("Status.DownloadRetryFailed", ex.Message),
+                StatusLevel.Error);
         }
     }
 
@@ -1338,6 +1974,32 @@ public partial class MainWindow : Window, IControlBrowser
     {
         _downloadsService.ClearFinished();
         DownloadsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private DownloadItem? TakePendingDownloadRetry(string sourceUri)
+    {
+        var pending = _pendingDownloadRetry;
+        if (pending is null || pending.ExpiresAtUtc < DateTime.UtcNow ||
+            !Downloads.Contains(pending.Item) || !pending.Item.CanRetry)
+        {
+            _pendingDownloadRetry = null;
+            return null;
+        }
+
+        if (!DownloadUrisMatch(pending.SourceUri, sourceUri))
+        {
+            return null;
+        }
+
+        _pendingDownloadRetry = null;
+        return pending.Item;
+    }
+
+    internal static bool DownloadUrisMatch(string expected, string actual)
+    {
+        return Uri.TryCreate(expected, UriKind.Absolute, out var expectedUri) &&
+               Uri.TryCreate(actual, UriKind.Absolute, out var actualUri) &&
+               expectedUri.Equals(actualUri);
     }
 
     private void ModeToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleWindowMode();
@@ -1462,7 +2124,7 @@ public partial class MainWindow : Window, IControlBrowser
         if (!_isMaximized)
         {
             _savedBounds = new Rect(Left, Top, Width, Height);
-            var work = SystemParameters.WorkArea;
+            var work = WindowBoundsHelper.GetWorkArea(this);
             Left = work.Left;
             Top = work.Top;
             Width = work.Width;
@@ -1484,7 +2146,7 @@ public partial class MainWindow : Window, IControlBrowser
     private void RestoreFromMaximizeOnDrag(MouseButtonEventArgs e)
     {
         // 拖动最大化窗口标题栏时还原窗口尺寸，并让窗口跟随鼠标
-        var work = SystemParameters.WorkArea;
+        var work = WindowBoundsHelper.GetWorkArea(this);
         var ratio = e.GetPosition(this).X / ActualWidth;
         ToggleMaximize();
         Left = e.GetPosition(null).X - _savedBounds.Width * ratio;
@@ -1505,22 +2167,47 @@ public partial class MainWindow : Window, IControlBrowser
 
         // 拦截当前的关闭，并在后台进行清理和异步保存
         e.Cancel = true;
-        _isRealClose = true;
+        if (_closeCleanupStarted)
+        {
+            return;
+        }
 
-        await CleanupAndSaveAsync();
+        _closeCleanupStarted = true;
 
-        // 重新调用 Close，此时 _isRealClose 为 true，将直接返回并退出
-        Close();
+        try
+        {
+            await CleanupAndSaveAsync();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Unhandled main window cleanup failure");
+        }
+        finally
+        {
+            // 重新调用 Close，此时 _isRealClose 为 true，将直接返回并退出
+            _isRealClose = true;
+            Close();
+        }
     }
 
     private async Task CleanupAndSaveAsync()
     {
         _isShuttingDown = true;
 
+        await StopAutoCacheCheckAsync();
+
         // 立即停止键盘钩子
-        _keyboardHookService.Dispose();
+        try
+        {
+            _keyboardHookService.Dispose();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Dispose keyboard hook");
+        }
 
         // 取消前台状态跟踪
+        StateChanged -= MainWindow_OnStateChanged;
         if (Application.Current is not null)
         {
             Application.Current.Activated -= App_OnActivated;
@@ -1539,6 +2226,23 @@ public partial class MainWindow : Window, IControlBrowser
             _windowBoundsUiDebounceTimer = null;
         }
 
+        if (_titleBarHideTimer is not null)
+        {
+            _titleBarHideTimer.Stop();
+            _titleBarHideTimer.Tick -= TitleBarHideTimer_OnTick;
+            _titleBarHideTimer = null;
+        }
+
+        if (_modeToastTimer is not null)
+        {
+            _modeToastTimer.Stop();
+            _modeToastTimer.Tick -= ModeToastTimer_OnTick;
+            _modeToastTimer = null;
+        }
+
+        DetachAllDownloadOperations(markInterrupted: true);
+        _pendingDownloadRetry = null;
+
         // 取消事件订阅
         LocationChanged -= MainWindow_OnLocationOrSizeChanged;
         SizeChanged -= MainWindow_OnLocationOrSizeChanged;
@@ -1546,72 +2250,77 @@ public partial class MainWindow : Window, IControlBrowser
         // 立即关闭控制窗口（不等待保存）
         if (_controlWindow is not null)
         {
+            _controlWindow.SaveWindowBounds();
             _controlWindow.AllowClose = true;
             _controlWindow.Close();
+            _controlWindow = null;
         }
 
         // 保存窗口位置到内存（最大化时保留还原前的边界）
         SaveWindowBounds();
 
+        // 退出前强制用当前页面 URL 刷新 LastUrl，避免 SPA 导航 / 防抖取消导致恢复到旧地址
+        CaptureCurrentUrlToSettings();
+
         try
         {
-            // 退出前强制用当前页面 URL 刷新 LastUrl，避免 SPA 导航 / 防抖取消导致恢复到旧地址
-            CaptureCurrentUrlToSettings();
-
-            // 取消事件订阅
-            _titleBarHideTimer?.Stop();
-            if (_titleBarHideTimer is not null)
-            {
-                _titleBarHideTimer.Tick -= TitleBarHideTimer_OnTick;
-            }
-
-            if (BrowserView.CoreWebView2 is not null)
-            {
-                BrowserView.NavigationCompleted -= BrowserView_OnNavigationCompleted;
-                BrowserView.CoreWebView2.DocumentTitleChanged -= BrowserView_OnDocumentTitleChanged;
-                BrowserView.CoreWebView2.SourceChanged -= BrowserView_OnSourceChanged;
-                BrowserView.CoreWebView2.NewWindowRequested -= BrowserView_OnNewWindowRequested;
-                BrowserView.CoreWebView2.HistoryChanged -= BrowserView_OnHistoryChanged;
-                BrowserView.CoreWebView2.DownloadStarting -= BrowserView_OnDownloadStarting;
-            }
-
-            // 解绑光标强制箭头描述符：AddValueChanged 不解绑会造成 WebView2 与窗口的事件订阅泄漏
-            if (_cursorDescriptor is not null && _cursorForceArrowHandler is not null)
-            {
-                try
-                {
-                    _cursorDescriptor.RemoveValueChanged(BrowserView, _cursorForceArrowHandler);
-                }
-                catch
-                {
-                    // 解绑失败不阻塞关闭流程
-                }
-                _cursorDescriptor = null;
-                _cursorForceArrowHandler = null;
-            }
-
-            // 异步保存配置，不阻塞 UI 线程，让 WebView2 能继续泵送消息
-            await _settingsService.SaveAsync(_settings);
-
-            // 历史可能有防抖未落盘的变更；先 Flush 再 Dispose
-            try
-            {
-                await _historyService.FlushAsync();
-            }
-            catch (Exception flushEx)
-            {
-                FileLogger.LogException(flushEx, "Flush history before close");
-            }
-
-            // 释放服务资源
-            _settingsService.Dispose();
-            _historyService.Dispose();
-            _favoritesService.Dispose();
+            DetachBrowserEvents(BrowserView);
+            DetachCursorGuard(BrowserView);
+            BrowserHost.Children.Remove(BrowserView);
+            BrowserView.Dispose();
         }
         catch (Exception ex)
         {
-            FileLogger.LogException(ex, "Main window closing cleanup");
+            FileLogger.LogException(ex, "Dispose WebView2");
         }
+
+        try
+        {
+            await _settingsService.SaveAsync(_settings);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Save settings before close");
+        }
+
+        try
+        {
+            await _historyService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Flush history before close");
+        }
+
+        try
+        {
+            await _favoritesService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Flush favorites before close");
+        }
+
+        try
+        {
+            await _downloadsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Flush downloads before close");
+        }
+
+        try { _settingsService.Dispose(); }
+        catch (Exception ex) { FileLogger.LogException(ex, "Dispose settings service"); }
+
+        try { _historyService.Dispose(); }
+        catch (Exception ex) { FileLogger.LogException(ex, "Dispose history service"); }
+
+        try { _favoritesService.Dispose(); }
+        catch (Exception ex) { FileLogger.LogException(ex, "Dispose favorites service"); }
+
+        try { _downloadsService.Dispose(); }
+        catch (Exception ex) { FileLogger.LogException(ex, "Dispose downloads service"); }
     }
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
@@ -1706,7 +2415,10 @@ public partial class MainWindow : Window, IControlBrowser
         Height = height;
         Left = left;
         Top = top;
-        WindowBoundsHelper.ClampToWorkArea(this);
+        if (WindowBoundsHelper.HasHandle(this))
+        {
+            WindowBoundsHelper.ClampToWorkArea(this);
+        }
     }
 
     private void SaveWindowBounds()
@@ -2105,4 +2817,9 @@ public partial class MainWindow : Window, IControlBrowser
     {
         SetZoom(BrowserView.ZoomFactor + delta);
     }
+
+    private sealed record PendingDownloadRetry(
+        DownloadItem Item,
+        string SourceUri,
+        DateTime ExpiresAtUtc);
 }

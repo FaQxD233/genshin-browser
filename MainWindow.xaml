@@ -87,10 +87,11 @@
     </Border>
 
     <!-- ForceCursor：避免网页 cursor:none / 透明分层窗在视频、滚动条上把光标藏掉 -->
-    <wv2:WebView2CompositionControl x:Name="BrowserView"
-                                    Grid.Row="1"
-                                    Cursor="Arrow"
-                                    ForceCursor="True" />
+    <Grid x:Name="BrowserHost" Grid.Row="1">
+      <wv2:WebView2CompositionControl x:Name="BrowserView"
+                                      Cursor="Arrow"
+                                      ForceCursor="True" />
+    </Grid>
 
     <!-- 模式切换描边闪：不拦截鼠标 -->
     <Border x:Name="ModeFlashBorder"
