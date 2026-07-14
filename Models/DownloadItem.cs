@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using GenshinBrowser.Services;
 
@@ -12,6 +13,8 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private long _receivedBytes;
     private long _totalBytes;
     private DownloadState _state = DownloadState.InProgress;
+    private string _fileName = string.Empty;
+    private string _sourceUri = string.Empty;
     private string _filePath = string.Empty;
     private bool _canCancel = true;
     private bool _canOpen;
@@ -19,17 +22,39 @@ public sealed class DownloadItem : INotifyPropertyChanged
     /// <summary>
     /// 显示用的文件名（来自下载路径或 URI）。
     /// </summary>
-    public string FileName { get; init; } = string.Empty;
+    public string FileName
+    {
+        get => _fileName;
+        set => SetProperty(ref _fileName, value);
+    }
 
     /// <summary>
     /// 原始下载地址，用于文件名兜底与展示。
     /// </summary>
-    public string SourceUri { get; init; } = string.Empty;
+    public string SourceUri
+    {
+        get => _sourceUri;
+        set
+        {
+            if (SetProperty(ref _sourceUri, value ?? string.Empty))
+            {
+                OnPropertyChanged(nameof(CanRetry));
+            }
+        }
+    }
+
+    public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
 
     public string FilePath
     {
         get => _filePath;
-        set { if (SetProperty(ref _filePath, value)) OnPropertyChanged(nameof(CanOpenInFolder)); }
+        set
+        {
+            if (SetProperty(ref _filePath, value ?? string.Empty))
+            {
+                RefreshAvailability();
+            }
+        }
     }
 
     public long TotalBytes
@@ -67,8 +92,9 @@ public sealed class DownloadItem : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(StateText));
                 OnPropertyChanged(nameof(IsRunning));
+                OnPropertyChanged(nameof(CanRetry));
                 CanCancel = value == DownloadState.InProgress;
-                CanOpen = value == DownloadState.Completed;
+                RefreshAvailability();
             }
         }
     }
@@ -119,7 +145,20 @@ public sealed class DownloadItem : INotifyPropertyChanged
         private set => SetProperty(ref _canOpen, value);
     }
 
-    public bool CanOpenInFolder => !string.IsNullOrEmpty(FilePath) && State != DownloadState.Canceled;
+    public bool CanOpenInFolder
+    {
+        get
+        {
+            var directory = Path.GetDirectoryName(FilePath);
+            return State != DownloadState.Canceled &&
+                   !string.IsNullOrEmpty(directory) &&
+                   Directory.Exists(directory);
+        }
+    }
+
+    public bool CanRetry =>
+        State is DownloadState.Canceled or DownloadState.Interrupted &&
+        Utils.EntryText.TryValidateHttpUrl(SourceUri, out _);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -138,6 +177,12 @@ public sealed class DownloadItem : INotifyPropertyChanged
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
+    }
+
+    private void RefreshAvailability()
+    {
+        CanOpen = State == DownloadState.Completed && File.Exists(FilePath);
+        OnPropertyChanged(nameof(CanOpenInFolder));
     }
 
     private static string FormatBytes(long bytes)

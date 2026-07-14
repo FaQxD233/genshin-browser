@@ -20,6 +20,8 @@ public sealed class AppSettings
 
     public double ControlWindowTop { get; set; } = -1;
 
+    public bool HasControlWindowPosition { get; set; }
+
     public double ControlWindowWidth { get; set; } = 640;
 
     public double ControlWindowHeight { get; set; } = 853;
@@ -35,7 +37,7 @@ public sealed class AppSettings
     public ModifierKeys TogglePlaybackModifiers { get; set; } = ModifierKeys.None;
 
     /// <summary>
-    /// 主题：Dark / Light。默认 Dark。
+    /// 主题：Dark / Light / System。默认 Dark。System 跟随 Windows 应用浅/深色。
     /// </summary>
     public string ThemeMode { get; set; } = "Dark";
 

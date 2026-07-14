@@ -35,16 +35,24 @@ public static class AppConfig
         /// </summary>
         public const int MaxDownloadItems = 50;
 
+        public const int MaxSettingsFileSizeBytes = 256 * 1024;
+
+        public const int MaxHistoryFileSizeBytes = 12 * 1024 * 1024;
+
+        public const int MaxFavoritesFileSizeBytes = 6 * 1024 * 1024;
+
+        public const int MaxDownloadsFileSizeBytes = 16 * 1024 * 1024;
+
         /// <summary>
         /// 日志保留天数。启动时清理超过此天数的旧日志文件。
         /// </summary>
         public const int LogRetentionDays = 14;
 
         /// <summary>
-        /// WebView2 用户数据目录大小阈值（MB）。启动时检查超过此值则静默自动清理
-        /// （缓存 / DOM / Service Worker / 自动填充等；保留 Cookie、浏览历史、下载记录）。
+        /// WebView2 可回收数据大小阈值。启动时检查超过此值则静默自动清理
+        /// （缓存 / DOM / Service Worker；保留 Cookie、浏览历史、下载记录、自动填充和已保存密码）。
         /// </summary>
-        public const int WebView2CacheThresholdMb = 500;
+        public const long WebView2CacheThresholdBytes = 500L * 1024 * 1024;
 
         /// <summary>
         /// 历史/收藏标题最大长度。超长标题入库前截断，防止超长字符串占用内存与磁盘。
@@ -52,9 +60,17 @@ public static class AppConfig
         public const int MaxEntryTitleLength = 200;
 
         /// <summary>
+        /// 历史、收藏和恢复地址允许持久化的最大 URL 长度。
+        /// 超限 URL 不入库，避免页面构造超长地址造成内存与配置文件膨胀。
+        /// </summary>
+        public const int MaxEntryUrlLength = 8192;
+
+        /// <summary>
         /// 历史记录落盘防抖（毫秒）。SPA 连续切页时合并写盘，降低 IO。
         /// </summary>
         public const int HistorySaveDebounceMs = 500;
+
+        public const int DownloadSaveDebounceMs = 300;
     }
 
     /// <summary>
