@@ -45,10 +45,11 @@
   <sys:String x:Key="Settings.RestoreDefaults">恢复默认</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放与快捷键为默认值</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">清理缓存</sys:String>
-  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">清理磁盘缓存、站点本地数据、Service Worker、自动填充与已保存密码（保留登录 Cookie、浏览历史、下载记录与收藏夹）</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">清理磁盘缓存、站点本地数据与 Service Worker（保留登录 Cookie、浏览历史、下载记录、收藏夹、自动填充与已保存密码）</sys:String>
   <sys:String x:Key="Settings.Theme">主题</sys:String>
   <sys:String x:Key="Settings.ThemeDark">暗色</sys:String>
   <sys:String x:Key="Settings.ThemeLight">亮色</sys:String>
+  <sys:String x:Key="Settings.ThemeSystem">系统</sys:String>
   <sys:String x:Key="Settings.Language">语言</sys:String>
   <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
   <sys:String x:Key="Settings.LanguageEn">English</sys:String>
@@ -85,11 +86,12 @@
   <!-- Downloads -->
   <sys:String x:Key="Downloads.Title">下载任务</sys:String>
   <sys:String x:Key="Downloads.ClearFinished">清除已结束</sys:String>
-  <sys:String x:Key="Downloads.ClearFinishedTooltip">清除已完成 / 已取消的记录</sys:String>
+  <sys:String x:Key="Downloads.ClearFinishedTooltip">清除已完成 / 已取消 / 已中断的记录</sys:String>
   <sys:String x:Key="Downloads.Empty">暂无下载任务&#x0a;文件下载会出现在这里</sys:String>
   <sys:String x:Key="Downloads.OpenFile">打开文件</sys:String>
   <sys:String x:Key="Downloads.OpenFolder">打开所在文件夹</sys:String>
   <sys:String x:Key="Downloads.Cancel">取消下载</sys:String>
+  <sys:String x:Key="Downloads.Retry">重试下载</sys:String>
   <sys:String x:Key="Downloads.State.InProgress">下载中</sys:String>
   <sys:String x:Key="Downloads.State.Completed">已完成</sys:String>
   <sys:String x:Key="Downloads.State.Canceled">已取消</sys:String>
@@ -141,6 +143,7 @@
   <sys:String x:Key="Toast.PlaybackSet">已将“视频播放”设为 {0}</sys:String>
   <sys:String x:Key="Toast.ThemeDark">已切换到暗色主题</sys:String>
   <sys:String x:Key="Toast.ThemeLight">已切换到亮色主题</sys:String>
+  <sys:String x:Key="Toast.ThemeSystem">已切换到跟随系统主题</sys:String>
   <sys:String x:Key="Toast.LanguageZh">界面语言：中文</sys:String>
   <sys:String x:Key="Toast.LanguageEn">Language: English</sys:String>
   <sys:String x:Key="Hotkey.NotSet">未设置</sys:String>
@@ -149,7 +152,12 @@
   <!-- Status messages (MainWindow) -->
   <sys:String x:Key="Status.InitBrowser">正在初始化浏览器...</sys:String>
   <sys:String x:Key="Status.InstallingWebView2">正在安装 WebView2 Runtime...</sys:String>
-  <sys:String x:Key="Status.BrowserReady">浏览器已就绪，登录态和缓存将自动保留。</sys:String>
+  <sys:String x:Key="Status.BrowserReady">浏览器已就绪，登录态、自动填充和已保存密码将保留。</sys:String>
+  <sys:String x:Key="Status.BrowserRecovering">浏览器进程异常，正在恢复...</sys:String>
+  <sys:String x:Key="Status.BrowserRecovered">浏览器已恢复。</sys:String>
+  <sys:String x:Key="Status.BrowserRecoveryFailed">恢复浏览器失败: {0}</sys:String>
+  <sys:String x:Key="Status.RendererRecovering">页面渲染进程异常，正在重新加载...</sys:String>
+  <sys:String x:Key="Status.RendererUnresponsive">页面长时间无响应，正在重新加载...</sys:String>
   <sys:String x:Key="Status.InitFailed">初始化失败: {0}</sys:String>
   <sys:String x:Key="Status.PageLoaded">页面已加载。按 {0} 控制视频播放/暂停，按 {1} 切换浏览/浮窗。</sys:String>
   <sys:String x:Key="Status.LoadFailed">加载失败: {0}</sys:String>
@@ -175,6 +183,9 @@
   <sys:String x:Key="Status.Opening">正在打开: {0}</sys:String>
   <sys:String x:Key="Status.OpenFailed">打开失败: {0}</sys:String>
   <sys:String x:Key="Status.DownloadCanceled">已取消下载: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetrying">正在重试下载: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetryUnavailable">该下载缺少可重试的 HTTP(S) 地址。</sys:String>
+  <sys:String x:Key="Status.DownloadRetryFailed">重试下载失败: {0}</sys:String>
   <sys:String x:Key="Status.CannotOpenFile">无法打开文件，可能已被移动或删除。</sys:String>
   <sys:String x:Key="Status.CannotOpenFolder">无法打开所在文件夹。</sys:String>
   <sys:String x:Key="Status.HotkeyInstallFailed">全局热键安装失败，Win32 错误码: {0}。控制面板按钮仍可使用。</sys:String>
@@ -183,6 +194,9 @@
   <sys:String x:Key="Status.StartupFailed">启动失败：\n{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">WebView2 Runtime 自动安装失败，请手动安装。</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">请手动下载安装：https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
+  <sys:String x:Key="Status.WebView2MissingInstaller">未检测到 WebView2 Runtime（浏览器核心组件），且未找到自动安装程序。&#x0a;&#x0a;{0}</sys:String>
+  <sys:String x:Key="Status.WebView2InstallerStartFailed">无法启动 WebView2 安装程序。</sys:String>
+  <sys:String x:Key="Status.WebView2CoreUnavailable">WebView2 浏览器核心创建失败。</sys:String>
   <sys:String x:Key="Status.WebView2CacheLarge">WebView2 缓存已达 {0} MB，正在自动清理...</sys:String>
   <sys:String x:Key="Status.ClearingBrowsingData">正在清理浏览数据...</sys:String>
   <sys:String x:Key="Status.BrowsingDataCleared">已清理浏览数据。</sys:String>

@@ -45,10 +45,11 @@
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
-  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, service workers, autofill, and saved passwords (login cookies, browsing history, download history, and favorites are preserved)</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, and service workers (login cookies, browsing history, downloads, favorites, autofill, and saved passwords are preserved)</sys:String>
   <sys:String x:Key="Settings.Theme">Theme</sys:String>
   <sys:String x:Key="Settings.ThemeDark">Dark</sys:String>
   <sys:String x:Key="Settings.ThemeLight">Light</sys:String>
+  <sys:String x:Key="Settings.ThemeSystem">System</sys:String>
   <sys:String x:Key="Settings.Language">Language</sys:String>
   <sys:String x:Key="Settings.LanguageZh">中文</sys:String>
   <sys:String x:Key="Settings.LanguageEn">English</sys:String>
@@ -85,11 +86,12 @@
   <!-- Downloads -->
   <sys:String x:Key="Downloads.Title">Downloads</sys:String>
   <sys:String x:Key="Downloads.ClearFinished">Clear finished</sys:String>
-  <sys:String x:Key="Downloads.ClearFinishedTooltip">Clear completed / canceled items</sys:String>
+  <sys:String x:Key="Downloads.ClearFinishedTooltip">Clear completed / canceled / interrupted items</sys:String>
   <sys:String x:Key="Downloads.Empty">No downloads&#x0a;Files you download will show up here</sys:String>
   <sys:String x:Key="Downloads.OpenFile">Open file</sys:String>
   <sys:String x:Key="Downloads.OpenFolder">Open containing folder</sys:String>
   <sys:String x:Key="Downloads.Cancel">Cancel download</sys:String>
+  <sys:String x:Key="Downloads.Retry">Retry download</sys:String>
   <sys:String x:Key="Downloads.State.InProgress">Downloading</sys:String>
   <sys:String x:Key="Downloads.State.Completed">Completed</sys:String>
   <sys:String x:Key="Downloads.State.Canceled">Canceled</sys:String>
@@ -141,6 +143,7 @@
   <sys:String x:Key="Toast.PlaybackSet">“Video playback” set to {0}</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
   <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
+  <sys:String x:Key="Toast.ThemeSystem">Switched to system theme</sys:String>
   <sys:String x:Key="Toast.LanguageZh">界面语言：中文</sys:String>
   <sys:String x:Key="Toast.LanguageEn">Language: English</sys:String>
   <sys:String x:Key="Hotkey.NotSet">Not set</sys:String>
@@ -149,7 +152,12 @@
   <!-- Status messages (MainWindow) -->
   <sys:String x:Key="Status.InitBrowser">Initializing browser...</sys:String>
   <sys:String x:Key="Status.InstallingWebView2">Installing WebView2 Runtime...</sys:String>
-  <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions and cache are kept automatically.</sys:String>
+  <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions, autofill, and saved passwords are preserved.</sys:String>
+  <sys:String x:Key="Status.BrowserRecovering">The browser process failed. Recovering...</sys:String>
+  <sys:String x:Key="Status.BrowserRecovered">Browser recovered.</sys:String>
+  <sys:String x:Key="Status.BrowserRecoveryFailed">Browser recovery failed: {0}</sys:String>
+  <sys:String x:Key="Status.RendererRecovering">The page renderer failed. Reloading...</sys:String>
+  <sys:String x:Key="Status.RendererUnresponsive">The page is unresponsive. Reloading...</sys:String>
   <sys:String x:Key="Status.InitFailed">Initialization failed: {0}</sys:String>
   <sys:String x:Key="Status.PageLoaded">Page loaded. Press {0} to play/pause video, {1} to switch Browsing/Floating.</sys:String>
   <sys:String x:Key="Status.LoadFailed">Load failed: {0}</sys:String>
@@ -175,6 +183,9 @@
   <sys:String x:Key="Status.Opening">Opening: {0}</sys:String>
   <sys:String x:Key="Status.OpenFailed">Failed to open: {0}</sys:String>
   <sys:String x:Key="Status.DownloadCanceled">Download canceled: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetrying">Retrying download: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetryUnavailable">This download has no retryable HTTP(S) address.</sys:String>
+  <sys:String x:Key="Status.DownloadRetryFailed">Failed to retry download: {0}</sys:String>
   <sys:String x:Key="Status.CannotOpenFile">Cannot open file. It may have been moved or deleted.</sys:String>
   <sys:String x:Key="Status.CannotOpenFolder">Cannot open containing folder.</sys:String>
   <sys:String x:Key="Status.HotkeyInstallFailed">Failed to install global hotkey, Win32 error: {0}. Control panel buttons still work.</sys:String>
@@ -183,6 +194,9 @@
   <sys:String x:Key="Status.StartupFailed">Startup failed:\n{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">Automatic WebView2 Runtime install failed. Please install it manually.</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">Please download and install: https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
+  <sys:String x:Key="Status.WebView2MissingInstaller">WebView2 Runtime was not detected and the automatic installer is missing.&#x0a;&#x0a;{0}</sys:String>
+  <sys:String x:Key="Status.WebView2InstallerStartFailed">Unable to start the WebView2 installer.</sys:String>
+  <sys:String x:Key="Status.WebView2CoreUnavailable">The WebView2 browser core could not be created.</sys:String>
   <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB, auto-cleaning...</sys:String>
   <sys:String x:Key="Status.ClearingBrowsingData">Clearing browsing data...</sys:String>
   <sys:String x:Key="Status.BrowsingDataCleared">Browsing data cleared.</sys:String>

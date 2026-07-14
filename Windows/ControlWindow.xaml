@@ -40,37 +40,46 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <ProgressBar Grid.Column="0" Style="{StaticResource ModernProgressBar}"
-                       Value="{Binding Progress}" VerticalAlignment="Center" Height="5"/>
+                       Value="{Binding Progress, Mode=OneWay}" VerticalAlignment="Center" Height="5"/>
           <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="11"
                      Margin="10,0,0,0" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-          <Button Grid.Column="2" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="8,0,0,0"
-                  Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                  CommandParameter="{Binding}"
-                  ToolTip="{DynamicResource Downloads.OpenFile}"
-                  IsEnabled="{Binding CanOpen}"
-                  AutomationProperties.Name="{DynamicResource Downloads.OpenFile}">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7B3;" FontSize="12"/>
-          </Button>
-          <Button Grid.Column="3" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
-                  Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                  CommandParameter="{Binding}"
-                  ToolTip="{DynamicResource Downloads.OpenFolder}"
-                  IsEnabled="{Binding CanOpenInFolder}"
-                  AutomationProperties.Name="{DynamicResource Downloads.OpenFolder}">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8DA;" FontSize="12"/>
-          </Button>
-          <Button Grid.Column="4" Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
-                  Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                  CommandParameter="{Binding}"
-                  ToolTip="{DynamicResource Downloads.Cancel}"
-                  IsEnabled="{Binding CanCancel}"
-                  AutomationProperties.Name="{DynamicResource Downloads.Cancel}">
-            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE711;" FontSize="12"/>
-          </Button>
+          <!-- 操作按钮右对齐；不可用的重试/取消 Collapsed，完成后前两个键贴到最右 -->
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24"
+                    Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}"
+                    ToolTip="{DynamicResource Downloads.OpenFile}"
+                    IsEnabled="{Binding CanOpen}"
+                    AutomationProperties.Name="{DynamicResource Downloads.OpenFile}">
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7B3;" FontSize="12"/>
+            </Button>
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+                    Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}"
+                    ToolTip="{DynamicResource Downloads.OpenFolder}"
+                    IsEnabled="{Binding CanOpenInFolder}"
+                    AutomationProperties.Name="{DynamicResource Downloads.OpenFolder}">
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8DA;" FontSize="12"/>
+            </Button>
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+                    Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}"
+                    ToolTip="{DynamicResource Downloads.Retry}"
+                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.Name="{DynamicResource Downloads.Retry}">
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" FontSize="12"/>
+            </Button>
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+                    Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                    CommandParameter="{Binding}"
+                    ToolTip="{DynamicResource Downloads.Cancel}"
+                    Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.Name="{DynamicResource Downloads.Cancel}">
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE711;" FontSize="12"/>
+            </Button>
+          </StackPanel>
         </Grid>
       </Grid>
     </DataTemplate>
@@ -458,6 +467,7 @@
                   <ColumnDefinition Width="68"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="12"/>
                   <ColumnDefinition Width="68"/>
                   <ColumnDefinition Width="*"/>
@@ -478,7 +488,7 @@
                     </Style>
                   </Button.Style>
                 </Button>
-                <Button Grid.Column="2" Command="{Binding SetThemeLightCommand}" Content="{DynamicResource Settings.ThemeLight}">
+                <Button Grid.Column="2" Margin="0,0,4,0" Command="{Binding SetThemeLightCommand}" Content="{DynamicResource Settings.ThemeLight}">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
@@ -491,9 +501,22 @@
                     </Style>
                   </Button.Style>
                 </Button>
-                <TextBlock Grid.Column="4" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
+                <Button Grid.Column="3" Command="{Binding SetThemeSystemCommand}" Content="{DynamicResource Settings.ThemeSystem}">
+                  <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsThemeSystem}" Value="True">
+                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+                <TextBlock Grid.Column="5" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Column="5" Margin="0,0,4,0" Command="{Binding SetLanguageZhCommand}" Content="{DynamicResource Settings.LanguageZh}">
+                <Button Grid.Column="6" Margin="0,0,4,0" Command="{Binding SetLanguageZhCommand}" Content="{DynamicResource Settings.LanguageZh}">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>
@@ -506,7 +529,7 @@
                     </Style>
                   </Button.Style>
                 </Button>
-                <Button Grid.Column="6" Command="{Binding SetLanguageEnCommand}" Content="{DynamicResource Settings.LanguageEn}">
+                <Button Grid.Column="7" Command="{Binding SetLanguageEnCommand}" Content="{DynamicResource Settings.LanguageEn}">
                   <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
                       <Style.Triggers>

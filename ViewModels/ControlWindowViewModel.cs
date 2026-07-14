@@ -71,11 +71,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RestoreDefaultSettingsCommand = new RelayCommand(RestoreDefaults);
         ClearBrowsingDataCommand = new AsyncRelayCommand(ClearBrowsingDataAsync);
         CancelDownloadCommand = new RelayCommand(parameter => CancelDownload(parameter));
+        RetryDownloadCommand = new RelayCommand(parameter => RetryDownload(parameter));
         OpenDownloadFileCommand = new RelayCommand(parameter => OpenDownloadFile(parameter));
         OpenDownloadFolderCommand = new RelayCommand(parameter => OpenDownloadFolder(parameter));
         ClearFinishedDownloadsCommand = new RelayCommand(_browser.ClearFinishedDownloads);
         SetThemeDarkCommand = new RelayCommand(() => SetTheme(ThemeService.Dark));
         SetThemeLightCommand = new RelayCommand(() => SetTheme(ThemeService.Light));
+        SetThemeSystemCommand = new RelayCommand(() => SetTheme(ThemeService.System));
         SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
         SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
         MoveBrowserToCornerCommand = new RelayCommand(MoveBrowserToCorner);
@@ -154,6 +156,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public RelayCommand CancelDownloadCommand { get; }
 
+    public RelayCommand RetryDownloadCommand { get; }
+
     public RelayCommand OpenDownloadFileCommand { get; }
 
     public RelayCommand OpenDownloadFolderCommand { get; }
@@ -163,6 +167,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand SetThemeDarkCommand { get; }
 
     public RelayCommand SetThemeLightCommand { get; }
+
+    public RelayCommand SetThemeSystemCommand { get; }
 
     public RelayCommand SetLanguageZhCommand { get; }
 
@@ -641,9 +647,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
             if (item.State == DownloadState.InProgress) inProgress++;
             else if (item.State == DownloadState.Interrupted) interrupted++;
         }
-        DownloadsBadgeText = inProgress > 0 ? inProgress.ToString() : string.Empty;
-        // 仅有进行中任务时才显示角标，因此中断状态也只在此时联动；无进行中时清掉红色
-        HasInterruptedDownloads = inProgress > 0 && interrupted > 0;
+        DownloadsBadgeText = inProgress > 0
+            ? inProgress.ToString()
+            : interrupted > 0
+                ? interrupted.ToString()
+                : string.Empty;
+        HasInterruptedDownloads = interrupted > 0;
         OnPropertyChanged(nameof(HasDownloadsBadge));
         OnPropertyChanged(nameof(HasNoDownloads));
     }
@@ -659,13 +668,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private async Task ClearBrowsingDataAsync()
     {
-        // 不立刻禁用按钮：AsyncRelayCommand 默认支持并发保护；这里给个直观反馈
-        StatusMessage = LocalizationService.Get("Status.ClearingBrowsingData", "正在清理浏览数据...");
         try
         {
-            await _browser.ClearBrowsingDataAsync().ConfigureAwait(true);
-            StatusMessage = LocalizationService.Get("Status.BrowsingDataCleared", "已清理浏览数据。");
-            ShowToast(LocalizationService.Get("Toast.BrowsingDataCleared", "已清理浏览数据"), StatusLevel.Success);
+            if (!await _browser.ClearBrowsingDataAsync().ConfigureAwait(true))
+            {
+                StatusMessage = _browser.StatusMessage;
+            }
         }
         catch (Exception ex)
         {
@@ -680,6 +688,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
         if (parameter is DownloadItem item)
         {
             _browser.CancelDownload(item);
+        }
+    }
+
+    private void RetryDownload(object? parameter)
+    {
+        if (parameter is DownloadItem item)
+        {
+            _browser.RetryDownload(item);
         }
     }
 
@@ -1144,6 +1160,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public bool IsThemeLight => string.Equals(_browser.ThemeMode, ThemeService.Light, StringComparison.OrdinalIgnoreCase);
 
+    public bool IsThemeSystem => string.Equals(_browser.ThemeMode, ThemeService.System, StringComparison.OrdinalIgnoreCase);
+
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
 
     public bool IsLanguageEn => string.Equals(_browser.UiLanguage, LocalizationService.EnUs, StringComparison.OrdinalIgnoreCase);
@@ -1152,9 +1170,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         _browser.ThemeMode = mode;
         RefreshThemeLanguageFlags();
-        ShowToast(mode == ThemeService.Light
-            ? LocalizationService.Get("Toast.ThemeLight", "已切换到亮色主题")
-            : LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"), StatusLevel.Success);
+        var toast = mode switch
+        {
+            ThemeService.Light => LocalizationService.Get("Toast.ThemeLight", "已切换到亮色主题"),
+            ThemeService.System => LocalizationService.Get("Toast.ThemeSystem", "已切换到跟随系统主题"),
+            _ => LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"),
+        };
+        ShowToast(toast, StatusLevel.Success);
     }
 
     private void SetLanguage(string language)
@@ -1182,6 +1204,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsThemeDark));
         OnPropertyChanged(nameof(IsThemeLight));
+        OnPropertyChanged(nameof(IsThemeSystem));
         OnPropertyChanged(nameof(IsLanguageZh));
         OnPropertyChanged(nameof(IsLanguageEn));
     }

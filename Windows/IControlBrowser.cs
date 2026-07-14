@@ -102,7 +102,7 @@ public interface IControlBrowser
     void RestoreDefaultSettings();
 
     /// <summary>
-    /// 当前主题：Dark / Light。
+    /// 当前主题偏好：Dark / Light / System。
     /// </summary>
     string ThemeMode { get; set; }
 
@@ -129,6 +129,8 @@ public interface IControlBrowser
 
     void CancelDownload(DownloadItem item);
 
+    void RetryDownload(DownloadItem item);
+
     void OpenDownloadFile(DownloadItem item);
 
     void OpenDownloadFolder(DownloadItem item);
@@ -136,9 +138,9 @@ public interface IControlBrowser
     void ClearFinishedDownloads();
 
     /// <summary>
-    /// 清理 WebView2 浏览数据（磁盘缓存、DOM 存储、Service Worker、自动填充等）。
-    /// 保留 Cookie、浏览历史、下载记录；应用内收藏夹/历史不受影响。
+    /// 清理 WebView2 浏览数据（磁盘缓存、DOM 存储、Service Worker）。
+    /// 保留 Cookie、浏览历史、下载记录、自动填充和已保存密码；应用内收藏夹/历史不受影响。
     /// </summary>
     /// <param name="silent">为 true 时不写状态栏、不刷新控制窗（启动自动清理用）。</param>
-    Task ClearBrowsingDataAsync(bool silent = false);
+    Task<bool> ClearBrowsingDataAsync(bool silent = false);
 }
