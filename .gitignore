@@ -7,9 +7,12 @@ dist/
 *.suo
 *.cache
 *.pdb
+TestResults/
+*.trx
 
 # Local app data and runtime output are not source-controlled
 *.log
+*.stackdump
 
 # Temp/tool-generated folder
 .omo/

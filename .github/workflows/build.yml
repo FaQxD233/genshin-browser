@@ -1,171 +1,259 @@
-name: Build Genshin Browser
+name: CI and Release
 
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (必填，例如: v0.2.1)'
+        description: "Version (for example: v0.2.1)"
         required: true
-        default: 'v0.2.1'
+        default: "v0.2.1"
       create_release:
-        description: '创建 GitHub Release'
+        description: "Create GitHub Release"
         required: true
         type: boolean
         default: true
       release_notes:
-        description: 'Release 说明（本次更新内容，支持多行；留空则只显示默认模板）'
+        description: "Release notes"
         required: false
         type: string
-        default: ''
+        default: ""
+      run_quality_only:
+        description: "Only build/test/format (skip publish)"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # 强制使用 Node.js 24
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_NOLOGO: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
+  quality:
+    name: Build and test
     runs-on: windows-latest
-    permissions:
-      contents: write  # 允许创建 Release 和上传文件
+    timeout-minutes: 15
 
     steps:
-    - name: Checkout 代码
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '8.0.x'
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-    - name: 还原依赖
-      run: dotnet restore GenshinBrowser.csproj
+      - name: Restore
+        run: dotnet restore tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj -p:TreatWarningsAsErrors=true
 
-    - name: 编译 win-x64 自包含版本
-      run: |
-        dotnet publish GenshinBrowser.csproj `
-          -c Release `
-          -r win-x64 `
-          --self-contained true `
-          -p:PublishSingleFile=false `
-          -p:PublishTrimmed=false `
-          -o dist/win-x64-self-contained
+      - name: Test
+        run: dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true
 
-    - name: 下载 WebView2 Evergreen Bootstrapper
-      shell: pwsh
-      run: |
-        $url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
-        $out = "dist/win-x64-self-contained/MicrosoftEdgeWebview2Setup.exe"
-        Write-Host "正在下载 WebView2 Evergreen Bootstrapper..."
-        Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
-        $size = [math]::Round((Get-Item $out).Length / 1KB, 1)
-        Write-Host "下载完成: $size KB"
-        Copy-Item -LiteralPath "release/README.txt" -Destination "dist/win-x64-self-contained/README.txt" -Force
+      - name: Verify formatting
+        run: |
+          dotnet format GenshinBrowser.csproj --verify-no-changes --no-restore --verbosity minimal
+          dotnet format tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj --verify-no-changes --no-restore --verbosity minimal
 
-    - name: 生成版本信息文件
-      shell: pwsh
-      run: |
-        $version = "${{ github.event.inputs.version }}"
-        $buildTime = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-        $commitSha = "${{ github.sha }}"
-        $branchName = "${{ github.ref_name }}"
+  release:
+    name: Publish win-x64
+    if: ${{ !inputs.run_quality_only }}
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
 
-        $info = "Genshin Browser - Windows x64 自包含版本`n"
-        $info += "版本: $version`n"
-        $info += "编译时间: $buildTime`n"
-        $info += "提交: $commitSha`n"
-        $info += "分支: $branchName"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        $info | Out-File -FilePath dist/win-x64-self-contained/VERSION.txt -Encoding UTF8
-        Write-Host "版本信息已生成:"
-        Write-Host $info
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-    - name: 打包构建产物
-      shell: pwsh
-      run: |
-        $version = "${{ github.event.inputs.version }}"
-        $zipName = "GenshinBrowser-$version-win-x64.zip"
+      - name: Validate version
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          $version = $env:REQUESTED_VERSION.Trim()
+          if ($version -notmatch '^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$') {
+              throw "Invalid version '$version'. Expected vMAJOR.MINOR.PATCH with an optional prerelease suffix."
+          }
 
-        Compress-Archive -Path dist/win-x64-self-contained/* -DestinationPath $zipName
-        Write-Host "已打包到: $zipName"
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+          "RELEASE_SEMVER=$($version.Substring(1))" >> $env:GITHUB_ENV
 
-        # 输出文件大小
-        $size = [math]::Round((Get-Item $zipName).Length / 1MB, 2)
-        Write-Host "压缩包大小: $size MB"
+      - name: Restore win-x64 runtime
+        run: dotnet restore GenshinBrowser.csproj -r win-x64 -p:TreatWarningsAsErrors=true
 
-        # 保存文件名供后续步骤使用
-        echo "RELEASE_ZIP=$zipName" >> $env:GITHUB_ENV
+      - name: Publish self-contained application
+        shell: pwsh
+        run: |
+          dotnet publish GenshinBrowser.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            --no-restore `
+            -p:PublishSingleFile=false `
+            -p:PublishTrimmed=false `
+            -p:DebugSymbols=false `
+            -p:DebugType=None `
+            -p:Version="$env:RELEASE_SEMVER" `
+            -o dist/win-x64-self-contained
 
-    - name: 上传构建产物 (Artifacts)
-      uses: actions/upload-artifact@v4
-      with:
-        name: GenshinBrowser-${{ github.event.inputs.version }}-win-x64
-        path: |
-          dist/win-x64-self-contained/*
-          !dist/win-x64-self-contained/*.pdb
-        retention-days: 90
+      - name: Add and verify WebView2 installer
+        shell: pwsh
+        run: |
+          $url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+          $output = "dist/win-x64-self-contained/MicrosoftEdgeWebview2Setup.exe"
+          Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
 
-    - name: 创建 GitHub Release
-      if: github.event.inputs.create_release == 'true'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.event.inputs.version }}
-        name: Genshin Browser ${{ github.event.inputs.version }}
-        body: |
-          ## 🎮 Genshin Browser ${{ github.event.inputs.version }}
+          $signature = Get-AuthenticodeSignature -LiteralPath $output
+          $subject = $signature.SignerCertificate.Subject
+          if ($signature.Status -ne 'Valid' -or $subject -notmatch 'O=Microsoft Corporation') {
+              Remove-Item -LiteralPath $output -Force
+              throw "WebView2 installer signature validation failed: status=$($signature.Status), subject=$subject"
+          }
 
-          专为 B 站原神攻略视频设计的 Windows 浮窗浏览器
+          $size = [math]::Round((Get-Item -LiteralPath $output).Length / 1KB, 1)
+          Write-Host "Verified Microsoft-signed WebView2 installer: $size KiB"
+          Copy-Item -LiteralPath "release/README.txt" -Destination "dist/win-x64-self-contained/README.txt" -Force
 
-           ### 📦 下载说明
+      - name: Verify publish output
+        shell: pwsh
+        run: |
+          $output = (Resolve-Path "dist/win-x64-self-contained").Path
+          $expectedExecutables = @("GenshinBrowser.exe", "MicrosoftEdgeWebview2Setup.exe")
+          $executables = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter "*.exe")
+          $unexpectedExecutables = @($executables | Where-Object { $_.Name -notin $expectedExecutables })
+          if ($executables.Count -ne $expectedExecutables.Count -or $unexpectedExecutables.Count -ne 0) {
+              throw "Unexpected executables in publish output: $($executables.Name -join ', ')"
+          }
 
-           下载 `GenshinBrowser-${{ github.event.inputs.version }}-win-x64.zip`，解压后运行 `GenshinBrowser.exe`
+          $application = Get-Item -LiteralPath (Join-Path $output "GenshinBrowser.exe")
+          if (-not $application.VersionInfo.ProductVersion.StartsWith($env:RELEASE_SEMVER, [StringComparison]::Ordinal)) {
+              throw "Application version '$($application.VersionInfo.ProductVersion)' does not match '$env:RELEASE_SEMVER'."
+          }
 
-           首次启动时，如果系统未安装 WebView2 Runtime，应用会自动静默安装。
+          $forbiddenFiles = @(Get-ChildItem -LiteralPath $output -Recurse -File | Where-Object {
+              $_.Name -like "*Forms*" -or $_.Name -eq "System.Design.dll" -or $_.Name -eq "createdump.exe"
+          })
+          if ($forbiddenFiles.Count -ne 0) {
+              throw "Unused publish files remain: $($forbiddenFiles.Name -join ', ')"
+          }
 
-           **系统要求:**
-           - Windows 10/11
+          $depsFiles = @(Get-ChildItem -LiteralPath $output -File -Filter "*.deps.json")
+          if ($depsFiles.Count -ne 1) {
+              throw "Expected one .deps.json file, found $($depsFiles.Count)."
+          }
 
-          ### ✨ 核心功能
+          $null = Get-Content -LiteralPath $depsFiles[0].FullName -Raw | ConvertFrom-Json
+          $staleReference = Select-String -LiteralPath $depsFiles[0].FullName `
+              -Pattern 'Forms|System\.Design\.dll|createdump\.exe' `
+              -Quiet
+          if ($staleReference) {
+              throw "Removed publish assets are still referenced by $($depsFiles[0].Name)."
+          }
 
-          - **固定模式**: 窗口置顶，锁定位置，游戏时使用
-          - **全局快捷键**: `K` 键控制视频播放/暂停，`F8` 切换固定/自由模式
-          - **登录态保留**: B 站登录状态永久保存
-          - **收藏夹**: 一键收藏，支持搜索
-          - **浏览历史**: 自动记录，支持搜索
+          $pdbFiles = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter "*.pdb")
+          if ($pdbFiles.Count -ne 0) {
+              throw "Release output contains debug symbols: $($pdbFiles.Name -join ', ')"
+          }
 
-          ### 🔧 本次更新
+          $files = @(Get-ChildItem -LiteralPath $output -Recurse -File)
+          $totalMiB = [math]::Round((($files | Measure-Object Length -Sum).Sum / 1MB), 2)
+          Write-Host "Publish verification passed: $($files.Count) files, $totalMiB MiB."
 
-          ${{ github.event.inputs.release_notes }}
+      - name: Write version information
+        shell: pwsh
+        run: |
+          $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+          $info = @(
+              "Genshin Browser - Windows x64 self-contained"
+              "Version: $env:RELEASE_VERSION"
+              "Build time: $buildTime"
+              "Commit: $env:GITHUB_SHA"
+              "Branch: $env:GITHUB_REF_NAME"
+          ) -join "`n"
 
-          ---
+          $info | Out-File -FilePath "dist/win-x64-self-contained/VERSION.txt" -Encoding utf8
+          Write-Host $info
 
-          **编译信息:**
-          - 提交: `${{ github.sha }}`
-          - 分支: `${{ github.ref_name }}`
-          - 编译时间: `${{ github.run_id }}`
-        files: |
-          ${{ env.RELEASE_ZIP }}
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package release
+        shell: pwsh
+        run: |
+          $zipName = "GenshinBrowser-$env:RELEASE_VERSION-win-x64.zip"
+          Compress-Archive -Path "dist/win-x64-self-contained/*" -DestinationPath $zipName -CompressionLevel Optimal
+          $size = [math]::Round((Get-Item -LiteralPath $zipName).Length / 1MB, 2)
+          $checksumName = "$zipName.sha256"
+          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$checksum  $zipName" | Out-File -FilePath $checksumName -Encoding ascii
+          "RELEASE_ZIP=$zipName" >> $env:GITHUB_ENV
+          "RELEASE_CHECKSUM=$checksumName" >> $env:GITHUB_ENV
+          Write-Host "Created ${zipName}: $size MiB"
 
-    - name: 构建摘要
-      shell: pwsh
-      run: |
-        $version = "${{ github.event.inputs.version }}"
-        $createRelease = "${{ github.event.inputs.create_release }}"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GenshinBrowser-${{ inputs.version }}-win-x64
+          path: |
+            ${{ env.RELEASE_ZIP }}
+            ${{ env.RELEASE_CHECKSUM }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
 
-        Write-Host "✅ 构建完成！"
-        Write-Host "📦 版本: $version"
-        Write-Host ""
+      - name: Create GitHub Release
+        if: inputs.create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_VERSION }}
+          name: Genshin Browser ${{ env.RELEASE_VERSION }}
+          body: |
+            ## Genshin Browser ${{ env.RELEASE_VERSION }}
 
-        if ($createRelease -eq "true") {
-          Write-Host "🎉 GitHub Release 已创建"
-          Write-Host "🔗 下载链接: https://github.com/${{ github.repository }}/releases/tag/$version"
-        } else {
-          Write-Host "📥 Artifacts 已上传"
-          Write-Host "🔗 下载链接: 请在 Actions 的 Artifacts 中下载"
-        }
+            专为 B 站原神攻略视频设计的 Windows 浮窗浏览器。
 
-        Write-Host ""
-        Write-Host "包含文件:"
-        Get-ChildItem dist/win-x64-self-contained -File | Select-Object Name, @{Name='Size (KB)';Expression={[math]::Round($_.Length/1KB,2)}} | Format-Table -AutoSize
+            ### 下载说明
+
+            下载 `GenshinBrowser-${{ env.RELEASE_VERSION }}-win-x64.zip`，解压后运行 `GenshinBrowser.exe`。
+            首次启动时，如果系统未安装 WebView2 Runtime，应用会自动静默安装。
+
+            **系统要求：** Windows 10/11 x64
+
+            ### 本次更新
+
+            ${{ inputs.release_notes }}
+
+            **编译信息**
+
+            - 提交：`${{ github.sha }}`
+            - 分支：`${{ github.ref_name }}`
+            - 工作流：`${{ github.run_id }}`
+          files: |
+            ${{ env.RELEASE_ZIP }}
+            ${{ env.RELEASE_CHECKSUM }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ contains(env.RELEASE_SEMVER, '-') }}
+
+      - name: Write job summary
+        shell: pwsh
+        env:
+          CREATE_RELEASE: ${{ inputs.create_release }}
+        run: |
+          "## Genshin Browser $env:RELEASE_VERSION" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Artifact: ``$env:RELEASE_ZIP``" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: ``$env:RELEASE_CHECKSUM``" >> $env:GITHUB_STEP_SUMMARY
+          "- GitHub Release: ``$env:CREATE_RELEASE``" >> $env:GITHUB_STEP_SUMMARY
+          "- Commit: ``$env:GITHUB_SHA``" >> $env:GITHUB_STEP_SUMMARY

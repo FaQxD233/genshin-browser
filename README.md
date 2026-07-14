@@ -19,7 +19,7 @@
 - **游戏检测**：浮窗模式下 K 键仅在前台窗口为游戏时生效，在浏览器、聊天工具、编辑器等已知非游戏软件中不触发，避免误输入
 
 ### 浏览与记录
-- **登录态保留**：Cookie 和缓存永久保存，不必反复登录
+- **登录态保留**：Cookie、自动填充和已保存密码不会被缓存清理影响；缓存超过阈值时自动回收
 - **收藏夹**：一键收藏，支持搜索
 - **浏览历史**：自动记录访问历史，支持搜索
 - **智能恢复**：记住上次浏览的页面、窗口位置和大小
@@ -42,11 +42,17 @@
 
 ## 📦 发布与使用
 
+### 自动化测试
+```powershell
+dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj
+```
+
 ### 自包含版本（推荐）
-- 发布脚本：`release/publish-win-x64.ps1`
+- 本地发布：`./release/publish-win-x64.ps1 -Version v0.2.1`
 - 发布目录：`dist/win-x64-self-contained/`
 - 无需安装 .NET，开箱即用
 - 首次启动自动检测并安装 WebView2 Runtime（如需）
+- GitHub Actions 仅支持手动触发（Actions → CI and Release）：可只跑构建/测试，或完整发布 win-x64
 
 ### 快捷键
 - `K`：播放/暂停视频（全局）
