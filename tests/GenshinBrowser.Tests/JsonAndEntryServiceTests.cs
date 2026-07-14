@@ -1,0 +1,70 @@
+using System.Text.Json;
+using GenshinBrowser.Constants;
+using GenshinBrowser.Models;
+using GenshinBrowser.Services;
+
+namespace GenshinBrowser.Tests;
+
+public sealed class JsonAndEntryServiceTests
+{
+    [Fact]
+    public void ReadAllTextBounded_RejectsFileBeforeReadingPastLimit()
+    {
+        using var directory = new TestDirectory();
+        var path = directory.GetPath("oversized.json");
+        File.WriteAllBytes(path, new byte[AppConfig.Data.MaxSettingsFileSizeBytes + 1]);
+
+        Assert.Throws<InvalidDataException>(() =>
+            JsonFileWriter.ReadAllTextBounded(path, AppConfig.Data.MaxSettingsFileSizeBytes));
+    }
+
+    [Fact]
+    public async Task SettingsHistoryAndFavorites_AreSanitizedAndFlushed()
+    {
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            LastUrl = "javascript:alert(1)",
+            ControlWindowLeft = -1920,
+            ControlWindowTop = -200,
+            WindowOpacity = 5,
+        }));
+
+        using (var settingsService = new SettingsService(settingsPath))
+        {
+            var settings = settingsService.Load();
+            Assert.True(settings.HasControlWindowPosition);
+            Assert.Equal(-1920, settings.ControlWindowLeft);
+            Assert.Equal(string.Empty, settings.LastUrl);
+            Assert.Equal(1, settings.WindowOpacity);
+        }
+
+        var historyPath = directory.GetPath("history.json");
+        File.WriteAllText(historyPath, JsonSerializer.Serialize(new HistoryEntry?[]
+        {
+            null,
+            new() { Url = "file:///invalid", Title = "invalid" },
+            new() { Url = "https://www.bilibili.com/video/BV1?from=share", Title = new string('x', 300) },
+            new() { Url = "https://www.bilibili.com/video/BV1", Title = "duplicate" },
+        }));
+        using (var historyService = new HistoryService(historyPath))
+        {
+            Assert.Single(historyService.GetEntries());
+            Assert.Equal(AppConfig.Data.MaxEntryTitleLength, historyService.GetEntries()[0].Title.Length);
+            await historyService.FlushAsync();
+        }
+
+        var favoritesPath = directory.GetPath("favorites.json");
+        File.WriteAllText(favoritesPath, JsonSerializer.Serialize(new FavoriteEntry?[]
+        {
+            null,
+            new() { Url = "data:text/plain,invalid", Title = "invalid" },
+            new() { Url = "https://example.com/item?utm_source=ad", Title = "item" },
+        }));
+        using var favoritesService = new FavoritesService(favoritesPath);
+        Assert.Single(favoritesService.GetEntries());
+        Assert.DoesNotContain("utm_source", favoritesService.GetEntries()[0].Url);
+        await favoritesService.FlushAsync();
+    }
+}
