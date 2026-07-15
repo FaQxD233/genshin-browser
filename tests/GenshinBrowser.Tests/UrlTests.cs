@@ -34,12 +34,23 @@ public sealed class UrlTests
     }
 
     [Fact]
-    public void DownloadRetryUriMatch_DoesNotConsumeAnUnrelatedDownload()
+    public void DownloadRetryUriMatch_AllowsHostCaseAndQueryReorder()
     {
-        const string expected = "https://cdn.example.com/a.zip?token=AbC";
+        const string expected = "https://cdn.example.com/a.zip?token=AbC&x=1";
 
-        Assert.True(MainWindow.DownloadUrisMatch(expected, "https://CDN.EXAMPLE.COM/a.zip?token=AbC"));
-        Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/b.zip?token=AbC"));
-        Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/a.zip?token=abc"));
+        Assert.True(MainWindow.DownloadUrisMatch(expected, "https://CDN.EXAMPLE.COM/a.zip?token=AbC&x=1"));
+        Assert.True(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/a.zip?x=1&token=AbC"));
+        Assert.True(MainWindow.DownloadUrisMatch(
+            "https://cdn.example.com/path/",
+            "https://cdn.example.com/path"));
+        Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/b.zip?token=AbC&x=1"));
+        Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/a.zip?token=abc&x=1"));
+    }
+
+    [Fact]
+    public void PendingDownloadRetry_KeepsUntilUriMatch()
+    {
+        // 产品约定：URI 不匹配时保留 pending（keep-until-match），匹配或过期才消费。
+        Assert.True(MainWindow.ShouldKeepPendingDownloadRetryUntilMatch());
     }
 }

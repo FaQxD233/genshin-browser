@@ -545,6 +545,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public void Dispose()
     {
+        if (IsRecordingAnyKey)
+        {
+            StopHotkeyRecording();
+        }
+
         _browser.BrowserStateChanged -= Browser_OnBrowserStateChanged;
         _browser.ZoomChanged -= Browser_OnZoomChanged;
         _browser.DownloadsChanged -= Browser_OnDownloadsChanged;
@@ -1087,6 +1092,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _isRecordingToggleModeKey = true;
         _isRecordingTogglePlaybackKey = false;
         _currentRecordingModifiers = ModifierKeys.None;
+        _browser.SetHotkeyRecordingActive(true);
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
         ShowToast(LocalizationService.Get("Toast.RecordToggleMode", "请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）"), StatusLevel.Info);
@@ -1097,6 +1103,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         _isRecordingTogglePlaybackKey = true;
         _isRecordingToggleModeKey = false;
         _currentRecordingModifiers = ModifierKeys.None;
+        _browser.SetHotkeyRecordingActive(true);
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
         ShowToast(LocalizationService.Get("Toast.RecordPlayback", "请按下“视频播放”快捷键（按 Esc 取消）"), StatusLevel.Info);
@@ -1113,9 +1120,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         if (key == Key.Escape)
         {
-            _isRecordingToggleModeKey = false;
-            _isRecordingTogglePlaybackKey = false;
-            _currentRecordingModifiers = ModifierKeys.None;
+            StopHotkeyRecording();
             OnPropertyChanged(nameof(ToggleModeKeyText));
             OnPropertyChanged(nameof(TogglePlaybackKeyText));
             ShowToast(LocalizationService.Get("Toast.RecordCanceled", "已取消录制。"), StatusLevel.Warning);
@@ -1124,35 +1129,46 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         if (_isRecordingToggleModeKey)
         {
-            if (key == _browser.TogglePlaybackKey && modifiers == _browser.TogglePlaybackModifiers)
+            if (!_browser.TrySetToggleModeHotkey(key, modifiers))
             {
                 ShowToast(LocalizationService.Get("Toast.HotkeyUsedByPlayback", "该快捷键已被视频播放占用！"), StatusLevel.Warning);
             }
             else
             {
-                _browser.ToggleModeKey = key;
-                _browser.ToggleModeModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.ToggleModeSet", HotkeyFormatter.Format(key, modifiers)), StatusLevel.Success);
+                // 读回实际绑定值再 toast，避免请求值与生效值不一致
+                ShowToast(
+                    LocalizationService.Format(
+                        "Toast.ToggleModeSet",
+                        HotkeyFormatter.Format(_browser.ToggleModeKey, _browser.ToggleModeModifiers)),
+                    StatusLevel.Success);
             }
-            _isRecordingToggleModeKey = false;
         }
         else if (_isRecordingTogglePlaybackKey)
         {
-            if (key == _browser.ToggleModeKey && modifiers == _browser.ToggleModeModifiers)
+            if (!_browser.TrySetTogglePlaybackHotkey(key, modifiers))
             {
                 ShowToast(LocalizationService.Get("Toast.HotkeyUsedByMode", "该快捷键已被「浏览 ⇄ 浮窗」占用！"), StatusLevel.Warning);
             }
             else
             {
-                _browser.TogglePlaybackKey = key;
-                _browser.TogglePlaybackModifiers = modifiers;
-                ShowToast(LocalizationService.Format("Toast.PlaybackSet", HotkeyFormatter.Format(key, modifiers)), StatusLevel.Success);
+                ShowToast(
+                    LocalizationService.Format(
+                        "Toast.PlaybackSet",
+                        HotkeyFormatter.Format(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers)),
+                    StatusLevel.Success);
             }
-            _isRecordingTogglePlaybackKey = false;
         }
 
-        _currentRecordingModifiers = ModifierKeys.None;
+        StopHotkeyRecording();
         NotifyHotkeyDependentTexts();
+    }
+
+    private void StopHotkeyRecording()
+    {
+        _isRecordingToggleModeKey = false;
+        _isRecordingTogglePlaybackKey = false;
+        _currentRecordingModifiers = ModifierKeys.None;
+        _browser.SetHotkeyRecordingActive(false);
     }
 
 

@@ -192,6 +192,12 @@ public partial class ControlWindow : Window
     {
         if (!AllowClose)
         {
+            // Hide 不是 Dispose：若正在录制热键，取消录制并恢复全局钩子，避免一直 Suspend。
+            if (_viewModel.IsRecordingAnyKey)
+            {
+                _viewModel.FinishRecordingKey(Key.Escape, ModifierKeys.None);
+            }
+
             SaveWindowBounds();
             e.Cancel = true;
             Hide();

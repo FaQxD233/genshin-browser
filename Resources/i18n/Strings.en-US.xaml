@@ -186,6 +186,8 @@
   <sys:String x:Key="Status.DownloadRetrying">Retrying download: {0}</sys:String>
   <sys:String x:Key="Status.DownloadRetryUnavailable">This download has no retryable HTTP(S) address.</sys:String>
   <sys:String x:Key="Status.DownloadRetryFailed">Failed to retry download: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetryNavigateFallback">In-page retry failed; opened the download URL instead: {0} (leaves the current page)</sys:String>
+  <sys:String x:Key="Status.DownloadRetryTimedOut">Download retry timed out; no download started: {0}</sys:String>
   <sys:String x:Key="Status.CannotOpenFile">Cannot open file. It may have been moved or deleted.</sys:String>
   <sys:String x:Key="Status.CannotOpenFolder">Cannot open containing folder.</sys:String>
   <sys:String x:Key="Status.HotkeyInstallFailed">Failed to install global hotkey, Win32 error: {0}. Control panel buttons still work.</sys:String>

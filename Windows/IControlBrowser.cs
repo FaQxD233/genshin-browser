@@ -25,6 +25,16 @@ public interface IControlBrowser
 
     ModifierKeys TogglePlaybackModifiers { get; set; }
 
+    /// <summary>
+    /// 原子设置「浏览 ⇄ 浮窗」快捷键。与播放键最终组合冲突时返回 false，不写半份状态。
+    /// </summary>
+    bool TrySetToggleModeHotkey(Key key, ModifierKeys modifiers);
+
+    /// <summary>
+    /// 原子设置「视频播放」快捷键。与模式键最终组合冲突时返回 false，不写半份状态。
+    /// </summary>
+    bool TrySetTogglePlaybackHotkey(Key key, ModifierKeys modifiers);
+
     string CurrentAddress { get; }
 
     string StatusMessage { get; }
@@ -136,6 +146,11 @@ public interface IControlBrowser
     void OpenDownloadFolder(DownloadItem item);
 
     void ClearFinishedDownloads();
+
+    /// <summary>
+    /// 录制全局快捷键期间暂停/恢复内置热键，避免低级钩子在录制时误触发模式切换或播放。
+    /// </summary>
+    void SetHotkeyRecordingActive(bool active);
 
     /// <summary>
     /// 清理 WebView2 浏览数据（磁盘缓存、DOM 存储、Service Worker）。

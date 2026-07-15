@@ -186,6 +186,8 @@
   <sys:String x:Key="Status.DownloadRetrying">正在重试下载: {0}</sys:String>
   <sys:String x:Key="Status.DownloadRetryUnavailable">该下载缺少可重试的 HTTP(S) 地址。</sys:String>
   <sys:String x:Key="Status.DownloadRetryFailed">重试下载失败: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadRetryNavigateFallback">页面内触发失败，已改用打开下载链接重试: {0}（将离开当前页）</sys:String>
+  <sys:String x:Key="Status.DownloadRetryTimedOut">重试下载超时，未捕获到下载开始: {0}</sys:String>
   <sys:String x:Key="Status.CannotOpenFile">无法打开文件，可能已被移动或删除。</sys:String>
   <sys:String x:Key="Status.CannotOpenFolder">无法打开所在文件夹。</sys:String>
   <sys:String x:Key="Status.HotkeyInstallFailed">全局热键安装失败，Win32 错误码: {0}。控制面板按钮仍可使用。</sys:String>

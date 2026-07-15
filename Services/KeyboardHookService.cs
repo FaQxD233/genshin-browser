@@ -13,6 +13,8 @@ public sealed class KeyboardHookService : IDisposable
     private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
+    /// <summary>Start() 在已 Dispose 时返回的伪错误码，便于 UI 区分。</summary>
+    internal const int ObjectDisposedErrorCode = unchecked((int)0x80000013);
 
     private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
     private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
@@ -22,41 +24,104 @@ public sealed class KeyboardHookService : IDisposable
     public int ToggleModeVk
     {
         get => _toggleModeVk;
-        set
-        {
-            _toggleModeVk = value;
-            UpdateBuiltInRegistration(ToggleModeRegistrationId);
-        }
+        set => TrySetToggleModeHotkey(value, _toggleModeModifiers);
     }
 
     public int TogglePlaybackVk
     {
         get => _togglePlaybackVk;
-        set
-        {
-            _togglePlaybackVk = value;
-            UpdateBuiltInRegistration(TogglePlaybackRegistrationId);
-        }
+        set => TrySetTogglePlaybackHotkey(value, _togglePlaybackModifiers);
     }
 
     public ModifierKeys ToggleModeModifiers
     {
         get => _toggleModeModifiers;
-        set
-        {
-            _toggleModeModifiers = value;
-            UpdateBuiltInRegistration(ToggleModeRegistrationId);
-        }
+        set => TrySetToggleModeHotkey(_toggleModeVk, value);
     }
 
     public ModifierKeys TogglePlaybackModifiers
     {
         get => _togglePlaybackModifiers;
-        set
+        set => TrySetTogglePlaybackHotkey(_togglePlaybackVk, value);
+    }
+
+    /// <summary>
+    /// 原子更新模式热键 (VK + 修饰键)。与播放热键最终组合冲突时返回 false，不改任何状态。
+    /// </summary>
+    public bool TrySetToggleModeHotkey(int virtualKey, ModifierKeys modifiers)
+    {
+        if (virtualKey is <= 0 or > 0xFF)
         {
-            _togglePlaybackModifiers = value;
-            UpdateBuiltInRegistration(TogglePlaybackRegistrationId);
+            return false;
         }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            if (virtualKey == _toggleModeVk && modifiers == _toggleModeModifiers)
+            {
+                return true;
+            }
+
+            if (HasConflictingRegistrationLocked(ToggleModeRegistrationId, virtualKey, modifiers))
+            {
+                return false;
+            }
+
+            _toggleModeVk = virtualKey;
+            _toggleModeModifiers = modifiers;
+            _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 原子更新播放热键 (VK + 修饰键)。与模式热键最终组合冲突时返回 false，不改任何状态。
+    /// </summary>
+    public bool TrySetTogglePlaybackHotkey(int virtualKey, ModifierKeys modifiers)
+    {
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            return false;
+        }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            if (virtualKey == _togglePlaybackVk && modifiers == _togglePlaybackModifiers)
+            {
+                return true;
+            }
+
+            if (HasConflictingRegistrationLocked(TogglePlaybackRegistrationId, virtualKey, modifiers))
+            {
+                return false;
+            }
+
+            _togglePlaybackVk = virtualKey;
+            _togglePlaybackModifiers = modifiers;
+            _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 为 true 时内置模式/播放热键不触发（录制快捷键期间使用），不影响已注册的其它热键。
+    /// </summary>
+    public bool SuspendBuiltInHotkeys
+    {
+        get => _suspendBuiltInHotkeys;
+        set => _suspendBuiltInHotkeys = value;
     }
 
     private readonly LowLevelKeyboardProc _proc;
@@ -67,6 +132,7 @@ public sealed class KeyboardHookService : IDisposable
     private readonly object _keyStateLock = new();
     private IntPtr _hookId = IntPtr.Zero;
     private bool _isDisposed;
+    private volatile bool _suspendBuiltInHotkeys;
 
     public KeyboardHookService()
     {
@@ -104,6 +170,12 @@ public sealed class KeyboardHookService : IDisposable
     {
         errorCode = 0;
 
+        if (_isDisposed)
+        {
+            errorCode = ObjectDisposedErrorCode;
+            return false;
+        }
+
         if (_hookId != IntPtr.Zero)
         {
             return true;
@@ -121,6 +193,7 @@ public sealed class KeyboardHookService : IDisposable
 
     /// <summary>
     /// 注册或更新一个全局快捷键。钩子热路径读取不可变快照，因此新增快捷键不需要修改回调分支。
+    /// 与已有其它 id 的 (VK + 修饰键) 冲突时抛出 <see cref="InvalidOperationException"/>，拒绝双注册。
     /// </summary>
     public void RegisterOrUpdateHotkey(
         string id,
@@ -139,6 +212,12 @@ public sealed class KeyboardHookService : IDisposable
         lock (_registrationLock)
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
+            if (HasConflictingRegistrationLocked(id, virtualKey, modifiers))
+            {
+                throw new InvalidOperationException(
+                    $"Hotkey conflict: VK 0x{virtualKey:X2} with modifiers {modifiers} is already registered.");
+            }
+
             _registrations[id] = new HotkeyRegistration(virtualKey, modifiers, callback, canExecute);
             PublishSnapshotLocked();
         }
@@ -343,18 +422,22 @@ public sealed class KeyboardHookService : IDisposable
         }
     }
 
-    private void UpdateBuiltInRegistration(string id)
+    private bool HasConflictingRegistrationLocked(string selfId, int virtualKey, ModifierKeys modifiers)
     {
-        lock (_registrationLock)
+        foreach (var pair in _registrations)
         {
-            if (_isDisposed)
+            if (string.Equals(pair.Key, selfId, StringComparison.Ordinal))
             {
-                return;
+                continue;
             }
 
-            _registrations[id] = CreateBuiltInRegistration(id);
-            PublishSnapshotLocked();
+            if (pair.Value.VirtualKey == virtualKey && pair.Value.Modifiers == modifiers)
+            {
+                return true;
+            }
         }
+
+        return false;
     }
 
     private HotkeyRegistration CreateBuiltInRegistration(string id)
@@ -365,21 +448,40 @@ public sealed class KeyboardHookService : IDisposable
                 _toggleModeVk,
                 _toggleModeModifiers,
                 () => Raise(ModeTogglePressed),
-                CanExecute: null),
+                CanExecuteBuiltInHotkey),
             TogglePlaybackRegistrationId => new HotkeyRegistration(
                 _togglePlaybackVk,
                 _togglePlaybackModifiers,
                 () => Raise(KPressed),
-                IsGameOrBrowserForeground),
+                CanExecutePlaybackHotkey),
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };
     }
 
+    private bool CanExecuteBuiltInHotkey() => !_suspendBuiltInHotkeys;
+
+    private bool CanExecutePlaybackHotkey() => !_suspendBuiltInHotkeys && IsGameOrBrowserForeground();
+
     private void PublishSnapshotLocked()
     {
-        var byVirtualKey = _registrations.Values
-            .GroupBy(registration => registration.VirtualKey)
-            .ToDictionary(group => group.Key, group => group.ToArray());
+        // 同 VK 可挂多个不同修饰键；同 (VK, modifiers) 只保留一条，防止双触发。
+        var byVirtualKey = new Dictionary<int, HotkeyRegistration[]>();
+        foreach (var group in _registrations.Values.GroupBy(registration => registration.VirtualKey))
+        {
+            var deduped = new List<HotkeyRegistration>();
+            foreach (var registration in group)
+            {
+                if (deduped.Exists(existing => existing.Modifiers == registration.Modifiers))
+                {
+                    continue;
+                }
+
+                deduped.Add(registration);
+            }
+
+            byVirtualKey[group.Key] = deduped.ToArray();
+        }
+
         Volatile.Write(ref _hotkeySnapshot, new HotkeySnapshot(byVirtualKey));
 
         lock (_keyStateLock)

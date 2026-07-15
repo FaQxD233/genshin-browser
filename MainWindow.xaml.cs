@@ -85,6 +85,8 @@ public partial class MainWindow : Window, IControlBrowser
     private readonly Dictionary<DownloadItem, CoreWebView2DownloadOperation> _pendingDownloadProgress = new();
     private DispatcherTimer? _downloadProgressTimer;
     private PendingDownloadRetry? _pendingDownloadRetry;
+    private DispatcherTimer? _pendingDownloadRetryWatchdog;
+    private const int DownloadRetryPendingSeconds = 30;
 
     public event EventHandler<BrowserStateChangedEventArgs>? BrowserStateChanged;
     public event EventHandler? ZoomChanged;
@@ -159,61 +161,73 @@ public partial class MainWindow : Window, IControlBrowser
     public Key ToggleModeKey
     {
         get => _settings.ToggleModeKey;
-        set
-        {
-            if (_settings.ToggleModeKey != value)
-            {
-                _settings.ToggleModeKey = value;
-                _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(value);
-                QueueSettingsSave();
-                OnHotkeysChanged();
-            }
-        }
+        set => TrySetToggleModeHotkey(value, _settings.ToggleModeModifiers);
     }
 
     public ModifierKeys ToggleModeModifiers
     {
         get => _settings.ToggleModeModifiers;
-        set
-        {
-            if (_settings.ToggleModeModifiers != value)
-            {
-                _settings.ToggleModeModifiers = value;
-                _keyboardHookService.ToggleModeModifiers = value;
-                QueueSettingsSave();
-                OnHotkeysChanged();
-            }
-        }
+        set => TrySetToggleModeHotkey(_settings.ToggleModeKey, value);
     }
 
     public Key TogglePlaybackKey
     {
         get => _settings.TogglePlaybackKey;
-        set
-        {
-            if (_settings.TogglePlaybackKey != value)
-            {
-                _settings.TogglePlaybackKey = value;
-                _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(value);
-                QueueSettingsSave();
-                OnHotkeysChanged();
-            }
-        }
+        set => TrySetTogglePlaybackHotkey(value, _settings.TogglePlaybackModifiers);
     }
 
     public ModifierKeys TogglePlaybackModifiers
     {
         get => _settings.TogglePlaybackModifiers;
-        set
+        set => TrySetTogglePlaybackHotkey(_settings.TogglePlaybackKey, value);
+    }
+
+    public bool TrySetToggleModeHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == _settings.ToggleModeKey && modifiers == _settings.ToggleModeModifiers)
         {
-            if (_settings.TogglePlaybackModifiers != value)
-            {
-                _settings.TogglePlaybackModifiers = value;
-                _keyboardHookService.TogglePlaybackModifiers = value;
-                QueueSettingsSave();
-                OnHotkeysChanged();
-            }
+            return true;
         }
+
+        if (key == _settings.TogglePlaybackKey && modifiers == _settings.TogglePlaybackModifiers)
+        {
+            return false;
+        }
+
+        if (!_keyboardHookService.TrySetToggleModeHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        {
+            return false;
+        }
+
+        _settings.ToggleModeKey = key;
+        _settings.ToggleModeModifiers = modifiers;
+        QueueSettingsSave();
+        OnHotkeysChanged();
+        return true;
+    }
+
+    public bool TrySetTogglePlaybackHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == _settings.TogglePlaybackKey && modifiers == _settings.TogglePlaybackModifiers)
+        {
+            return true;
+        }
+
+        if (key == _settings.ToggleModeKey && modifiers == _settings.ToggleModeModifiers)
+        {
+            return false;
+        }
+
+        if (!_keyboardHookService.TrySetTogglePlaybackHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        {
+            return false;
+        }
+
+        _settings.TogglePlaybackKey = key;
+        _settings.TogglePlaybackModifiers = modifiers;
+        QueueSettingsSave();
+        OnHotkeysChanged();
+        return true;
     }
 
     private string FormatToggleModeHotkey() =>
@@ -299,10 +313,18 @@ public partial class MainWindow : Window, IControlBrowser
             // 配置已在构造函数同步加载并恢复；此处只接键盘钩子 / 控制窗 / WebView
             _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
 
-            _keyboardHookService.ToggleModeVk = KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey);
-            _keyboardHookService.ToggleModeModifiers = _settings.ToggleModeModifiers;
-            _keyboardHookService.TogglePlaybackVk = KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey);
-            _keyboardHookService.TogglePlaybackModifiers = _settings.TogglePlaybackModifiers;
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            // 启动时 settings 已 Sanitize 无冲突；原子写入避免分步 setter 中间态
+            _keyboardHookService.TrySetToggleModeHotkey(
+                KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey),
+                _settings.ToggleModeModifiers);
+            _keyboardHookService.TrySetTogglePlaybackHotkey(
+                KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey),
+                _settings.TogglePlaybackModifiers);
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
             UpdateWindowTitle();
 
@@ -311,7 +333,16 @@ public partial class MainWindow : Window, IControlBrowser
             NotifyBrowserState(BrowserStateChangeKind.All);
 
             await EnsureWebView2RuntimeAsync();
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
             await InitializeBrowserAsync();
+            if (_isShuttingDown)
+            {
+                return;
+            }
 
             _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
             _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
@@ -702,7 +733,7 @@ public partial class MainWindow : Window, IControlBrowser
             SetStatusMessage(LocalizationService.Get("Status.BrowserRecovering", "浏览器进程异常，正在恢复..."), StatusLevel.Warning);
             _browserReady = false;
             SetNavigating(false);
-            _pendingDownloadRetry = null;
+            ClearPendingDownloadRetry();
             DetachAllDownloadOperations(markInterrupted: true);
 
             var oldBrowser = BrowserView;
@@ -1728,12 +1759,60 @@ public partial class MainWindow : Window, IControlBrowser
     {
         WindowOpacity = 1.0;
         ApplyWindowOpacity(1.0);
-        ToggleModeKey = Key.F8;
-        ToggleModeModifiers = ModifierKeys.None;
-        TogglePlaybackKey = Key.K;
-        TogglePlaybackModifiers = ModifierKeys.None;
+        RestoreDefaultHotkeys();
         SetZoom(1.0);
         QueueSettingsSave();
+    }
+
+    /// <summary>
+    /// 恢复默认热键 Mode=F8、Playback=K。
+    /// 先把播放键停到临时键（F9→F12），避免 Mode=K / Playback=F8 等交叉占用时原子 setter 互相卡住。
+    /// </summary>
+    private void RestoreDefaultHotkeys()
+    {
+        const Key defaultModeKey = Key.F8;
+        const Key defaultPlaybackKey = Key.K;
+
+        if (_settings.ToggleModeKey == defaultModeKey &&
+            _settings.ToggleModeModifiers == ModifierKeys.None &&
+            _settings.TogglePlaybackKey == defaultPlaybackKey &&
+            _settings.TogglePlaybackModifiers == ModifierKeys.None)
+        {
+            return;
+        }
+
+        // 临时键不能是最终默认值；按优先级尝试，直到播放键离开 F8/K 占用区
+        ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12];
+        var parked = false;
+        foreach (var park in parkingKeys)
+        {
+            if (TrySetTogglePlaybackHotkey(park, ModifierKeys.None))
+            {
+                parked = true;
+                break;
+            }
+        }
+
+        // 即便 park 失败（极端：模式键占满所有临时键），仍尝试写入默认；能恢复多少算多少
+        TrySetToggleModeHotkey(defaultModeKey, ModifierKeys.None);
+        if (!TrySetTogglePlaybackHotkey(defaultPlaybackKey, ModifierKeys.None) && parked)
+        {
+            // Mode 可能仍占着 K：再 park 一次 Mode 到 F9 再写
+            foreach (var park in parkingKeys)
+            {
+                if (park == defaultModeKey || park == defaultPlaybackKey)
+                {
+                    continue;
+                }
+
+                if (TrySetToggleModeHotkey(park, ModifierKeys.None))
+                {
+                    TrySetTogglePlaybackHotkey(defaultPlaybackKey, ModifierKeys.None);
+                    TrySetToggleModeHotkey(defaultModeKey, ModifierKeys.None);
+                    break;
+                }
+            }
+        }
     }
 
     public string ThemeMode
@@ -1957,25 +2036,162 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            _pendingDownloadRetry = new PendingDownloadRetry(
-                item,
-                retryUri,
-                DateTime.UtcNow.AddSeconds(30));
-            SetNavigating(true);
-            core.Navigate(retryUri);
-            SetStatusMessage(
-                LocalizationService.Format("Status.DownloadRetrying", item.FileName),
-                StatusLevel.Info);
+            // 不在当前文档 Navigate：优先隐藏 iframe 触发下载，保留攻略/视频页。
+            // pending 仅在 URI 匹配或过期时消费；脚本失败时回退宿主级 Navigate。
+            BeginPendingDownloadRetry(item, retryUri);
+            _ = TriggerDownloadRetryAsync(core, retryUri, item.FileName);
         }
         catch (Exception ex)
         {
-            _pendingDownloadRetry = null;
+            ClearPendingDownloadRetry();
             FileLogger.LogException(ex, "Retry download");
-            SetNavigating(false);
             SetStatusMessage(
                 LocalizationService.Format("Status.DownloadRetryFailed", ex.Message),
                 StatusLevel.Error);
         }
+    }
+
+    private void BeginPendingDownloadRetry(DownloadItem item, string retryUri)
+    {
+        _pendingDownloadRetry = new PendingDownloadRetry(
+            item,
+            retryUri,
+            DateTime.UtcNow.AddSeconds(DownloadRetryPendingSeconds));
+        SchedulePendingDownloadRetryWatchdog();
+    }
+
+    private void ClearPendingDownloadRetry()
+    {
+        _pendingDownloadRetry = null;
+        CancelPendingDownloadRetryWatchdog();
+    }
+
+    private void SchedulePendingDownloadRetryWatchdog()
+    {
+        CancelPendingDownloadRetryWatchdog();
+        _pendingDownloadRetryWatchdog = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(DownloadRetryPendingSeconds),
+        };
+        _pendingDownloadRetryWatchdog.Tick += PendingDownloadRetryWatchdog_OnTick;
+        _pendingDownloadRetryWatchdog.Start();
+    }
+
+    private void CancelPendingDownloadRetryWatchdog()
+    {
+        if (_pendingDownloadRetryWatchdog is null)
+        {
+            return;
+        }
+
+        _pendingDownloadRetryWatchdog.Stop();
+        _pendingDownloadRetryWatchdog.Tick -= PendingDownloadRetryWatchdog_OnTick;
+        _pendingDownloadRetryWatchdog = null;
+    }
+
+    private void PendingDownloadRetryWatchdog_OnTick(object? sender, EventArgs e)
+    {
+        CancelPendingDownloadRetryWatchdog();
+        if (_pendingDownloadRetry is null || _isShuttingDown)
+        {
+            return;
+        }
+
+        // 超时仍未匹配到 DownloadStarting：常见于 CSP 拦 iframe、非附件响应、或 URI 与 SourceUri 完全无关
+        var fileName = _pendingDownloadRetry.Item.FileName;
+        ClearPendingDownloadRetry();
+        SetStatusMessage(
+            LocalizationService.Format("Status.DownloadRetryTimedOut", fileName),
+            StatusLevel.Warning);
+    }
+
+    private async Task TriggerDownloadRetryAsync(CoreWebView2 core, string retryUri, string fileName)
+    {
+        try
+        {
+            // 优先 iframe：不挤掉当前页。用 JSON 字符串嵌入避免手工转义漏洞。
+            var uriLiteral = System.Text.Json.JsonSerializer.Serialize(retryUri);
+            var script =
+                "(function(){" +
+                "try{" +
+                "if(!document||!document.documentElement)return 'no-dom';" +
+                "var f=document.createElement('iframe');" +
+                "f.style.cssText='position:fixed;width:0;height:0;border:0;left:-9999px;top:-9999px;';" +
+                "f.src=" + uriLiteral + ";" +
+                "document.documentElement.appendChild(f);" +
+                "setTimeout(function(){try{f.remove();}catch(e){}},60000);" +
+                "return 'ok';" +
+                "}catch(e){return 'error';}" +
+                "})();";
+
+            var result = await core.ExecuteScriptAsync(script).ConfigureAwait(true);
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            // ExecuteScriptAsync 返回 JSON 字符串，成功时约 "\"ok\""
+            if (result is not null && result.Contains("ok", StringComparison.Ordinal))
+            {
+                SetStatusMessage(
+                    LocalizationService.Format("Status.DownloadRetrying", fileName),
+                    StatusLevel.Info);
+                return;
+            }
+
+            // 无 DOM / 脚本失败：回退宿主级 Navigate（会离开当前页，但能绕过 CSP/无 document）
+            FileLogger.LogDebug($"Retry download iframe failed (result={result}); falling back to Navigate");
+            if (!IsPendingDownloadRetryActiveFor(retryUri))
+            {
+                return;
+            }
+
+            SetNavigating(true);
+            core.Navigate(retryUri);
+            SetStatusMessage(
+                LocalizationService.Format("Status.DownloadRetryNavigateFallback", fileName),
+                StatusLevel.Warning);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Retry download via iframe");
+            if (_isShuttingDown)
+            {
+                return;
+            }
+
+            // 异常路径同样尝试宿主 Navigate 回退
+            try
+            {
+                if (!IsPendingDownloadRetryActiveFor(retryUri))
+                {
+                    return;
+                }
+
+                SetNavigating(true);
+                core.Navigate(retryUri);
+                SetStatusMessage(
+                    LocalizationService.Format("Status.DownloadRetryNavigateFallback", fileName),
+                    StatusLevel.Warning);
+            }
+            catch (Exception navEx)
+            {
+                ClearPendingDownloadRetry();
+                FileLogger.LogException(navEx, "Retry download Navigate fallback");
+                SetNavigating(false);
+                SetStatusMessage(
+                    LocalizationService.Format("Status.DownloadRetryFailed", navEx.Message),
+                    StatusLevel.Error);
+            }
+        }
+    }
+
+    private bool IsPendingDownloadRetryActiveFor(string retryUri)
+    {
+        var pending = _pendingDownloadRetry;
+        return pending is not null &&
+               pending.ExpiresAtUtc >= DateTime.UtcNow &&
+               string.Equals(pending.SourceUri, retryUri, StringComparison.Ordinal);
     }
 
     public void OpenDownloadFile(DownloadItem item)
@@ -2003,28 +2219,111 @@ public partial class MainWindow : Window, IControlBrowser
     private DownloadItem? TakePendingDownloadRetry(string sourceUri)
     {
         var pending = _pendingDownloadRetry;
-        if (pending is null || pending.ExpiresAtUtc < DateTime.UtcNow ||
-            !Downloads.Contains(pending.Item) || !pending.Item.CanRetry)
+        if (pending is null)
         {
-            _pendingDownloadRetry = null;
             return null;
         }
 
+        // 过期或条目不可用：清掉，避免悬挂
+        if (pending.ExpiresAtUtc < DateTime.UtcNow ||
+            !Downloads.Contains(pending.Item) ||
+            !pending.Item.CanRetry)
+        {
+            ClearPendingDownloadRetry();
+            return null;
+        }
+
+        // 不匹配则保留 pending（keep-until-match）：CDN 重定向 / 无关下载不应吃掉重试窗口
         if (!DownloadUrisMatch(pending.SourceUri, sourceUri))
         {
             return null;
         }
 
-        _pendingDownloadRetry = null;
+        ClearPendingDownloadRetry();
         return pending.Item;
     }
 
+    /// <summary>
+    /// 重试 URI 匹配：host 大小写不敏感；path 忽略默认端口与末尾斜杠；query 按键值集合比较（顺序无关）。
+    /// token 大小写仍敏感，避免把不同签名当成同一下载。
+    /// </summary>
     internal static bool DownloadUrisMatch(string expected, string actual)
     {
-        return Uri.TryCreate(expected, UriKind.Absolute, out var expectedUri) &&
-               Uri.TryCreate(actual, UriKind.Absolute, out var actualUri) &&
-               expectedUri.Equals(actualUri);
+        if (!Uri.TryCreate(expected, UriKind.Absolute, out var expectedUri) ||
+            !Uri.TryCreate(actual, UriKind.Absolute, out var actualUri))
+        {
+            return false;
+        }
+
+        if (!string.Equals(expectedUri.Scheme, actualUri.Scheme, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(expectedUri.Host, actualUri.Host, StringComparison.OrdinalIgnoreCase) ||
+            expectedUri.Port != actualUri.Port)
+        {
+            return false;
+        }
+
+        var expectedPath = expectedUri.AbsolutePath.TrimEnd('/');
+        var actualPath = actualUri.AbsolutePath.TrimEnd('/');
+        if (!string.Equals(expectedPath, actualPath, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return QuerySetsEqual(expectedUri.Query, actualUri.Query);
     }
+
+    private static bool QuerySetsEqual(string expectedQuery, string actualQuery)
+    {
+        static Dictionary<string, string> Parse(string query)
+        {
+            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (string.IsNullOrEmpty(query))
+            {
+                return map;
+            }
+
+            var q = query[0] == '?' ? query[1..] : query;
+            foreach (var part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var eq = part.IndexOf('=');
+                if (eq < 0)
+                {
+                    map[Uri.UnescapeDataString(part)] = string.Empty;
+                }
+                else
+                {
+                    var key = Uri.UnescapeDataString(part[..eq]);
+                    var value = Uri.UnescapeDataString(part[(eq + 1)..]);
+                    map[key] = value;
+                }
+            }
+
+            return map;
+        }
+
+        var a = Parse(expectedQuery);
+        var b = Parse(actualQuery);
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        foreach (var pair in a)
+        {
+            if (!b.TryGetValue(pair.Key, out var other) ||
+                !string.Equals(pair.Value, other, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// 供单元测试：pending 在 URI 不匹配时必须保留（keep-until-match），而非首次 Starting 即消费。
+    /// </summary>
+    internal static bool ShouldKeepPendingDownloadRetryUntilMatch() => true;
 
     private void ModeToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleWindowMode();
 
@@ -2265,7 +2564,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         DetachAllDownloadOperations(markInterrupted: true);
-        _pendingDownloadRetry = null;
+        ClearPendingDownloadRetry();
 
         // 取消事件订阅
         LocationChanged -= MainWindow_OnLocationOrSizeChanged;
@@ -2475,10 +2774,29 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void StartKeyboardHook()
     {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
         if (!_keyboardHookService.Start(out var errorCode))
         {
+            // Dispose 后 Start 失败是关闭竞态的预期结果，不弹错误
+            if (errorCode == KeyboardHookService.ObjectDisposedErrorCode)
+            {
+                return;
+            }
+
             SetStatusMessage(LocalizationService.Format("Status.HotkeyInstallFailed", errorCode), StatusLevel.Error);
         }
+    }
+
+    /// <summary>
+    /// 录制全局快捷键期间暂停内置热键，避免 PreviewKeyDown 挡不住 WH_KEYBOARD_LL。
+    /// </summary>
+    public void SetHotkeyRecordingActive(bool active)
+    {
+        _keyboardHookService.SuspendBuiltInHotkeys = active;
     }
 
     private async Task SaveSettingsAsync()
@@ -2921,7 +3239,18 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void ZoomBy(double delta)
     {
-        SetZoom(BrowserView.ZoomFactor + delta);
+        // 勿裸读 BrowserView.ZoomFactor：WebView 未就绪时会抛；与 ZoomFactor getter 一致回退到 settings。
+        double current;
+        try
+        {
+            current = BrowserView.CoreWebView2 is null ? _settings.ZoomFactor : BrowserView.ZoomFactor;
+        }
+        catch
+        {
+            current = _settings.ZoomFactor;
+        }
+
+        SetZoom(current + delta);
     }
 
     private sealed record PendingDownloadRetry(

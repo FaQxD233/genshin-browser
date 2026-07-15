@@ -155,12 +155,7 @@ public sealed class SettingsService : IDisposable
         settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
         settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);
         settings.TogglePlaybackModifiers = NormalizeModifiers(settings.TogglePlaybackModifiers);
-        if (settings.ToggleModeKey == settings.TogglePlaybackKey &&
-            settings.ToggleModeModifiers == settings.TogglePlaybackModifiers)
-        {
-            settings.TogglePlaybackKey = defaults.TogglePlaybackKey;
-            settings.TogglePlaybackModifiers = defaults.TogglePlaybackModifiers;
-        }
+        ResolveHotkeyConflict(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
         settings.Language = LocalizationService.Normalize(settings.Language);
@@ -189,6 +184,49 @@ public sealed class SettingsService : IDisposable
             System.Windows.Input.ModifierKeys.Windows;
         return modifiers & valid;
     }
+
+    /// <summary>
+    /// 消除模式键与播放键的冲突。优先把播放键恢复为默认；若仍冲突（例如模式键本身就是默认播放键），
+    /// 再把模式键恢复为默认；最后仍冲突时给播放键一个固定备用键，保证 Sanitize 后永不双触发。
+    /// </summary>
+    private static void ResolveHotkeyConflict(AppSettings settings, AppSettings defaults)
+    {
+        if (!HotkeysConflict(settings))
+        {
+            return;
+        }
+
+        settings.TogglePlaybackKey = defaults.TogglePlaybackKey;
+        settings.TogglePlaybackModifiers = defaults.TogglePlaybackModifiers;
+        if (!HotkeysConflict(settings))
+        {
+            return;
+        }
+
+        settings.ToggleModeKey = defaults.ToggleModeKey;
+        settings.ToggleModeModifiers = defaults.ToggleModeModifiers;
+        if (!HotkeysConflict(settings))
+        {
+            return;
+        }
+
+        // 默认值本身不应冲突；防御性兜底，避免损坏配置或测试篡改 defaults 时仍双注册。
+        settings.TogglePlaybackKey = System.Windows.Input.Key.F9;
+        settings.TogglePlaybackModifiers = System.Windows.Input.ModifierKeys.None;
+        if (!HotkeysConflict(settings))
+        {
+            return;
+        }
+
+        settings.ToggleModeKey = System.Windows.Input.Key.F8;
+        settings.ToggleModeModifiers = System.Windows.Input.ModifierKeys.None;
+        settings.TogglePlaybackKey = System.Windows.Input.Key.F9;
+        settings.TogglePlaybackModifiers = System.Windows.Input.ModifierKeys.None;
+    }
+
+    private static bool HotkeysConflict(AppSettings settings) =>
+        settings.ToggleModeKey == settings.TogglePlaybackKey &&
+        settings.ToggleModeModifiers == settings.TogglePlaybackModifiers;
 
     private static DateTime NormalizeCacheCheckTime(DateTime value)
     {
