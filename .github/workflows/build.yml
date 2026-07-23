@@ -39,7 +39,7 @@ jobs:
   quality:
     name: Build and test
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -51,14 +51,21 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Restore
-        run: dotnet restore tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj -p:TreatWarningsAsErrors=true
+        run: dotnet restore GenshinBrowser.sln -p:Platform=x64 -p:TreatWarningsAsErrors=true
+
+      - name: Build solution (Debug)
+        run: dotnet build GenshinBrowser.sln -c Debug -p:Platform=x64 --no-restore -p:TreatWarningsAsErrors=true
+
+      - name: Build solution (Release)
+        run: dotnet build GenshinBrowser.sln -c Release -p:Platform=x64 --no-restore -p:TreatWarningsAsErrors=true
 
       - name: Test
         run: dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj -c Release --no-restore --verbosity normal -p:TreatWarningsAsErrors=true
 
       - name: Verify formatting
         run: |
-          dotnet format GenshinBrowser.csproj --verify-no-changes --no-restore --verbosity minimal
+          dotnet format src/GenshinBrowser.Core/GenshinBrowser.Core.csproj --verify-no-changes --no-restore --verbosity minimal
+          dotnet format src/GenshinBrowser.App/GenshinBrowser.App.csproj --verify-no-changes --no-restore --verbosity minimal
           dotnet format tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj --verify-no-changes --no-restore --verbosity minimal
 
   release:
@@ -93,12 +100,12 @@ jobs:
           "RELEASE_SEMVER=$($version.Substring(1))" >> $env:GITHUB_ENV
 
       - name: Restore win-x64 runtime
-        run: dotnet restore GenshinBrowser.csproj -r win-x64 -p:TreatWarningsAsErrors=true
+        run: dotnet restore src/GenshinBrowser.App/GenshinBrowser.App.csproj -r win-x64 -p:TreatWarningsAsErrors=true
 
       - name: Publish self-contained application
         shell: pwsh
         run: |
-          dotnet publish GenshinBrowser.csproj `
+          dotnet publish src/GenshinBrowser.App/GenshinBrowser.App.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
@@ -134,9 +141,21 @@ jobs:
           $output = (Resolve-Path "dist/win-x64-self-contained").Path
           $expectedExecutables = @("GenshinBrowser.exe", "MicrosoftEdgeWebview2Setup.exe")
           $executables = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter "*.exe")
-          $unexpectedExecutables = @($executables | Where-Object { $_.Name -notin $expectedExecutables })
-          if ($executables.Count -ne $expectedExecutables.Count -or $unexpectedExecutables.Count -ne 0) {
+          $missingExecutables = @($expectedExecutables | Where-Object { -not (Test-Path -LiteralPath (Join-Path $output $_)) })
+          $runtimeExecutables = @($executables | Where-Object { $_.Name.StartsWith("Microsoft.WindowsAppRuntime.", [StringComparison]::OrdinalIgnoreCase) })
+          $unexpectedExecutables = @($executables | Where-Object {
+              $_.Name -notin $expectedExecutables -and
+              -not $_.Name.StartsWith("Microsoft.WindowsAppRuntime.", [StringComparison]::OrdinalIgnoreCase)
+          })
+          if ($missingExecutables.Count -ne 0 -or $unexpectedExecutables.Count -ne 0) {
               throw "Unexpected executables in publish output: $($executables.Name -join ', ')"
+          }
+
+          foreach ($runtimeExecutable in $runtimeExecutables) {
+              $runtimeSignature = Get-AuthenticodeSignature -LiteralPath $runtimeExecutable.FullName
+              if ($runtimeSignature.Status -ne 'Valid' -or $runtimeSignature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+                  throw "Windows App SDK executable signature validation failed: $($runtimeExecutable.Name)"
+              }
           }
 
           $application = Get-Item -LiteralPath (Join-Path $output "GenshinBrowser.exe")
@@ -145,7 +164,14 @@ jobs:
           }
 
           $forbiddenFiles = @(Get-ChildItem -LiteralPath $output -Recurse -File | Where-Object {
-              $_.Name -like "*Forms*" -or $_.Name -eq "System.Design.dll" -or $_.Name -eq "createdump.exe"
+              $_.Name -like "*Forms*" -or
+              $_.Name -in @(
+                  "System.Design.dll",
+                  "createdump.exe",
+                  "PresentationFramework.dll",
+                  "PresentationCore.dll",
+                  "System.Xaml.dll",
+                  "Microsoft.Web.WebView2.Wpf.dll")
           })
           if ($forbiddenFiles.Count -ne 0) {
               throw "Unused publish files remain: $($forbiddenFiles.Name -join ', ')"
@@ -158,7 +184,7 @@ jobs:
 
           $null = Get-Content -LiteralPath $depsFiles[0].FullName -Raw | ConvertFrom-Json
           $staleReference = Select-String -LiteralPath $depsFiles[0].FullName `
-              -Pattern 'Forms|System\.Design\.dll|createdump\.exe' `
+              -Pattern 'Forms|System\.Design\.dll|createdump\.exe|PresentationFramework|PresentationCore|System\.Xaml|Microsoft\.Web\.WebView2\.Wpf' `
               -Quiet
           if ($staleReference) {
               throw "Removed publish assets are still referenced by $($depsFiles[0].Name)."

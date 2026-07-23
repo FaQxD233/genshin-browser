@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GenshinBrowser</RootNamespace>
+    <AssemblyName>GenshinBrowser.Core</AssemblyName>
+    <DefineConstants>$(DefineConstants);WINUI_CORE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="GenshinBrowser.Tests" />
+  </ItemGroup>
+</Project>

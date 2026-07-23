@@ -118,7 +118,6 @@ public partial class MainWindow : Window, IControlBrowser
 
         Loaded += MainWindow_OnLoaded;
         Closing += MainWindow_OnClosing;
-        StateChanged += MainWindow_OnStateChanged;
         DragBar.MouseLeftButtonDown += (_, e) =>
         {
             if (e.Source is System.Windows.Controls.Button) return;
@@ -365,57 +364,11 @@ public partial class MainWindow : Window, IControlBrowser
     private void App_OnActivated(object? sender, EventArgs e)
     {
         _keyboardHookService.IsAppActive = true;
-        UpdateWebViewMemoryTargetLevel();
     }
 
     private void App_OnDeactivated(object? sender, EventArgs e)
     {
         _keyboardHookService.IsAppActive = false;
-        UpdateWebViewMemoryTargetLevel();
-    }
-
-    private void MainWindow_OnStateChanged(object? sender, EventArgs e) => UpdateWebViewMemoryTargetLevel();
-
-    /// <summary>
-    /// 浮窗叠游戏、应用失焦或窗口最小化时请求 WebView2 使用低内存目标；
-    /// 浏览模式且前台可见时恢复 Normal，减轻与游戏争用内存。
-    /// </summary>
-    private void UpdateWebViewMemoryTargetLevel(CoreWebView2? core = null)
-    {
-        try
-        {
-            core ??= BrowserView.CoreWebView2;
-        }
-        catch
-        {
-            return;
-        }
-
-        if (core is null)
-        {
-            return;
-        }
-
-        var preferLow =
-            _settings.WindowMode == WindowMode.Fixed ||
-            WindowState == WindowState.Minimized ||
-            !_keyboardHookService.IsAppActive;
-
-        var target = preferLow
-            ? CoreWebView2MemoryUsageTargetLevel.Low
-            : CoreWebView2MemoryUsageTargetLevel.Normal;
-
-        try
-        {
-            if (core.MemoryUsageTargetLevel != target)
-            {
-                core.MemoryUsageTargetLevel = target;
-            }
-        }
-        catch (Exception ex)
-        {
-            FileLogger.LogException(ex, "Set WebView2 MemoryUsageTargetLevel");
-        }
     }
 
     private bool IsWebView2RuntimeInstalled()
@@ -491,7 +444,6 @@ public partial class MainWindow : Window, IControlBrowser
             browser.DefaultBackgroundColor = System.Drawing.Color.Transparent;
             ApplyWindowOpacity(_settings.WindowOpacity);
             ApplyStoredZoom(browser);
-            UpdateWebViewMemoryTargetLevel(core);
 
             // 页面初始化脚本：透明背景 + 取消播放器 cursor:none
             await core.AddScriptToExecuteOnDocumentCreatedAsync(PageBootstrapScript);
@@ -1562,8 +1514,6 @@ public partial class MainWindow : Window, IControlBrowser
         _windowModeService.ApplyMode(_settings.WindowMode);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateBrowserAcceleratorKeys();
-        // 浮窗叠游戏 / 失焦 / 最小化时降低 WebView 内存目标，前台浏览再恢复
-        UpdateWebViewMemoryTargetLevel();
         // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
         ApplyTitleBarForCurrentMode(forceHideInFixed: true);
         UpdateModeToggleButton();
@@ -2530,7 +2480,6 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 取消前台状态跟踪
-        StateChanged -= MainWindow_OnStateChanged;
         if (Application.Current is not null)
         {
             Application.Current.Activated -= App_OnActivated;

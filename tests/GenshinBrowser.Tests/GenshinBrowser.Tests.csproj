@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\GenshinBrowser.csproj" />
+    <ProjectReference Include="..\..\src\GenshinBrowser.Core\GenshinBrowser.Core.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-using System.Windows.Input;
+using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 
 namespace GenshinBrowser.Tests;
@@ -11,7 +11,7 @@ public sealed class KeyboardHookServiceTests
         using var service = new KeyboardHookService();
         var invoked = false;
 
-        service.RegisterOrUpdateHotkey("future-action", 0x41, ModifierKeys.Control, () => invoked = true);
+        service.RegisterOrUpdateHotkey("future-action", 0x41, HotkeyModifiers.Control, () => invoked = true);
 
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(0x41));
         Assert.True(service.UnregisterHotkey("future-action"));
@@ -41,18 +41,18 @@ public sealed class KeyboardHookServiceTests
     {
         using var service = new KeyboardHookService();
         // Mode F8+None, Playback F8+Ctrl —— 录制 Mode 为 K+Ctrl 时，分步写入会在中间态失败
-        Assert.True(service.TrySetTogglePlaybackHotkey(0x77, ModifierKeys.Control)); // F8+Ctrl
-        Assert.True(service.TrySetToggleModeHotkey(0x4B, ModifierKeys.Control)); // K+Ctrl 最终不冲突
+        Assert.True(service.TrySetTogglePlaybackHotkey(0x77, HotkeyModifiers.Control)); // F8+Ctrl
+        Assert.True(service.TrySetToggleModeHotkey(0x4B, HotkeyModifiers.Control)); // K+Ctrl 最终不冲突
 
         Assert.Equal(0x4B, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.Control, service.ToggleModeModifiers);
+        Assert.Equal(HotkeyModifiers.Control, service.ToggleModeModifiers);
         Assert.Equal(0x77, service.TogglePlaybackVk);
-        Assert.Equal(ModifierKeys.Control, service.TogglePlaybackModifiers);
+        Assert.Equal(HotkeyModifiers.Control, service.TogglePlaybackModifiers);
 
         // 最终组合与播放键相同：原子拒绝，状态不变
-        Assert.False(service.TrySetToggleModeHotkey(0x77, ModifierKeys.Control));
+        Assert.False(service.TrySetToggleModeHotkey(0x77, HotkeyModifiers.Control));
         Assert.Equal(0x4B, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.Control, service.ToggleModeModifiers);
+        Assert.Equal(HotkeyModifiers.Control, service.ToggleModeModifiers);
     }
 
     [Fact]
@@ -65,22 +65,22 @@ public sealed class KeyboardHookServiceTests
         const int vkK = 0x4B;
         const int vkF9 = 0x78;
 
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, ModifierKeys.None));
-        Assert.True(service.TrySetToggleModeHotkey(vkK, ModifierKeys.None));
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF8, ModifierKeys.None));
+        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, HotkeyModifiers.None));
+        Assert.True(service.TrySetToggleModeHotkey(vkK, HotkeyModifiers.None));
+        Assert.True(service.TrySetTogglePlaybackHotkey(vkF8, HotkeyModifiers.None));
         // 现为 Mode=K, Playback=F8
 
-        Assert.False(service.TrySetTogglePlaybackHotkey(vkK, ModifierKeys.None));
-        Assert.False(service.TrySetToggleModeHotkey(vkF8, ModifierKeys.None));
+        Assert.False(service.TrySetTogglePlaybackHotkey(vkK, HotkeyModifiers.None));
+        Assert.False(service.TrySetToggleModeHotkey(vkF8, HotkeyModifiers.None));
 
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, ModifierKeys.None));
-        Assert.True(service.TrySetToggleModeHotkey(vkF8, ModifierKeys.None));
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkK, ModifierKeys.None));
+        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, HotkeyModifiers.None));
+        Assert.True(service.TrySetToggleModeHotkey(vkF8, HotkeyModifiers.None));
+        Assert.True(service.TrySetTogglePlaybackHotkey(vkK, HotkeyModifiers.None));
 
         Assert.Equal(vkF8, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.None, service.ToggleModeModifiers);
+        Assert.Equal(HotkeyModifiers.None, service.ToggleModeModifiers);
         Assert.Equal(vkK, service.TogglePlaybackVk);
-        Assert.Equal(ModifierKeys.None, service.TogglePlaybackModifiers);
+        Assert.Equal(HotkeyModifiers.None, service.TogglePlaybackModifiers);
     }
 
     [Fact]

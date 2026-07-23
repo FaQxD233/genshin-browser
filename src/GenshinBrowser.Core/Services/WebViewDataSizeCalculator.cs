@@ -2,9 +2,12 @@ using System.IO;
 
 namespace GenshinBrowser.Services;
 
-internal static class WebViewDataSizeCalculator
+public static class WebViewDataSizeCalculator
 {
-    private static readonly HashSet<string> ReclaimableDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    // Keep the measurement aligned with BrowserSession's DiskCache-only cleanup.
+    // Site data (IndexedDB/LocalStorage/Service Worker) may contain login state and
+    // must not contribute to a threshold that claims it can be reclaimed.
+    private static readonly HashSet<string> DiskCacheDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Cache",
         "Code Cache",
@@ -16,6 +19,12 @@ internal static class WebViewDataSizeCalculator
         "GrShaderCache",
         "Media Cache",
         "ShaderCache",
+    };
+
+    // Do not descend into site-data trees: a nested directory named "Cache" must not
+    // make login/session storage look reclaimable or trigger a routine cache purge.
+    private static readonly HashSet<string> ProtectedSiteDataDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    {
         "Service Worker",
         "blob_storage",
         "databases",
@@ -54,7 +63,12 @@ internal static class WebViewDataSizeCalculator
                         continue;
                     }
 
-                    if (ReclaimableDirectoryNames.Contains(child.Name))
+                    if (ProtectedSiteDataDirectoryNames.Contains(child.Name))
+                    {
+                        continue;
+                    }
+
+                    if (DiskCacheDirectoryNames.Contains(child.Name))
                     {
                         totalBytes = checked(totalBytes + MeasureTree(child, cancellationToken));
                     }

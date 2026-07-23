@@ -8,6 +8,7 @@ public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItem
     private string _url = string.Empty;
     private string _title = string.Empty;
     private string _timeDisplay = string.Empty;
+    private DateTime timestampUtc;
 
     public ControlItemViewModel(HistoryEntry item)
     {
@@ -41,20 +42,31 @@ public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItem
     {
         Url = item.Url;
         Title = item.Title;
-        TimeDisplay = TimeFormatter.FormatRelativeTime(item.VisitedAt);
+        timestampUtc = item.VisitedAt;
+        TimeDisplay = TimeFormatter.FormatRelativeTime(timestampUtc);
     }
 
     public void Update(FavoriteEntry item)
     {
         Url = item.Url;
         Title = item.Title;
-        TimeDisplay = TimeFormatter.FormatRelativeTime(item.SavedAt);
+        timestampUtc = item.SavedAt;
+        TimeDisplay = TimeFormatter.FormatRelativeTime(timestampUtc);
+    }
+
+    public void RefreshTimeDisplay(string todayText, string yesterdayText)
+    {
+        TimeDisplay = TimeFormatter.FormatRelativeTime(
+            timestampUtc,
+            todayText,
+            yesterdayText);
     }
 
     public void UpdateFrom(ControlItemViewModel item)
     {
         Url = item.Url;
         Title = item.Title;
+        timestampUtc = item.timestampUtc;
         TimeDisplay = item.TimeDisplay;
     }
 

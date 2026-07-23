@@ -71,10 +71,10 @@ internal static class JsonFileWriter
     }
 
     /// <summary>
-    /// 清理指定目录下残留的 stale 临时文件（命名模式：{原名}.{guid}.tmp）。
+    /// 清理指定目录下残留的 JSON 原子写临时文件（命名模式：{原名}.json.{guid}.tmp）。
     /// 进程崩溃 / 任务被取消可能在原子写流程中留下 .tmp 文件，启动时调用一次回收磁盘。
     /// </summary>
-    /// <param name="directory">应用数据根目录。只扫描顶层且只删除本类生成的 GUID 临时文件。</param>
+    /// <param name="directory">应用数据根目录。只扫描顶层且只删除 JSON GUID 临时文件，不触碰 WebViewProfile 或其他临时文件。</param>
     public static void PurgeStaleTempFiles(string directory)
     {
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
@@ -84,9 +84,17 @@ internal static class JsonFileWriter
 
         foreach (var file in Directory.EnumerateFiles(directory, "*.tmp", SearchOption.TopDirectoryOnly))
         {
-            var stem = Path.GetFileNameWithoutExtension(file);
-            var guidSuffix = Path.GetExtension(stem).TrimStart('.');
-            if (!Guid.TryParseExact(guidSuffix, "N", out _))
+            string stem = Path.GetFileNameWithoutExtension(file);
+            int separator = stem.LastIndexOf('.');
+            if (separator <= 0)
+            {
+                continue;
+            }
+
+            string originalFileName = stem[..separator];
+            string guidSuffix = stem[(separator + 1)..];
+            if (!originalFileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+                !Guid.TryParseExact(guidSuffix, "N", out _))
             {
                 continue;
             }

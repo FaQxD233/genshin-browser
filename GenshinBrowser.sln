@@ -1,0 +1,39 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GenshinBrowser.Legacy", "GenshinBrowser.csproj", "{38C08A45-8D32-4EEC-A716-C0D0E04ECAB2}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GenshinBrowser.Core", "src\GenshinBrowser.Core\GenshinBrowser.Core.csproj", "{2B72397B-A2DE-46FB-A569-E69CBAB34EBC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GenshinBrowser.App", "src\GenshinBrowser.App\GenshinBrowser.App.csproj", "{E5612C70-81B6-457F-8AE3-326743DCE9AC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "GenshinBrowser.Tests", "tests\GenshinBrowser.Tests\GenshinBrowser.Tests.csproj", "{5D726DB5-0D93-412D-82DA-BE39053C04A8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{38C08A45-8D32-4EEC-A716-C0D0E04ECAB2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{38C08A45-8D32-4EEC-A716-C0D0E04ECAB2}.Debug|x64.Build.0 = Debug|Any CPU
+		{38C08A45-8D32-4EEC-A716-C0D0E04ECAB2}.Release|x64.ActiveCfg = Release|Any CPU
+		{38C08A45-8D32-4EEC-A716-C0D0E04ECAB2}.Release|x64.Build.0 = Release|Any CPU
+		{2B72397B-A2DE-46FB-A569-E69CBAB34EBC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2B72397B-A2DE-46FB-A569-E69CBAB34EBC}.Debug|x64.Build.0 = Debug|Any CPU
+		{2B72397B-A2DE-46FB-A569-E69CBAB34EBC}.Release|x64.ActiveCfg = Release|Any CPU
+		{2B72397B-A2DE-46FB-A569-E69CBAB34EBC}.Release|x64.Build.0 = Release|Any CPU
+		{E5612C70-81B6-457F-8AE3-326743DCE9AC}.Debug|x64.ActiveCfg = Debug|x64
+		{E5612C70-81B6-457F-8AE3-326743DCE9AC}.Debug|x64.Build.0 = Debug|x64
+		{E5612C70-81B6-457F-8AE3-326743DCE9AC}.Release|x64.ActiveCfg = Release|x64
+		{E5612C70-81B6-457F-8AE3-326743DCE9AC}.Release|x64.Build.0 = Release|x64
+		{5D726DB5-0D93-412D-82DA-BE39053C04A8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5D726DB5-0D93-412D-82DA-BE39053C04A8}.Debug|x64.Build.0 = Debug|Any CPU
+		{5D726DB5-0D93-412D-82DA-BE39053C04A8}.Release|x64.ActiveCfg = Release|Any CPU
+		{5D726DB5-0D93-412D-82DA-BE39053C04A8}.Release|x64.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

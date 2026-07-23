@@ -4,6 +4,7 @@
   <!-- Window titles -->
   <sys:String x:Key="App.Title">Genshin Browser</sys:String>
   <sys:String x:Key="Control.Title">Genshin Browser Control</sys:String>
+  <sys:String x:Key="Browser.ContentName">Browser content</sys:String>
 
   <!-- Mode: UI labels Browsing / Floating; internal enum remains Free / Fixed -->
   <sys:String x:Key="Mode.Free">Browsing</sys:String>
@@ -45,7 +46,7 @@
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
-  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, and service workers (login cookies, browsing history, downloads, favorites, autofill, and saved passwords are preserved)</sys:String>
+  <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear only the WebView2 disk cache; cookies, LocalStorage, IndexedDB, service workers, autofill, and saved passwords are preserved</sys:String>
   <sys:String x:Key="Settings.Theme">Theme</sys:String>
   <sys:String x:Key="Settings.ThemeDark">Dark</sys:String>
   <sys:String x:Key="Settings.ThemeLight">Light</sys:String>
@@ -133,12 +134,13 @@
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
-  <sys:String x:Key="Toast.BrowsingDataCleared">Browsing data cleared</sys:String>
+  <sys:String x:Key="Toast.BrowsingDataCleared">Disk cache cleared</sys:String>
   <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “Browsing ⇄ Floating” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">Press a hotkey for “video playback” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordCanceled">Recording canceled.</sys:String>
   <sys:String x:Key="Toast.HotkeyUsedByPlayback">That hotkey is already used by video playback!</sys:String>
   <sys:String x:Key="Toast.HotkeyUsedByMode">That hotkey is already used by “Browsing ⇄ Floating”!</sys:String>
+  <sys:String x:Key="Toast.HotkeyConflict">That hotkey is already assigned to another action.</sys:String>
   <sys:String x:Key="Toast.ToggleModeSet">“Browsing ⇄ Floating” set to {0}</sys:String>
   <sys:String x:Key="Toast.PlaybackSet">“Video playback” set to {0}</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
@@ -151,6 +153,7 @@
 
   <!-- Status messages (MainWindow) -->
   <sys:String x:Key="Status.InitBrowser">Initializing browser...</sys:String>
+  <sys:String x:Key="Status.Loading">Loading...</sys:String>
   <sys:String x:Key="Status.InstallingWebView2">Installing WebView2 Runtime...</sys:String>
   <sys:String x:Key="Status.BrowserReady">Browser ready. Login sessions, autofill, and saved passwords are preserved.</sys:String>
   <sys:String x:Key="Status.BrowserRecovering">The browser process failed. Recovering...</sys:String>
@@ -183,6 +186,7 @@
   <sys:String x:Key="Status.Opening">Opening: {0}</sys:String>
   <sys:String x:Key="Status.OpenFailed">Failed to open: {0}</sys:String>
   <sys:String x:Key="Status.DownloadCanceled">Download canceled: {0}</sys:String>
+  <sys:String x:Key="Status.DownloadCancelFailed">Failed to cancel download: {0}</sys:String>
   <sys:String x:Key="Status.DownloadRetrying">Retrying download: {0}</sys:String>
   <sys:String x:Key="Status.DownloadRetryUnavailable">This download has no retryable HTTP(S) address.</sys:String>
   <sys:String x:Key="Status.DownloadRetryFailed">Failed to retry download: {0}</sys:String>
@@ -193,16 +197,20 @@
   <sys:String x:Key="Status.HotkeyInstallFailed">Failed to install global hotkey, Win32 error: {0}. Control panel buttons still work.</sys:String>
   <sys:String x:Key="Status.SaveSettingsFailed">Failed to save settings: {0}</sys:String>
   <sys:String x:Key="Status.Zoom">Zoom: {0}%</sys:String>
-  <sys:String x:Key="Status.StartupFailed">Startup failed:\n{0}: {1}</sys:String>
+  <sys:String x:Key="Status.ZoomFailed">Failed to set page zoom: {0}</sys:String>
+  <sys:String x:Key="Status.OpacityFailed">Failed to set window opacity: {0}</sys:String>
+  <sys:String x:Key="Status.StartupFailed">Startup failed:&#x0a;{0}: {1}</sys:String>
   <sys:String x:Key="Status.WebView2InstallFailed">Automatic WebView2 Runtime install failed. Please install it manually.</sys:String>
   <sys:String x:Key="Status.WebView2ManualHint">Please download and install: https://developer.microsoft.com/microsoft-edge/webview2/</sys:String>
   <sys:String x:Key="Status.WebView2MissingInstaller">WebView2 Runtime was not detected and the automatic installer is missing.&#x0a;&#x0a;{0}</sys:String>
   <sys:String x:Key="Status.WebView2InstallerStartFailed">Unable to start the WebView2 installer.</sys:String>
   <sys:String x:Key="Status.WebView2CoreUnavailable">The WebView2 browser core could not be created.</sys:String>
   <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB, auto-cleaning...</sys:String>
-  <sys:String x:Key="Status.ClearingBrowsingData">Clearing browsing data...</sys:String>
-  <sys:String x:Key="Status.BrowsingDataCleared">Browsing data cleared.</sys:String>
-  <sys:String x:Key="Status.ClearBrowsingDataFailed">Failed to clear browsing data: {0}</sys:String>
-  <sys:String x:Key="Status.UnhandledException">Unhandled exception:\n{0}: {1}\n\nDetails were written to the log.</sys:String>
+  <sys:String x:Key="Status.ClearingBrowsingData">Clearing the WebView2 disk cache...</sys:String>
+  <sys:String x:Key="Status.BrowsingDataCleared">The WebView2 disk cache was cleared.</sys:String>
+  <sys:String x:Key="Status.ClearBrowsingDataFailed">Failed to clear the WebView2 disk cache: {0}</sys:String>
+  <sys:String x:Key="Status.UnhandledException">Unhandled exception:&#x0a;{0}: {1}&#x0a;&#x0a;Details were written to the log.</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser Error</sys:String>
+  <sys:String x:Key="Time.Today">Today</sys:String>
+  <sys:String x:Key="Time.Yesterday">Yesterday</sys:String>
 </ResourceDictionary>

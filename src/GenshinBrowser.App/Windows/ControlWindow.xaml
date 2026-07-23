@@ -1,0 +1,641 @@
+<Window
+    x:Class="GenshinBrowser.Windows.ControlWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:localization="using:GenshinBrowser.Localization"
+    xmlns:models="using:GenshinBrowser.Models"
+    xmlns:viewModels="using:GenshinBrowser.ViewModels">
+
+    <Grid
+        x:Name="RootGrid"
+        Background="{ThemeResource GbPageBackgroundBrush}"
+        PreviewKeyDown="RootGrid_OnKeyDown"
+        PreviewKeyUp="RootGrid_OnKeyUp">
+        <Grid.Resources>
+            <DataTemplate x:Key="DownloadItemTemplate" x:DataType="models:DownloadItem">
+                <Grid Margin="0,4" RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Text="{x:Bind FileName, Mode=OneWay}"
+                            FontSize="12"
+                            FontWeight="Medium"
+                            Foreground="{ThemeResource GbTextPrimaryBrush}"
+                            TextTrimming="CharacterEllipsis"
+                            VerticalAlignment="Center"
+                            ToolTipService.ToolTip="{x:Bind FileName, Mode=OneWay}"/>
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{Binding State, Converter={StaticResource DownloadStateText}}"
+                            Style="{StaticResource GbSecondaryTextStyle}"
+                            VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource GbCompactProgressBarStyle}"
+                            Maximum="1"
+                            Value="{x:Bind Progress, Mode=OneWay}"/>
+                        <TextBlock
+                            Grid.Column="1"
+                            Text="{x:Bind SizeText, Mode=OneWay}"
+                            Style="{StaticResource GbSecondaryTextStyle}"
+                            VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                            <Button
+                                Tag="{Binding}"
+                                Style="{StaticResource GbTinyIconButtonStyle}"
+                                Click="OpenDownloadFile_Click"
+                                IsEnabled="{x:Bind CanOpen, Mode=OneWay}"
+                                localization:LocalizationBinding.Key="Downloads.OpenFile"
+                                localization:LocalizationBinding.Target="ToolTip">
+                                <FontIcon Glyph="&#xE7B3;" FontSize="12"/>
+                            </Button>
+                            <Button
+                                Tag="{Binding}"
+                                Style="{StaticResource GbTinyIconButtonStyle}"
+                                Click="OpenDownloadFolder_Click"
+                                IsEnabled="{x:Bind CanOpenInFolder, Mode=OneWay}"
+                                localization:LocalizationBinding.Key="Downloads.OpenFolder"
+                                localization:LocalizationBinding.Target="ToolTip">
+                                <FontIcon Glyph="&#xE8DA;" FontSize="12"/>
+                            </Button>
+                            <Button
+                                Tag="{Binding}"
+                                Style="{StaticResource GbTinyIconButtonStyle}"
+                                Click="RetryDownload_Click"
+                                Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}"
+                                localization:LocalizationBinding.Key="Downloads.Retry"
+                                localization:LocalizationBinding.Target="ToolTip">
+                                <FontIcon Glyph="&#xE72C;" FontSize="12"/>
+                            </Button>
+                            <Button
+                                Tag="{Binding}"
+                                Style="{StaticResource GbTinyIconButtonStyle}"
+                                Click="CancelDownload_Click"
+                                Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}"
+                                localization:LocalizationBinding.Key="Downloads.Cancel"
+                                localization:LocalizationBinding.Target="ToolTip">
+                                <FontIcon Glyph="&#xE711;" FontSize="12"/>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </DataTemplate>
+            <Style TargetType="Button" BasedOn="{StaticResource GbCompactButtonStyle}"/>
+            <Style TargetType="ToggleButton" BasedOn="{StaticResource GbCompactToggleButtonStyle}"/>
+            <Style TargetType="TextBox" BasedOn="{StaticResource GbCompactTextBoxStyle}"/>
+            <Style TargetType="ListView" BasedOn="{StaticResource GbBrowserListViewStyle}"/>
+            <Style TargetType="ListViewItem" BasedOn="{StaticResource GbBrowserListViewItemStyle}"/>
+            <Style TargetType="ProgressBar" BasedOn="{StaticResource GbCompactProgressBarStyle}"/>
+        </Grid.Resources>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid
+            x:Name="TitleBarArea"
+            Style="{StaticResource GbWindowTitleBarStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="CaptionButtonInsetColumn" Width="0"/>
+            </Grid.ColumnDefinitions>
+            <Grid x:Name="TitleBarDragRegion" Background="Transparent">
+                <TextBlock
+                    Margin="12,0"
+                    Style="{StaticResource GbWindowTitleTextStyle}"
+                    localization:LocalizationBinding.Key="Control.Title"
+                    Text="Genshin Browser 控制面板"/>
+            </Grid>
+            <Button
+                Grid.Column="1"
+                Width="40"
+                Height="32"
+                Style="{StaticResource GbCaptionButtonStyle}"
+                Click="MinimizeButton_Click"
+                localization:LocalizationBinding.Key="TitleBar.Minimize"
+                localization:LocalizationBinding.Target="ToolTip">
+                <FontIcon Glyph="&#xE921;" FontSize="11"/>
+            </Button>
+            <Button
+                Grid.Column="2"
+                Width="40"
+                Height="32"
+                Style="{StaticResource GbCaptionButtonStyle}"
+                Click="MaximizeButton_Click"
+                localization:LocalizationBinding.Key="TitleBar.Maximize"
+                localization:LocalizationBinding.Target="ToolTip">
+                <FontIcon x:Name="MaximizeIcon" Glyph="&#xE922;" FontSize="11"/>
+            </Button>
+            <Button
+                Grid.Column="3"
+                Width="44"
+                Height="32"
+                Style="{StaticResource GbCaptionCloseButtonStyle}"
+                Click="CloseButton_Click"
+                localization:LocalizationBinding.Key="TitleBar.Close"
+                localization:LocalizationBinding.Target="ToolTip">
+                <FontIcon Glyph="&#xE8BB;" FontSize="11"/>
+            </Button>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="16,14,16,14">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Row 0: 顶栏 — 左侧 浏览|浮窗 分段，右侧工具 -->
+            <Grid Grid.Row="0" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Style="{StaticResource GbPillSegmentHostStyle}" HorizontalAlignment="Left">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border
+                            Grid.Column="0"
+                            Background="{ThemeResource GbHoverBrush}"
+                            CornerRadius="11"
+                            Visibility="{Binding IsBrowsingMode, Converter={StaticResource BoolToVisibility}}"/>
+                        <Border
+                            Grid.Column="1"
+                            Background="{ThemeResource GbFloatingAccentSoftBrush}"
+                            CornerRadius="11"
+                            Visibility="{Binding IsFloatingMode, Converter={StaticResource BoolToVisibility}}"/>
+                        <Button
+                            Grid.Column="0"
+                            Width="64"
+                            Height="26"
+                            Padding="10,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontWeight="SemiBold"
+                            Command="{Binding SetBrowsingModeCommand}"
+                            ToolTipService.ToolTip="{Binding SwitchToBrowsingTooltip}">
+                            <Grid>
+                                <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource GbAccentBrush}" Visibility="{Binding IsBrowsingMode, Converter={StaticResource BoolToVisibility}}" localization:LocalizationBinding.Key="Mode.Free" Text="浏览"/>
+                                <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource GbTextSecondaryBrush}" Visibility="{Binding IsBrowsingMode, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}" localization:LocalizationBinding.Key="Mode.Free" Text="浏览"/>
+                            </Grid>
+                        </Button>
+                        <Button
+                            Grid.Column="1"
+                            Width="64"
+                            Height="26"
+                            Padding="10,0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontWeight="SemiBold"
+                            Command="{Binding SetFloatingModeCommand}"
+                            ToolTipService.ToolTip="{Binding SwitchToFloatingTooltip}">
+                            <Grid>
+                                <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource GbFloatingAccentBrush}" Visibility="{Binding IsFloatingMode, Converter={StaticResource BoolToVisibility}}" localization:LocalizationBinding.Key="Mode.Fixed" Text="浮窗"/>
+                                <TextBlock HorizontalAlignment="Center" Foreground="{ThemeResource GbTextSecondaryBrush}" Visibility="{Binding IsFloatingMode, Converter={StaticResource BoolToVisibility}, ConverterParameter=Invert}" localization:LocalizationBinding.Key="Mode.Fixed" Text="浮窗"/>
+                            </Grid>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button
+                        Style="{StaticResource GbCompactIconButtonStyle}"
+                        Command="{Binding TogglePlaybackCommand}"
+                        ToolTipService.ToolTip="{Binding PlaybackTooltip}"
+                        localization:LocalizationBinding.Key="Toolbar.PlaybackName"
+                        localization:LocalizationBinding.Target="AutomationName">
+                        <FontIcon Glyph="&#xE769;" FontSize="13"/>
+                    </Button>
+                    <ToggleButton
+                        x:Name="SettingsButton"
+                        Style="{StaticResource GbCompactIconToggleButtonStyle}"
+                        IsChecked="{Binding IsSettingsExpanded, Mode=OneWay}"
+                        Command="{Binding ToggleSettingsCommand}"
+                        localization:LocalizationBinding.Key="Toolbar.SettingsTooltip"
+                        localization:LocalizationBinding.Target="ToolTip">
+                        <FontIcon Glyph="&#xE713;" FontSize="13"/>
+                    </ToggleButton>
+                    <ToggleButton
+                        x:Name="DownloadsButton"
+                        Style="{StaticResource GbCompactIconToggleButtonStyle}"
+                        IsChecked="{Binding IsDownloadsExpanded, Mode=OneWay}"
+                        Command="{Binding ToggleDownloadsCommand}"
+                        localization:LocalizationBinding.Key="Toolbar.DownloadsTooltip"
+                        localization:LocalizationBinding.Target="ToolTip">
+                        <Grid Width="18" Height="18">
+                            <FontIcon Glyph="&#xE896;" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Border
+                                Style="{StaticResource GbDownloadsBadgeBorderStyle}"
+                                Visibility="{Binding HasDownloadsBadge, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding DownloadsBadgeText}" FontSize="9" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </ToggleButton>
+                </StackPanel>
+            </Grid>
+
+            <!-- Row 1: 设置面板 -->
+            <Border
+                Grid.Row="1"
+                Style="{StaticResource GbCardBorderStyle}"
+                Margin="0,0,0,12"
+                Visibility="{Binding IsSettingsExpanded, Converter={StaticResource BoolToVisibility}}">
+                <Grid RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource GbPanelTitleTextStyle}" localization:LocalizationBinding.Key="Settings.Title" Text="浮窗设置" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Style="{StaticResource GbCompactButtonStyle}" Padding="8,3" Height="26" Margin="0,0,6,0" Command="{Binding ClearBrowsingDataCommand}" localization:LocalizationBinding.ToolTipKey="Settings.ClearBrowsingDataTooltip">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE74D;" FontSize="11"/>
+                                <TextBlock localization:LocalizationBinding.Key="Settings.ClearBrowsingData" Text="清理缓存" VerticalAlignment="Center" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="2" Style="{StaticResource GbCompactButtonStyle}" Padding="8,3" Height="26" Command="{Binding RestoreDefaultSettingsCommand}" localization:LocalizationBinding.ToolTipKey="Settings.RestoreDefaultsTooltip">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <FontIcon Glyph="&#xE72C;" FontSize="11"/>
+                                <TextBlock localization:LocalizationBinding.Key="Settings.RestoreDefaults" Text="恢复默认" VerticalAlignment="Center" FontSize="11"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" MaxHeight="280" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,2,0">
+                        <StackPanel Spacing="0">
+                            <!-- 分组：窗口 -->
+                            <TextBlock Style="{StaticResource GbSectionTitleTextStyle}" localization:LocalizationBinding.Key="Settings.Window" Text="窗口"/>
+                            <Grid Margin="0,0,0,6" ColumnSpacing="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="58"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="58"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.WindowSize" Text="尺寸"/>
+                                <TextBox x:Name="BrowserWidthBox" Grid.Column="1" Margin="0,0,4,0" Text="{Binding BrowserWindowWidthText, Mode=TwoWay}" KeyDown="WindowSizeBox_OnKeyDown" LostFocus="WindowSizeBox_OnLostFocus"/>
+                                <TextBlock Grid.Column="2" Text="×" Style="{StaticResource GbSecondaryTextStyle}" VerticalAlignment="Center" Margin="4,0"/>
+                                <TextBox x:Name="BrowserHeightBox" Grid.Column="3" Text="{Binding BrowserWindowHeightText, Mode=TwoWay}" KeyDown="WindowSizeBox_OnKeyDown" LostFocus="WindowSizeBox_OnLostFocus"/>
+                                <Button Grid.Column="4" Margin="6,0,0,0" Command="{Binding ApplyWindowSizeCommand}" localization:LocalizationBinding.Key="Settings.ApplySize" localization:LocalizationBinding.ToolTipKey="Settings.ApplySizeTooltip"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,10" ColumnSpacing="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.MoveCorner" Text="贴边"/>
+                                <Button Grid.Column="1" Height="26" Padding="0" FontSize="14" FontWeight="SemiBold" Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="TopLeft" Content="↖" localization:LocalizationBinding.ToolTipKey="Settings.MoveTopLeftTooltip"/>
+                                <Button Grid.Column="2" Height="26" Padding="0" FontSize="14" FontWeight="SemiBold" Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="TopRight" Content="↗" localization:LocalizationBinding.ToolTipKey="Settings.MoveTopRightTooltip"/>
+                                <Button Grid.Column="3" Height="26" Padding="0" FontSize="14" FontWeight="SemiBold" Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="BottomLeft" Content="↙" localization:LocalizationBinding.ToolTipKey="Settings.MoveBottomLeftTooltip"/>
+                                <Button Grid.Column="4" Height="26" Padding="0" FontSize="14" FontWeight="SemiBold" Command="{Binding MoveBrowserToCornerCommand}" CommandParameter="BottomRight" Content="↘" localization:LocalizationBinding.ToolTipKey="Settings.MoveBottomRightTooltip"/>
+                            </Grid>
+
+                            <!-- 分组：显示 — 不透明度 / 页面缩放 同一行 -->
+                            <TextBlock Style="{StaticResource GbSectionTitleTextStyle}" localization:LocalizationBinding.Key="Settings.Display" Text="显示"/>
+                            <Grid Margin="0,0,0,10" ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- 不透明度组：label − [输入] % + 重置 -->
+                                <Grid Grid.Column="0" ColumnSpacing="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="42"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.Opacity" Text="不透明度" Margin="0,0,4,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource GbTinyIconButtonStyle}" Width="28" Height="26" Content="−" Command="{Binding OpacityOutCommand}" localization:LocalizationBinding.ToolTipKey="Settings.OpacityOutTooltip"/>
+                                    <TextBox x:Name="OpacityBox" Grid.Column="2" Margin="0" HorizontalContentAlignment="Center" Text="{Binding OpacityPercentText, Mode=TwoWay}" KeyDown="OpacityBox_OnKeyDown" LostFocus="OpacityBox_OnLostFocus"/>
+                                    <Button Grid.Column="3" Style="{StaticResource GbTinyIconButtonStyle}" Width="28" Height="26" Content="+" Command="{Binding OpacityInCommand}" localization:LocalizationBinding.ToolTipKey="Settings.OpacityInTooltip"/>
+                                    <Button Grid.Column="4" Height="26" Padding="8,3" Command="{Binding ResetOpacityCommand}" localization:LocalizationBinding.Key="Settings.ZoomReset" localization:LocalizationBinding.ToolTipKey="Settings.OpacityResetTooltip"/>
+                                </Grid>
+                                <!-- 缩放组：label − [输入] % + 重置 -->
+                                <Grid Grid.Column="1" ColumnSpacing="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="42"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.Zoom" Text="缩放" Margin="0,0,4,0"/>
+                                    <Button Grid.Column="1" Style="{StaticResource GbTinyIconButtonStyle}" Width="28" Height="26" Content="−" Command="{Binding ZoomOutCommand}" localization:LocalizationBinding.ToolTipKey="Settings.ZoomOutTooltip"/>
+                                    <TextBox x:Name="ZoomBox" Grid.Column="2" Margin="0" HorizontalContentAlignment="Center" Text="{Binding ZoomPercentText, Mode=TwoWay}" KeyDown="ZoomBox_OnKeyDown" LostFocus="ZoomBox_OnLostFocus"/>
+                                    <Button Grid.Column="3" Style="{StaticResource GbTinyIconButtonStyle}" Width="28" Height="26" Content="+" Command="{Binding ZoomInCommand}" localization:LocalizationBinding.ToolTipKey="Settings.ZoomInTooltip"/>
+                                    <Button Grid.Column="4" Height="26" Padding="8,3" Command="{Binding ResetZoomCommand}" localization:LocalizationBinding.Key="Settings.ZoomReset" localization:LocalizationBinding.ToolTipKey="Settings.ZoomResetTooltip"/>
+                                </Grid>
+                            </Grid>
+
+                            <!-- 分组：外观 — 主题 / 语言 同一行 -->
+                            <TextBlock Style="{StaticResource GbSectionTitleTextStyle}" localization:LocalizationBinding.Key="Settings.Appearance" Text="外观"/>
+                            <Grid Margin="0,0,0,10" ColumnSpacing="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.Theme" Text="主题"/>
+                                <RadioButton Grid.Column="1" GroupName="Theme" Style="{StaticResource GbSegmentRadioButtonStyle}" Command="{Binding SetThemeDarkCommand}" IsChecked="{Binding IsThemeDark, Mode=OneWay}" localization:LocalizationBinding.Key="Settings.ThemeDark" Content="暗色"/>
+                                <RadioButton Grid.Column="2" GroupName="Theme" Style="{StaticResource GbSegmentRadioButtonStyle}" Command="{Binding SetThemeLightCommand}" IsChecked="{Binding IsThemeLight, Mode=OneWay}" localization:LocalizationBinding.Key="Settings.ThemeLight" Content="亮色"/>
+                                <RadioButton Grid.Column="3" GroupName="Theme" Style="{StaticResource GbSegmentRadioButtonStyle}" Command="{Binding SetThemeSystemCommand}" IsChecked="{Binding IsThemeSystem, Mode=OneWay}" localization:LocalizationBinding.Key="Settings.ThemeSystem" Content="系统"/>
+                                <TextBlock Grid.Column="5" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.Language" Text="语言"/>
+                                <RadioButton Grid.Column="6" GroupName="Language" Style="{StaticResource GbSegmentRadioButtonStyle}" Command="{Binding SetLanguageZhCommand}" IsChecked="{Binding IsLanguageZh, Mode=OneWay}" localization:LocalizationBinding.Key="Settings.LanguageZh" Content="中文"/>
+                                <RadioButton Grid.Column="7" GroupName="Language" Style="{StaticResource GbSegmentRadioButtonStyle}" Command="{Binding SetLanguageEnCommand}" IsChecked="{Binding IsLanguageEn, Mode=OneWay}" localization:LocalizationBinding.Key="Settings.LanguageEn" Content="English"/>
+                            </Grid>
+
+                            <!-- 分组：快捷键 -->
+                            <TextBlock Style="{StaticResource GbSectionTitleTextStyle}" localization:LocalizationBinding.Key="Settings.Hotkeys" Text="快捷键"/>
+                            <Grid Margin="0,0,0,8" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="68"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.ToggleMode" Text="浏览 ⇄ 浮窗"/>
+                                <Button Grid.Column="1" HorizontalContentAlignment="Center" Command="{Binding RecordToggleModeKeyCommand}" Content="{Binding ToggleModeKeyText}" localization:LocalizationBinding.ToolTipKey="Toast.RecordToggleMode"/>
+                                <TextBlock Grid.Column="2" Style="{StaticResource GbLabelTextStyle}" localization:LocalizationBinding.Key="Settings.Playback" Text="播放/暂停"/>
+                                <Button Grid.Column="3" HorizontalContentAlignment="Center" Command="{Binding RecordTogglePlaybackKeyCommand}" Content="{Binding TogglePlaybackKeyText}" localization:LocalizationBinding.ToolTipKey="Toast.RecordPlayback"/>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Row 2: 下载面板 -->
+            <Border
+                Grid.Row="2"
+                Style="{StaticResource GbCardBorderStyle}"
+                Margin="0,0,0,12"
+                Visibility="{Binding IsDownloadsExpanded, Converter={StaticResource BoolToVisibility}}">
+                <Grid RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource GbPanelTitleTextStyle}" localization:LocalizationBinding.Key="Downloads.Title" Text="下载任务" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Style="{StaticResource GbCompactButtonStyle}" Padding="10,3" Height="26" Command="{Binding ClearFinishedDownloadsCommand}" localization:LocalizationBinding.Key="Downloads.ClearFinished" localization:LocalizationBinding.ToolTipKey="Downloads.ClearFinishedTooltip"/>
+                    </Grid>
+                    <Grid Grid.Row="1" MinHeight="72" MaxHeight="168">
+                        <ListView
+                            x:Name="DownloadsListBox"
+                            ItemsSource="{Binding Downloads}"
+                            ItemTemplate="{StaticResource DownloadItemTemplate}"
+                            SelectionMode="None"
+                            Background="Transparent"
+                            BorderThickness="0"/>
+                        <TextBlock
+                            Text="{Binding DownloadsEmptyText}"
+                            FontSize="13"
+                            Foreground="{ThemeResource GbTextTertiaryBrush}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            TextAlignment="Center"
+                            TextWrapping="Wrap"
+                            LineHeight="20"
+                            MaxWidth="280"
+                            IsHitTestVisible="False"
+                            Visibility="{Binding HasNoDownloads, Converter={StaticResource BoolToVisibility}}"/>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Row 3: 地址栏 — 主次动作分层；进度条与地址框对齐 -->
+            <Grid Grid.Row="3" Margin="0,0,0,12" ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Style="{StaticResource GbCompactIconButtonStyle}" Width="34" Height="32" Margin="0,0,6,0" Command="{Binding GoBackCommand}" IsEnabled="{Binding CanGoBack}" localization:LocalizationBinding.Key="Nav.Back" localization:LocalizationBinding.Target="ToolTip">
+                        <SymbolIcon Symbol="Back"/>
+                    </Button>
+                    <Button Style="{StaticResource GbCompactIconButtonStyle}" Width="34" Height="32" Command="{Binding GoForwardCommand}" IsEnabled="{Binding CanGoForward}" localization:LocalizationBinding.Key="Nav.Forward" localization:LocalizationBinding.Target="ToolTip">
+                        <SymbolIcon Symbol="Forward"/>
+                    </Button>
+                </StackPanel>
+
+                <Grid Grid.Column="1" VerticalAlignment="Top">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBox
+                        x:Name="AddressBox"
+                        Grid.Row="0"
+                        Height="32"
+                        PlaceholderText="输入网址或搜索..."
+                        localization:LocalizationBinding.Key="Nav.AddressPlaceholder"
+                        localization:LocalizationBinding.ToolTipKey="Nav.AddressTooltip"
+                        KeyDown="AddressBox_OnKeyDown"
+                        LostFocus="AddressBox_OnLostFocus"/>
+                    <ProgressBar
+                        Grid.Row="1"
+                        Margin="0,4,0,0"
+                        Height="2"
+                        IsIndeterminate="True"
+                        Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
+                </Grid>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Spacing="6">
+                    <Button Style="{StaticResource GbPrimaryButtonStyle}" Height="32" MinWidth="56" Padding="12,5" Click="NavigateButton_Click" localization:LocalizationBinding.Key="Nav.Open" localization:LocalizationBinding.ToolTipKey="Nav.Open"/>
+                    <Button Style="{StaticResource GbCompactIconButtonStyle}" Width="34" Height="32" Command="{Binding ReloadCommand}" localization:LocalizationBinding.Key="Nav.Reload" localization:LocalizationBinding.Target="ToolTip">
+                        <SymbolIcon Symbol="Refresh"/>
+                    </Button>
+                    <Button Style="{StaticResource GbCompactIconButtonStyle}" Width="34" Height="32" Command="{Binding ToggleFavoriteCommand}" ToolTipService.ToolTip="{Binding FavoriteToggleText}" AutomationProperties.Name="{Binding FavoriteToggleText}">
+                        <FontIcon Glyph="{Binding FavoriteToggleIcon}" FontSize="13"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Row 4: 分隔线 + Tab + 搜索 + 列表 -->
+            <Grid Grid.Row="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Height="1" Background="{ThemeResource GbBorderBrush}" Opacity="0.7" Margin="0,0,0,10"/>
+
+                <!-- Tab -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10" Spacing="4">
+                    <RadioButton GroupName="ListTabs" Style="{StaticResource GbTabRadioButtonStyle}" IsChecked="{Binding IsFavoritesTab, Mode=TwoWay}" localization:LocalizationBinding.ToolTipKey="Fav.Tab">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE734;" FontSize="13"/>
+                            <TextBlock localization:LocalizationBinding.Key="Fav.Tab" Text="收藏夹" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton GroupName="ListTabs" Style="{StaticResource GbTabRadioButtonStyle}" IsChecked="{Binding IsHistoryTab, Mode=TwoWay}" localization:LocalizationBinding.ToolTipKey="History.Tab">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE121;" FontSize="13"/>
+                            <TextBlock localization:LocalizationBinding.Key="History.Tab" Text="浏览记录" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <!-- 搜索 -->
+                <Grid Grid.Row="2" Margin="0,0,0,10">
+                    <TextBox
+                        x:Name="SearchBox"
+                        PlaceholderText="搜索..."
+                        Padding="28,8,12,8"
+                        localization:LocalizationBinding.Key="Search.Placeholder"
+                        localization:LocalizationBinding.ToolTipKey="Search.Tooltip"
+                        Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
+                    <FontIcon Glyph="&#xE721;" FontSize="13" Foreground="{ThemeResource GbTextTertiaryBrush}" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False"/>
+                </Grid>
+
+                <!-- 列表 -->
+                <Grid Grid.Row="3">
+                    <ListView
+                        x:Name="FavoritesList"
+                        ItemsSource="{Binding FavoriteItems}"
+                        Visibility="{Binding IsFavoritesTab, Converter={StaticResource BoolToVisibility}}"
+                        DoubleTapped="FavoritesList_OnDoubleTapped"
+                        KeyDown="FavoritesList_OnKeyDown">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:ControlItemViewModel">
+                                <Border Margin="0,1" Padding="8,6">
+                                    <Border.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.Open" Text="打开" Tag="{Binding}" Click="OpenControlItem_Click"/>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.CopyLink" Text="复制链接" Tag="{Binding}" Click="CopyControlItemUrl_Click"/>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.RemoveFavorite" Text="删除" Tag="{Binding}" Click="RemoveFavorite_Click"/>
+                                        </MenuFlyout>
+                                    </Border.ContextFlyout>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource GbTextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{x:Bind Url, Mode=OneWay}" Style="{StaticResource GbSecondaryTextStyle}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{x:Bind TimeDisplay, Mode=OneWay}" Style="{StaticResource GbSecondaryTextStyle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <ListView
+                        x:Name="HistoryList"
+                        ItemsSource="{Binding HistoryItems}"
+                        Visibility="{Binding IsHistoryTab, Converter={StaticResource BoolToVisibility}}"
+                        DoubleTapped="HistoryList_OnDoubleTapped"
+                        KeyDown="HistoryList_OnKeyDown">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="viewModels:ControlItemViewModel">
+                                <Border Margin="0,1" Padding="8,6">
+                                    <Border.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.Open" Text="打开" Tag="{Binding}" Click="OpenControlItem_Click"/>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.CopyLink" Text="复制链接" Tag="{Binding}" Click="CopyControlItemUrl_Click"/>
+                                            <MenuFlyoutItem localization:LocalizationBinding.Key="Context.RemoveHistory" Text="删除" Tag="{Binding}" Click="RemoveHistory_Click"/>
+                                        </MenuFlyout>
+                                    </Border.ContextFlyout>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" FontSize="13" FontWeight="Medium" Foreground="{ThemeResource GbTextPrimaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{x:Bind Url, Mode=OneWay}" Style="{StaticResource GbSecondaryTextStyle}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{x:Bind TimeDisplay, Mode=OneWay}" Style="{StaticResource GbSecondaryTextStyle}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Text="{Binding FavoritesEmptyText}"
+                        FontSize="13"
+                        Foreground="{ThemeResource GbTextTertiaryBrush}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        LineHeight="20"
+                        MaxWidth="280"
+                        IsHitTestVisible="False"
+                        Visibility="{Binding ShowFavoritesEmpty, Converter={StaticResource BoolToVisibility}}"/>
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Text="{Binding HistoryEmptyText}"
+                        FontSize="13"
+                        Foreground="{ThemeResource GbTextTertiaryBrush}"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        LineHeight="20"
+                        MaxWidth="280"
+                        IsHitTestVisible="False"
+                        Visibility="{Binding ShowHistoryEmpty, Converter={StaticResource BoolToVisibility}}"/>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <InfoBar
+            Grid.RowSpan="2"
+            Margin="8"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            MaxWidth="360"
+            IsClosable="False"
+            IsOpen="{Binding IsToastVisible, Mode=OneWay}"
+            Severity="{Binding ToastSeverity, Converter={StaticResource StatusLevelToInfoBarSeverity}}"
+            Message="{Binding ToastMessage}"/>
+    </Grid>
+</Window>

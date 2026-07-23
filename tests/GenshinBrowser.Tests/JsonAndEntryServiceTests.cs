@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Windows.Input;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
@@ -87,10 +86,10 @@ public sealed class JsonAndEntryServiceTests
         // 模式键 = 默认播放键 K，播放键也是 K → 旧逻辑重置播放键后仍冲突
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
-            ToggleModeKey = Key.K,
-            ToggleModeModifiers = ModifierKeys.None,
-            TogglePlaybackKey = Key.K,
-            TogglePlaybackModifiers = ModifierKeys.None,
+            ToggleModeKey = VirtualKeyCodes.K,
+            ToggleModeModifiers = HotkeyModifiers.None,
+            TogglePlaybackKey = VirtualKeyCodes.K,
+            TogglePlaybackModifiers = HotkeyModifiers.None,
         }));
 
         using var settingsService = new SettingsService(settingsPath);
@@ -100,8 +99,8 @@ public sealed class JsonAndEntryServiceTests
             (settings.ToggleModeKey, settings.ToggleModeModifiers),
             (settings.TogglePlaybackKey, settings.TogglePlaybackModifiers));
         // 播放键应回到默认 K，模式键应回到默认 F8
-        Assert.Equal(Key.F8, settings.ToggleModeKey);
-        Assert.Equal(Key.K, settings.TogglePlaybackKey);
+        Assert.Equal(VirtualKeyCodes.F8, settings.ToggleModeKey);
+        Assert.Equal(VirtualKeyCodes.K, settings.TogglePlaybackKey);
     }
 
     [Fact]
@@ -111,17 +110,17 @@ public sealed class JsonAndEntryServiceTests
         var settingsPath = directory.GetPath("settings.json");
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
-            ToggleModeKey = Key.F7,
-            ToggleModeModifiers = ModifierKeys.None,
-            TogglePlaybackKey = Key.F7,
-            TogglePlaybackModifiers = ModifierKeys.None,
+            ToggleModeKey = 0x76,
+            ToggleModeModifiers = HotkeyModifiers.None,
+            TogglePlaybackKey = 0x76,
+            TogglePlaybackModifiers = HotkeyModifiers.None,
         }));
 
         using var settingsService = new SettingsService(settingsPath);
         var settings = settingsService.Load();
 
-        Assert.Equal(Key.F7, settings.ToggleModeKey);
-        Assert.Equal(Key.K, settings.TogglePlaybackKey);
+        Assert.Equal(0x76, settings.ToggleModeKey);
+        Assert.Equal(VirtualKeyCodes.K, settings.TogglePlaybackKey);
         Assert.NotEqual(settings.ToggleModeKey, settings.TogglePlaybackKey);
     }
 }

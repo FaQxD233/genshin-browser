@@ -9,6 +9,7 @@
     <AssemblyName>GenshinBrowser</AssemblyName>
     <RootNamespace>GenshinBrowser</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefaultItemExcludes>$(DefaultItemExcludes);src\**</DefaultItemExcludes>
     <!-- 自包含发布只保留 en / 简中卫星资源，去掉 de/fr/ja 等约 8MB 本地化 DLL。应用 UI 自有 i18n 不受影响。 -->
     <SatelliteResourceLanguages>en;zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
@@ -19,6 +20,19 @@
 
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="src\**\*.cs" />
+    <Page Remove="src\**\*.xaml" />
+    <ApplicationDefinition Remove="src\**\App.xaml" />
+    <Compile Include="src\GenshinBrowser.Core\Services\FavoritesService.cs" Link="Services\FavoritesService.cs" />
+    <Compile Include="src\GenshinBrowser.Core\Services\FileLogger.cs" Link="Services\FileLogger.cs" />
+    <Compile Include="src\GenshinBrowser.Core\Services\HistoryService.cs" Link="Services\HistoryService.cs" />
+    <Compile Include="src\GenshinBrowser.Core\Services\JsonFileWriter.cs" Link="Services\JsonFileWriter.cs" />
+    <Compile Include="src\GenshinBrowser.Core\Services\KeyboardHookService.cs" Link="Services\KeyboardHookService.cs" />
+    <Compile Include="src\GenshinBrowser.Core\Services\WebViewDataSizeCalculator.cs" Link="Services\WebViewDataSizeCalculator.cs" />
+    <Compile Include="src\GenshinBrowser.Core\ViewModels\AsyncRelayCommand.cs" Link="ViewModels\AsyncRelayCommand.cs" />
+    <Compile Include="src\GenshinBrowser.Core\ViewModels\ControlItemViewModel.cs" Link="ViewModels\ControlItemViewModel.cs" />
+    <Compile Include="src\GenshinBrowser.Core\ViewModels\RelayCommand.cs" Link="ViewModels\RelayCommand.cs" />
+    <Compile Include="src\GenshinBrowser.Core\ViewModels\ViewModelBase.cs" Link="ViewModels\ViewModelBase.cs" />
     <InternalsVisibleTo Include="GenshinBrowser.Tests" />
   </ItemGroup>
 

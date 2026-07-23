@@ -7,17 +7,22 @@ internal static class TimeFormatter
     /// </summary>
     public static string FormatRelativeTime(DateTime utcTime)
     {
+        return FormatRelativeTime(utcTime, "今天", "昨天");
+    }
+
+    public static string FormatRelativeTime(DateTime utcTime, string todayText, string yesterdayText)
+    {
         var localTime = utcTime.ToLocalTime();
         var now = DateTime.Now;
 
         if (localTime.Date == now.Date)
         {
-            return $"今天 {localTime:HH:mm}";
+            return $"{todayText} {localTime:HH:mm}";
         }
 
         if (localTime.Date == now.Date.AddDays(-1))
         {
-            return $"昨天 {localTime:HH:mm}";
+            return $"{yesterdayText} {localTime:HH:mm}";
         }
 
         if ((now - localTime).TotalDays < 7)

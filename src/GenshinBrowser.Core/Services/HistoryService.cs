@@ -43,7 +43,7 @@ public sealed class HistoryService : IDisposable
     {
         lock (_entriesLock)
         {
-            return _snapshotCache ??= _entries.AsReadOnly();
+            return _snapshotCache ??= _entries.ToArray();
         }
     }
 
@@ -211,7 +211,7 @@ public sealed class HistoryService : IDisposable
                 version = _version;
                 // 独立拷贝：序列化在锁外进行，期间 UI 仍可能改 _entries
                 snapshot = CreatePersistSnapshot();
-                _snapshotCache = _entries.AsReadOnly();
+                _snapshotCache = _entries.ToArray();
             }
 
             await SaveAsync(snapshot, version, cancellationToken).ConfigureAwait(false);

@@ -32,7 +32,7 @@ public sealed class FavoritesService : IDisposable
     {
         lock (_entriesLock)
         {
-            return _snapshotCache ??= _entries.AsReadOnly();
+            return _snapshotCache ??= _entries.ToArray();
         }
     }
 
@@ -70,7 +70,7 @@ public sealed class FavoritesService : IDisposable
             _version++;
             version = _version;
             snapshot = CreatePersistSnapshot();
-            _snapshotCache = _entries.AsReadOnly();
+            _snapshotCache = _entries.ToArray();
         }
 
         await SaveAsync(snapshot, version).ConfigureAwait(false);
@@ -92,7 +92,7 @@ public sealed class FavoritesService : IDisposable
             _version++;
             version = _version;
             snapshot = CreatePersistSnapshot();
-            _snapshotCache = _entries.AsReadOnly();
+            _snapshotCache = _entries.ToArray();
         }
 
         await SaveAsync(snapshot, version).ConfigureAwait(false);

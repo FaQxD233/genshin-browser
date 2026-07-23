@@ -1,0 +1,431 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="GbPageBackgroundBrush" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="GbWebViewBackgroundBrush" Color="#FFFFFFFF"/>
+            <SolidColorBrush x:Key="GbSurfaceBrush" Color="#FFF6F8FA"/>
+            <SolidColorBrush x:Key="GbSurfaceSecondaryBrush" Color="#FFEAEFF3"/>
+            <SolidColorBrush x:Key="GbHoverBrush" Color="#FFDDF4FF"/>
+            <SolidColorBrush x:Key="GbBorderBrush" Color="#FFD0D7DE"/>
+            <SolidColorBrush x:Key="GbBorderStrongBrush" Color="#FF8B949E"/>
+            <SolidColorBrush x:Key="GbTextPrimaryBrush" Color="#FF1F2328"/>
+            <SolidColorBrush x:Key="GbTextSecondaryBrush" Color="#FF656D76"/>
+            <SolidColorBrush x:Key="GbTextTertiaryBrush" Color="#FF8C959F"/>
+            <SolidColorBrush x:Key="GbAccentBrush" Color="#FF0969DA"/>
+            <SolidColorBrush x:Key="GbAccentSoftBrush" Color="#331F6FEB"/>
+            <SolidColorBrush x:Key="GbDangerBrush" Color="#FFCF222E"/>
+            <SolidColorBrush x:Key="GbFloatingAccentBrush" Color="#FFBF8700"/>
+            <SolidColorBrush x:Key="GbFloatingAccentSoftBrush" Color="#33BF8700"/>
+            <SolidColorBrush x:Key="GbListDividerBrush" Color="#FFD8DEE4"/>
+            <SolidColorBrush x:Key="GbSelectionBrush" Color="#FFDDF4FF"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <!-- Match WPF GitHub-inspired dark palette -->
+            <SolidColorBrush x:Key="GbPageBackgroundBrush" Color="#FF0F1419"/>
+            <SolidColorBrush x:Key="GbWebViewBackgroundBrush" Color="#FF0F1419"/>
+            <SolidColorBrush x:Key="GbSurfaceBrush" Color="#FF1C2128"/>
+            <SolidColorBrush x:Key="GbSurfaceSecondaryBrush" Color="#FF2D333B"/>
+            <SolidColorBrush x:Key="GbHoverBrush" Color="#FF373E47"/>
+            <SolidColorBrush x:Key="GbBorderBrush" Color="#FF444C56"/>
+            <SolidColorBrush x:Key="GbBorderStrongBrush" Color="#FF8B949E"/>
+            <SolidColorBrush x:Key="GbTextPrimaryBrush" Color="#FFE6EDF3"/>
+            <SolidColorBrush x:Key="GbTextSecondaryBrush" Color="#FF8B949E"/>
+            <SolidColorBrush x:Key="GbTextTertiaryBrush" Color="#FF6E7681"/>
+            <SolidColorBrush x:Key="GbAccentBrush" Color="#FF58A6FF"/>
+            <SolidColorBrush x:Key="GbAccentSoftBrush" Color="#3358A6FF"/>
+            <SolidColorBrush x:Key="GbDangerBrush" Color="#FFF85149"/>
+            <SolidColorBrush x:Key="GbFloatingAccentBrush" Color="#FFF0A020"/>
+            <SolidColorBrush x:Key="GbFloatingAccentSoftBrush" Color="#33F0A020"/>
+            <SolidColorBrush x:Key="GbListDividerBrush" Color="#FF21262D"/>
+            <SolidColorBrush x:Key="GbSelectionBrush" Color="#FF264F78"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- 注意：主题色刷子只在上面 ThemeDictionaries 里定义，不要在顶层再用相同 key
+         定义 fallback——WinUI 下顶层资源会与 ThemeDictionaries 同 key 冲突，使
+         {ThemeResource} 退化为静态解析（取顶层值、运行时切 RequestedTheme 不再重算）。
+         参考 Snap.Hutao 的 Color.xaml：ThemeDictionaries 之外零顶层刷子。 -->
+
+    <CornerRadius x:Key="GbControlCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="GbCardCornerRadius">6</CornerRadius>
+    <CornerRadius x:Key="GbPillCornerRadius">14</CornerRadius>
+    <Thickness x:Key="GbCardPadding">10,8</Thickness>
+    <x:Double x:Key="GbCompactControlHeight">26</x:Double>
+    <x:Double x:Key="GbToolbarIconSize">30</x:Double>
+
+    <TransitionCollection x:Key="GbEntranceTransitions">
+        <EntranceThemeTransition IsStaggeringEnabled="False"/>
+    </TransitionCollection>
+
+    <Style x:Key="GbWindowTitleBarStyle" TargetType="Grid">
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    </Style>
+
+    <Style x:Key="GbWindowTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style
+        x:Key="GbCaptionButtonStyle"
+        BasedOn="{StaticResource DefaultButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{ThemeResource GbTextPrimaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="CornerRadius" Value="0"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <Style
+        x:Key="GbCaptionCloseButtonStyle"
+        BasedOn="{StaticResource GbCaptionButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Foreground" Value="{ThemeResource GbDangerBrush}"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactButtonStyle"
+        BasedOn="{StaticResource DefaultButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+        <Setter Property="Foreground" Value="{ThemeResource GbTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="Padding" Value="10,3"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbControlCornerRadius}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactIconButtonStyle"
+        BasedOn="{StaticResource GbCompactButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Width" Value="34"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactToggleButtonStyle"
+        BasedOn="{StaticResource DefaultToggleButtonStyle}"
+        TargetType="ToggleButton">
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+        <Setter Property="Foreground" Value="{ThemeResource GbTextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="Padding" Value="10,3"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbControlCornerRadius}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactIconToggleButtonStyle"
+        BasedOn="{StaticResource GbCompactToggleButtonStyle}"
+        TargetType="ToggleButton">
+        <Setter Property="Width" Value="34"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+    </Style>
+
+    <Style
+        x:Key="GbTinyIconButtonStyle"
+        BasedOn="{StaticResource GbCompactIconButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Width" Value="28"/>
+        <Setter Property="Height" Value="24"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
+    <!-- 主操作按钮：强调色底 + 白字，对应旧 WPF PrimaryButton（地址栏「打开」） -->
+    <Style
+        x:Key="GbPrimaryButtonStyle"
+        BasedOn="{StaticResource GbCompactButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource GbAccentBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbAccentBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <!-- 收藏/历史 标签页：底部 2px 强调线 + 悬停高亮，对应旧 WPF TabRadioButton -->
+    <Style x:Key="GbTabRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextTertiaryBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border
+                        x:Name="TabChrome"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="0,0,0,2"
+                        Padding="{TemplateBinding Padding}">
+                        <ContentPresenter
+                            x:Name="ContentPresenter"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"/>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabChrome.Background" Value="{ThemeResource GbHoverBrush}"/>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabChrome.Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled"/>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabChrome.BorderBrush" Value="{ThemeResource GbAccentBrush}"/>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource GbTextPrimaryBrush}"/>
+                                        <Setter Target="ContentPresenter.FontWeight" Value="SemiBold"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked"/>
+                                <VisualState x:Name="Indeterminate"/>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style
+        x:Key="GbSegmentToggleButtonStyle"
+        BasedOn="{StaticResource GbCompactToggleButtonStyle}"
+        TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="MinWidth" Value="56"/>
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="12"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!-- 分段单选按钮：主题 / 语言 等「多选一」选择器。
+         用 RadioButton 而非 ToggleButton——同组互斥且点已选中的不会熄灭，
+         对应旧 WPF 普通 Button + DataTrigger 的「设置该值」语义。 -->
+    <Style x:Key="GbSegmentRadioButtonStyle" TargetType="RadioButton">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="MinWidth" Value="56"/>
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="12"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border
+                        x:Name="SegmentChrome"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Padding="{TemplateBinding Padding}">
+                        <ContentPresenter
+                            x:Name="ContentPresenter"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{TemplateBinding Foreground}"
+                            FontWeight="{TemplateBinding FontWeight}"/>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="SegmentChrome.Background" Value="{ThemeResource GbHoverBrush}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="SegmentChrome.Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled"/>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="SegmentChrome.Background" Value="{ThemeResource GbAccentSoftBrush}"/>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource GbAccentBrush}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked"/>
+                                <VisualState x:Name="Indeterminate"/>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style
+        x:Key="GbPillSegmentHostStyle"
+        TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbPillCornerRadius}"/>
+        <Setter Property="Padding" Value="3"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style x:Key="GbCardBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbCardCornerRadius}"/>
+        <Setter Property="Padding" Value="{StaticResource GbCardPadding}"/>
+    </Style>
+
+    <Style
+        x:Key="GbModeToastStyle"
+        BasedOn="{StaticResource GbCardBorderStyle}"
+        TargetType="Border">
+        <Setter Property="Margin" Value="16,16,16,18"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Bottom"/>
+    </Style>
+
+    <Style x:Key="GbPanelTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <Style x:Key="GbSectionTitleTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextTertiaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,10,0,8"/>
+    </Style>
+
+    <Style x:Key="GbSecondaryTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
+    <Style x:Key="GbLabelTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource GbTextSecondaryBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactTextBoxStyle"
+        BasedOn="{StaticResource DefaultTextBoxStyle}"
+        TargetType="TextBox">
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="Padding" Value="8,3"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbControlCornerRadius}"/>
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+    </Style>
+
+    <Style
+        x:Key="GbInlineTextBoxStyle"
+        BasedOn="{StaticResource GbCompactTextBoxStyle}"
+        TargetType="TextBox">
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="FontSize" Value="11"/>
+    </Style>
+
+    <!-- ListView has no DefaultListViewStyle key in WinUI 3. -->
+    <Style x:Key="GbBrowserListViewStyle" TargetType="ListView">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="SelectionMode" Value="Single"/>
+        <Setter Property="IsItemClickEnabled" Value="False"/>
+    </Style>
+
+    <Style
+        x:Key="GbBrowserListViewItemStyle"
+        BasedOn="{StaticResource DefaultListViewItemStyle}"
+        TargetType="ListViewItem">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Margin" Value="2,1"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="CornerRadius" Value="{StaticResource GbControlCornerRadius}"/>
+    </Style>
+
+    <Style
+        x:Key="GbCompactProgressBarStyle"
+        BasedOn="{StaticResource DefaultProgressBarStyle}"
+        TargetType="ProgressBar">
+        <Setter Property="Height" Value="5"/>
+        <Setter Property="Foreground" Value="{ThemeResource GbAccentBrush}"/>
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceSecondaryBrush}"/>
+    </Style>
+
+    <Style x:Key="GbStatusBarStyle" TargetType="Border">
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="Background" Value="{ThemeResource GbSurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GbBorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,1,0,0"/>
+    </Style>
+
+    <Style x:Key="GbDownloadsBadgeBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource GbAccentBrush}"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="4,0"/>
+        <Setter Property="MinWidth" Value="16"/>
+        <Setter Property="Height" Value="16"/>
+        <Setter Property="HorizontalAlignment" Value="Right"/>
+        <Setter Property="VerticalAlignment" Value="Top"/>
+        <Setter Property="Margin" Value="0,-5,-7,0"/>
+    </Style>
+</ResourceDictionary>

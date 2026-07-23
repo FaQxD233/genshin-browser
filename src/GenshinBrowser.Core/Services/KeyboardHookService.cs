@@ -1,6 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+#if WINUI_CORE
+using ModifierKeys = GenshinBrowser.Models.HotkeyModifiers;
+#else
 using System.Windows.Input;
+#endif
 
 namespace GenshinBrowser.Services;
 
@@ -376,7 +380,7 @@ public sealed class KeyboardHookService : IDisposable
         }
 
         GetWindowThreadProcessId(foregroundHWnd, out uint pid);
-        var currentPid = (uint)Process.GetCurrentProcess().Id;
+        uint currentPid = (uint)Environment.ProcessId;
 
         // 1. 如果前台窗口是我们自己的进程，允许触发
         if (pid == currentPid)

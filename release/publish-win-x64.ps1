@@ -6,8 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-if ($Runtime -notmatch '^win-(x64|x86|arm64)$') {
-    throw "Unsupported runtime '$Runtime'. Expected win-x64, win-x86, or win-arm64."
+if ($Runtime -ne "win-x64") {
+    throw "Unsupported runtime '$Runtime'. This release pipeline targets win-x64."
 }
 
 $semanticVersion = $Version.Trim().TrimStart('v')
@@ -16,7 +16,7 @@ if ($semanticVersion -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A
 }
 
 $projectRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
-$projectPath = Join-Path $projectRoot "GenshinBrowser.csproj"
+$projectPath = Join-Path $projectRoot "src\GenshinBrowser.App\GenshinBrowser.App.csproj"
 $distRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot "dist"))
 $outputPath = [System.IO.Path]::GetFullPath((Join-Path $distRoot "$Runtime-self-contained"))
 $dotnetCommand = Get-Command "dotnet" -ErrorAction SilentlyContinue
@@ -72,13 +72,32 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join
 
 $expectedExecutables = @("GenshinBrowser.exe", "MicrosoftEdgeWebview2Setup.exe")
 $executables = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File -Filter "*.exe")
-$unexpectedExecutables = @($executables | Where-Object { $_.Name -notin $expectedExecutables })
-if ($executables.Count -ne $expectedExecutables.Count -or $unexpectedExecutables.Count -ne 0) {
+$missingExecutables = @($expectedExecutables | Where-Object { -not (Test-Path -LiteralPath (Join-Path $outputPath $_)) })
+$windowsAppRuntimeExecutables = @($executables | Where-Object { $_.Name.StartsWith("Microsoft.WindowsAppRuntime.", [StringComparison]::OrdinalIgnoreCase) })
+$unexpectedExecutables = @($executables | Where-Object {
+    $_.Name -notin $expectedExecutables -and
+    -not $_.Name.StartsWith("Microsoft.WindowsAppRuntime.", [StringComparison]::OrdinalIgnoreCase)
+})
+if ($missingExecutables.Count -ne 0 -or $unexpectedExecutables.Count -ne 0) {
     throw "Unexpected executables in publish output: $($executables.Name -join ', ')"
 }
 
+foreach ($runtimeExecutable in $windowsAppRuntimeExecutables) {
+    $runtimeSignature = Get-AuthenticodeSignature -LiteralPath $runtimeExecutable.FullName
+    if ($runtimeSignature.Status -ne 'Valid' -or $runtimeSignature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+        throw "Windows App SDK executable signature validation failed: $($runtimeExecutable.Name)"
+    }
+}
+
 $forbiddenFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File | Where-Object {
-    $_.Name -like "*Forms*" -or $_.Name -eq "System.Design.dll" -or $_.Name -eq "createdump.exe"
+    $_.Name -like "*Forms*" -or
+    $_.Name -in @(
+        "System.Design.dll",
+        "createdump.exe",
+        "PresentationFramework.dll",
+        "PresentationCore.dll",
+        "System.Xaml.dll",
+        "Microsoft.Web.WebView2.Wpf.dll")
 })
 if ($forbiddenFiles.Count -ne 0) {
     throw "Unused publish files remain: $($forbiddenFiles.Name -join ', ')"
@@ -91,7 +110,7 @@ if ($depsFiles.Count -ne 1) {
 
 $null = Get-Content -LiteralPath $depsFiles[0].FullName -Raw | ConvertFrom-Json
 $staleReference = Select-String -LiteralPath $depsFiles[0].FullName `
-    -Pattern 'Forms|System\.Design\.dll|createdump\.exe' `
+    -Pattern 'Forms|System\.Design\.dll|createdump\.exe|PresentationFramework|PresentationCore|System\.Xaml|Microsoft\.Web\.WebView2\.Wpf' `
     -Quiet
 if ($staleReference) {
     throw "Removed publish assets are still referenced by $($depsFiles[0].Name)."
