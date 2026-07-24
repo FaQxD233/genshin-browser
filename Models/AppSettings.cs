@@ -4,6 +4,12 @@ namespace GenshinBrowser.Models;
 
 public sealed class AppSettings
 {
+    /// <summary>
+    /// 1 = WPF <see cref="Key"/> 枚举整型；2 = Win32 虚拟键码（WinUI 侧）。
+    /// 与 WinUI 共用 %LocalAppData%\GenshinBrowser\settings.json，读写必须按版本解释热键字段。
+    /// </summary>
+    public int SchemaVersion { get; set; } = 1;
+
     public string LastUrl { get; set; } = string.Empty;
 
     public WindowMode WindowMode { get; set; } = WindowMode.Free;

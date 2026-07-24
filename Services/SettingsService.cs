@@ -31,7 +31,7 @@ public sealed class SettingsService : IDisposable
         try
         {
             var json = JsonFileWriter.ReadAllTextBounded(_settingsPath, AppConfig.Data.MaxSettingsFileSizeBytes);
-            return Sanitize(JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions));
+            return DeserializeAndSanitize(json);
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -52,8 +52,7 @@ public sealed class SettingsService : IDisposable
             var json = await JsonFileWriter.ReadAllTextBoundedAsync(
                 _settingsPath,
                 AppConfig.Data.MaxSettingsFileSizeBytes).ConfigureAwait(false);
-            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions);
-            return Sanitize(settings);
+            return DeserializeAndSanitize(json);
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -67,6 +66,8 @@ public sealed class SettingsService : IDisposable
     {
         var snapshot = new AppSettings
         {
+            // WPF 始终以 Key 枚举落盘（schema 1），避免 WinUI 写入的 VK（schema 2）被二次误迁移。
+            SchemaVersion = 1,
             LastUrl = settings.LastUrl,
             WindowMode = settings.WindowMode,
             WindowLeft = settings.WindowLeft,
@@ -119,10 +120,49 @@ public sealed class SettingsService : IDisposable
         _saveGate.Dispose();
     }
 
+    private static AppSettings DeserializeAndSanitize(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions);
+        if (settings is not null && UsesWinUiVirtualKeySchema(document.RootElement))
+        {
+            // WinUI schema 2 存的是 VK；System.Text.Json 会把 119/75 填进 Key 枚举槽位，
+            // 显示成 RightCtrl / NumPad1。这里按 VK→Key 纠正后再 Sanitize。
+            settings.ToggleModeKey = KeyFromVirtualKey((int)settings.ToggleModeKey);
+            settings.TogglePlaybackKey = KeyFromVirtualKey((int)settings.TogglePlaybackKey);
+        }
+
+        return Sanitize(settings);
+    }
+
+    private static bool UsesWinUiVirtualKeySchema(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty(nameof(AppSettings.SchemaVersion), out var schemaElement) ||
+            !schemaElement.TryGetInt32(out var schemaVersion))
+        {
+            return false;
+        }
+
+        return schemaVersion >= 2;
+    }
+
+    private static System.Windows.Input.Key KeyFromVirtualKey(int virtualKey)
+    {
+        if (virtualKey is <= 0 or > 0xFE)
+        {
+            return System.Windows.Input.Key.None;
+        }
+
+        var key = System.Windows.Input.KeyInterop.KeyFromVirtualKey(virtualKey);
+        return key == System.Windows.Input.Key.None ? System.Windows.Input.Key.None : key;
+    }
+
     private static AppSettings Sanitize(AppSettings? settings)
     {
         var defaults = new AppSettings();
         settings ??= defaults;
+        settings.SchemaVersion = 1;
 
         settings.LastUrl = EntryText.TryNormalizeHttpUrl(settings.LastUrl, out var lastUrl)
             ? lastUrl
@@ -155,6 +195,8 @@ public sealed class SettingsService : IDisposable
         settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
         settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);
         settings.TogglePlaybackModifiers = NormalizeModifiers(settings.TogglePlaybackModifiers);
+        // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
+        RepairKnownHotkeyCorruption(settings, defaults);
         ResolveHotkeyConflict(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
@@ -183,6 +225,23 @@ public sealed class SettingsService : IDisposable
             System.Windows.Input.ModifierKeys.Shift |
             System.Windows.Input.ModifierKeys.Windows;
         return modifiers & valid;
+    }
+
+    /// <summary>
+    /// 检测「VK 被当成 WPF Key 枚举再 round-trip」的典型损坏：模式=RightCtrl、播放=NumPad1。
+    /// </summary>
+    private static void RepairKnownHotkeyCorruption(AppSettings settings, AppSettings defaults)
+    {
+        if (settings.ToggleModeKey == System.Windows.Input.Key.RightCtrl &&
+            settings.ToggleModeModifiers == System.Windows.Input.ModifierKeys.None &&
+            settings.TogglePlaybackKey == System.Windows.Input.Key.NumPad1 &&
+            settings.TogglePlaybackModifiers == System.Windows.Input.ModifierKeys.None)
+        {
+            settings.ToggleModeKey = defaults.ToggleModeKey;
+            settings.ToggleModeModifiers = defaults.ToggleModeModifiers;
+            settings.TogglePlaybackKey = defaults.TogglePlaybackKey;
+            settings.TogglePlaybackModifiers = defaults.TogglePlaybackModifiers;
+        }
     }
 
     /// <summary>

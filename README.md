@@ -58,6 +58,11 @@ dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj
 - `K`：播放/暂停视频（全局）
 - `F8`：切换 浏览 / 浮窗（全局）
 
+## 🔀 分支说明
+
+- **`main`**：WPF + WebView2 主线版本（本分支）
+- **`WinUI3-Experimental`**：WinUI 3 重构实验版，与主线共用 `%LocalAppData%\GenshinBrowser\settings.json`，热键通过 `SchemaVersion`（1=WPF Key 枚举 / 2=Win32 虚拟键码）双向兼容，两版切换不会丢失自定义按键
+
 ## 📄 开源协议
 
 MIT License
