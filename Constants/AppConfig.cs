@@ -70,6 +70,11 @@ public static class AppConfig
         /// </summary>
         public const int HistorySaveDebounceMs = 500;
 
+        /// <summary>
+        /// 收藏落盘防抖（毫秒）。连续收藏/取消收藏时合并写盘，避免每次全量重写 JSON。
+        /// </summary>
+        public const int FavoritesSaveDebounceMs = 500;
+
         public const int DownloadSaveDebounceMs = 300;
     }
 
@@ -107,6 +112,11 @@ public static class AppConfig
         /// 主窗移动/缩放后，控制窗尺寸显示与跟随位置的 UI 防抖（毫秒）
         /// </summary>
         public const int WindowBoundsUiDebounceMs = 120;
+
+        /// <summary>
+        /// 搜索框过滤防抖（毫秒）。输入停止该时长后才执行列表过滤，避免每敲一键做 O(n) 全量 diff。
+        /// </summary>
+        public const int SearchDebounceMs = 150;
 
         /// <summary>
         /// 搜索框占位符文本

@@ -16,6 +16,9 @@ public sealed class FavoritesService : IDisposable
     private int _savedVersion;
     private bool _disposed;
 
+    private CancellationTokenSource? _saveDebounceCts;
+    private readonly object _debounceLock = new();
+
     /// <summary>
     /// 缓存的只读快照。仅在 _entries 变更时重建，避免每次 GetEntries() 都 ToList() 分配新副本。
     /// UI 读取用；落盘必须用 <see cref="CreatePersistSnapshot"/> 的独立拷贝。
@@ -36,11 +39,14 @@ public sealed class FavoritesService : IDisposable
         }
     }
 
-    public async Task AddOrUpdateAsync(string url, string title)
+    /// <summary>
+    /// 添加/更新收藏。内存立即生效；磁盘写入按 <see cref="AppConfig.Data.FavoritesSaveDebounceMs"/> 防抖合并。
+    /// </summary>
+    public Task AddOrUpdateAsync(string url, string title)
     {
         if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         var safeTitle = EntryText.TruncateTitle(title);
@@ -49,8 +55,6 @@ public sealed class FavoritesService : IDisposable
             safeTitle = normalizedUrl;
         }
 
-        IReadOnlyList<FavoriteEntry> snapshot;
-        int version;
         lock (_entriesLock)
         {
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
@@ -68,34 +72,30 @@ public sealed class FavoritesService : IDisposable
 
             _snapshotCache = null;
             _version++;
-            version = _version;
-            snapshot = CreatePersistSnapshot();
             _snapshotCache = _entries.AsReadOnly();
         }
 
-        await SaveAsync(snapshot, version).ConfigureAwait(false);
+        QueueDebouncedSave();
+        return Task.CompletedTask;
     }
 
-    public async Task RemoveAsync(string url)
+    public Task RemoveAsync(string url)
     {
         if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        IReadOnlyList<FavoriteEntry> snapshot;
-        int version;
         lock (_entriesLock)
         {
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
             _snapshotCache = null;
             _version++;
-            version = _version;
-            snapshot = CreatePersistSnapshot();
             _snapshotCache = _entries.AsReadOnly();
         }
 
-        await SaveAsync(snapshot, version).ConfigureAwait(false);
+        QueueDebouncedSave();
+        return Task.CompletedTask;
     }
 
     public bool Contains(string url)
@@ -119,11 +119,15 @@ public sealed class FavoritesService : IDisposable
         }
 
         _disposed = true;
+        CancelDebouncedSave();
+        // 关闭路径应先 await FlushAsync()；此处不再同步写盘，避免 UI 关闭时卡死。
         _saveGate.Dispose();
     }
 
     public async Task FlushAsync()
     {
+        CancelDebouncedSave();
+
         while (true)
         {
             IReadOnlyList<FavoriteEntry> snapshot;
@@ -140,6 +144,68 @@ public sealed class FavoritesService : IDisposable
             }
 
             await SaveAsync(snapshot, version).ConfigureAwait(false);
+        }
+    }
+
+    private void QueueDebouncedSave()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        CancellationToken token;
+        lock (_debounceLock)
+        {
+            _saveDebounceCts?.Cancel();
+            _saveDebounceCts?.Dispose();
+            _saveDebounceCts = new CancellationTokenSource();
+            token = _saveDebounceCts.Token;
+        }
+
+        _ = DebouncedSaveAsync(token);
+    }
+
+    private void CancelDebouncedSave()
+    {
+        lock (_debounceLock)
+        {
+            _saveDebounceCts?.Cancel();
+            _saveDebounceCts?.Dispose();
+            _saveDebounceCts = null;
+        }
+    }
+
+    private async Task DebouncedSaveAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AppConfig.Data.FavoritesSaveDebounceMs, cancellationToken).ConfigureAwait(false);
+
+            IReadOnlyList<FavoriteEntry>? snapshot = null;
+            var version = 0;
+            lock (_entriesLock)
+            {
+                if (_version == _savedVersion)
+                {
+                    return;
+                }
+
+                version = _version;
+                // 独立拷贝：序列化在锁外进行，期间 UI 仍可能改 _entries
+                snapshot = CreatePersistSnapshot();
+                _snapshotCache = _entries.AsReadOnly();
+            }
+
+            await SaveAsync(snapshot, version, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // 被更新的写入请求取消，预期行为
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // SaveAsync 已记录具体异常；后台防抖任务不能留下未观察异常。
         }
     }
 
@@ -187,11 +253,15 @@ public sealed class FavoritesService : IDisposable
         }
     }
 
-    private async Task SaveAsync(IReadOnlyList<FavoriteEntry> snapshot, int version)
+    private async Task SaveAsync(
+        IReadOnlyList<FavoriteEntry> snapshot,
+        int version,
+        CancellationToken cancellationToken = default)
     {
-        await _saveGate.WaitAsync().ConfigureAwait(false);
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             lock (_entriesLock)
             {
                 if (version != _version)
@@ -203,6 +273,7 @@ public sealed class FavoritesService : IDisposable
             await JsonFileWriter.WriteAtomicAsync(_favoritesPath, snapshot, JsonFileWriter.CompactOptions).ConfigureAwait(false);
             lock (_entriesLock)
             {
+                // 仅当没有更新的内存版本时标记已保存，避免覆盖更新的 dirty 状态
                 if (version == _version)
                 {
                     _savedVersion = version;

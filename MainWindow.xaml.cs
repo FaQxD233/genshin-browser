@@ -2645,6 +2645,9 @@ public partial class MainWindow : Window, IControlBrowser
 
         try { _downloadsService.Dispose(); }
         catch (Exception ex) { FileLogger.LogException(ex, "Dispose downloads service"); }
+
+        // 最后等待后台日志队列排空，避免进程退出丢日志。
+        await FileLogger.FlushAsync();
     }
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)

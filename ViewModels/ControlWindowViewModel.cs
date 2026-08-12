@@ -31,6 +31,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private string _favoriteToggleIcon = "\uE735";
     private bool _isCurrentFavorite;
     private string _searchText = string.Empty;
+    private DispatcherTimer? _searchDebounceTimer;
     private bool _isFavoritesTab = true;
     private string _toastMessage = string.Empty;
     private StatusLevel _toastSeverity = StatusLevel.Info;
@@ -270,12 +271,33 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             if (SetProperty(ref _searchText, NormalizeSearch(value)))
             {
-                // 只过滤当前可见 Tab，另一 Tab 切换时再过滤
-                FilterCurrentTab();
+                // 空状态提示随文本即时更新；列表过滤防抖，避免每敲一键做 O(n) 全量 diff
                 OnPropertyChanged(nameof(FavoritesEmptyText));
                 OnPropertyChanged(nameof(HistoryEmptyText));
+                ScheduleSearchFilter();
             }
         }
+    }
+
+    private void ScheduleSearchFilter()
+    {
+        if (_searchDebounceTimer is null)
+        {
+            _searchDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(AppConfig.Ui.SearchDebounceMs),
+            };
+            _searchDebounceTimer.Tick += SearchDebounceTimer_OnTick;
+        }
+
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
+    }
+
+    private void SearchDebounceTimer_OnTick(object? sender, EventArgs e)
+    {
+        _searchDebounceTimer?.Stop();
+        FilterCurrentTab();
     }
 
     private void FilterCurrentTab()
@@ -557,6 +579,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
         LocalizationService.LanguageChanged -= Localization_OnLanguageChanged;
         _toastTimer.Stop();
         _toastTimer.Tick -= ToastTimer_OnTick;
+
+        if (_searchDebounceTimer is not null)
+        {
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Tick -= SearchDebounceTimer_OnTick;
+            _searchDebounceTimer = null;
+        }
     }
 
     private async Task ToggleFavoriteAsync()
