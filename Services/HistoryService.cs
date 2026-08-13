@@ -86,43 +86,41 @@ public sealed class HistoryService : IDisposable
         return Task.CompletedTask;
     }
 
-    public async Task RemoveAsync(string url)
+    /// <summary>
+    /// 删除指定历史。内存立即生效；磁盘写入按 <see cref="AppConfig.Data.HistorySaveDebounceMs"/> 防抖合并。
+    /// </summary>
+    public Task RemoveAsync(string url)
     {
         if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        IReadOnlyList<HistoryEntry> snapshot;
-        int version;
         lock (_entriesLock)
         {
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
             _snapshotCache = null;
             _version++;
-            version = _version;
-            snapshot = CreatePersistSnapshot();
         }
 
-        CancelDebouncedSave();
-        await SaveAsync(snapshot, version).ConfigureAwait(false);
+        QueueDebouncedSave();
+        return Task.CompletedTask;
     }
 
-    public async Task ClearAllAsync()
+    /// <summary>
+    /// 清空所有历史。内存立即生效；磁盘写入按 <see cref="AppConfig.Data.HistorySaveDebounceMs"/> 防抖合并。
+    /// </summary>
+    public Task ClearAllAsync()
     {
-        IReadOnlyList<HistoryEntry> snapshot;
-        int version;
         lock (_entriesLock)
         {
             _entries.Clear();
             _snapshotCache = null;
             _version++;
-            version = _version;
-            snapshot = CreatePersistSnapshot();
         }
 
-        CancelDebouncedSave();
-        await SaveAsync(snapshot, version).ConfigureAwait(false);
+        QueueDebouncedSave();
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -166,14 +164,16 @@ public sealed class HistoryService : IDisposable
 
     private void QueueDebouncedSave()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
         CancellationToken token;
         lock (_debounceLock)
         {
+            // _disposed 检查必须在锁内：否则 Dispose 可能在检查通过后、新 CTS 创建前清空 _saveDebounceCts，
+            // 导致此处 new 出一个永远不被取消的 CTS，DebouncedSaveAsync 在 500ms 后向已关闭的服务写盘。
+            if (_disposed)
+            {
+                return;
+            }
+
             _saveDebounceCts?.Cancel();
             _saveDebounceCts?.Dispose();
             _saveDebounceCts = new CancellationTokenSource();

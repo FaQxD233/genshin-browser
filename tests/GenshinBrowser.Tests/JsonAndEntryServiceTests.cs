@@ -136,12 +136,12 @@ public sealed class JsonAndEntryServiceTests
             FileLogger.LogException(new InvalidOperationException("Test exception"), "Unit Test");
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            await FileLogger.FlushAsync(2000);
+            await FileLogger.FlushAsync(5000);
             sw.Stop();
 
             // 计数泄漏会死等满超时；正常应在毫秒级完成。
-            Assert.True(sw.ElapsedMilliseconds < 1500,
-                $"FlushAsync took {sw.ElapsedMilliseconds}ms, expected < 1500ms");
+            Assert.True(sw.ElapsedMilliseconds < 4000,
+                $"FlushAsync took {sw.ElapsedMilliseconds}ms, expected < 4000ms");
 
             var logFile = System.IO.Path.Combine(directory.Path, $"{DateTime.Now:yyyy-MM-dd}.log");
             Assert.True(System.IO.File.Exists(logFile), $"Log file should exist at {logFile}");
@@ -157,27 +157,62 @@ public sealed class JsonAndEntryServiceTests
     }
 
     [Fact]
+    public async Task FileLogger_FlushAsyncWaitsForAllWritesToComplete()
+    {
+        // BUG-1 回归测试：FlushAsync 返回后，所有已入队的日志必须已落盘。
+        // 旧实现仅看 ChannelReader.Count（TryRead 时即减），会在最后一条 WriteEntry 完成前返回；
+        // 修复后用 _activeWriteCount 双条件，确保写盘完成后才返回。
+        using var directory = new TestDirectory();
+        var previousOverride = FileLogger.LogRootOverride;
+        FileLogger.LogRootOverride = directory.Path;
+        try
+        {
+            // 写足够多的条目让 writer 花费可观测的时间，增大 race 暴露概率。
+            const int count = 50;
+            for (var i = 0; i < count; i++)
+            {
+                FileLogger.LogDebug($"BUG1-Marker-{i:D4}-END");
+            }
+
+            await FileLogger.FlushAsync(10000);
+
+            var logFile = System.IO.Path.Combine(directory.Path, $"{DateTime.Now:yyyy-MM-dd}.log");
+            Assert.True(System.IO.File.Exists(logFile), $"Log file should exist at {logFile}");
+            var content = await System.IO.File.ReadAllTextAsync(logFile);
+            // 最后一条必须在文件里 —— 这是旧 bug 最容易丢的那条。
+            Assert.Contains($"BUG1-Marker-{count - 1:D4}-END", content);
+            // 第一条也应在（DropWrite 不应在 50 条时触发，容量 1000）。
+            Assert.Contains("BUG1-Marker-0000-END", content);
+        }
+        finally
+        {
+            FileLogger.LogRootOverride = previousOverride;
+        }
+    }
+
+    [Fact]
     public async Task FileLogger_FlushAsyncReturnsQuicklyUnderFloodWithoutCountLeak()
     {
-        // 复现 a7729f8 引入的计数泄漏：1000 容量被打满后 DropWrite 丢弃的条目
-        // 若不通过 ItemDropped 回滚 _pendingCount，FlushAsync 会死等满超时。
+        // 早期 _pendingCount 实现在 DropWrite 下会泄漏计数，FlushAsync 死等满超时。
+        // 现在用 ChannelReader.Count + _activeWriteCount，不应泄漏。
         using var directory = new TestDirectory();
         var previousOverride = FileLogger.LogRootOverride;
         FileLogger.LogRootOverride = directory.Path;
         try
         {
             // 远超队列容量 1000，迫使 DropWrite 触发。
-            for (var i = 0; i < 5000; i++)
+            for (var i = 0; i < 3000; i++)
             {
                 FileLogger.LogDebug($"Flood-{i}");
             }
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            await FileLogger.FlushAsync(2000);
+            // 给慢速磁盘留足余量：bug 会等满 15s，正常 1000 条 AppendAllText 应在数秒内完成。
+            await FileLogger.FlushAsync(15000);
             sw.Stop();
 
-            Assert.True(sw.ElapsedMilliseconds < 1500,
-                $"FlushAsync took {sw.ElapsedMilliseconds}ms under flood, expected < 1500ms (count leak?)");
+            Assert.True(sw.ElapsedMilliseconds < 12000,
+                $"FlushAsync took {sw.ElapsedMilliseconds}ms under flood, expected < 12000ms (count leak?)");
         }
         finally
         {

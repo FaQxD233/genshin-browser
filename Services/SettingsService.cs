@@ -90,6 +90,7 @@ public sealed class SettingsService : IDisposable
             Language = settings.Language,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
+            HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
         };
 
         snapshot = Sanitize(snapshot);
@@ -196,7 +197,12 @@ public sealed class SettingsService : IDisposable
         settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);
         settings.TogglePlaybackModifiers = NormalizeModifiers(settings.TogglePlaybackModifiers);
         // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
-        RepairKnownHotkeyCorruption(settings, defaults);
+        // 仅在一次性迁移标志未置位时尝试，避免覆盖用户后来合法设置的相同组合。
+        if (!settings.HotkeyCorruptionRepairAttempted)
+        {
+            RepairKnownHotkeyCorruption(settings, defaults);
+            settings.HotkeyCorruptionRepairAttempted = true;
+        }
         ResolveHotkeyConflict(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);

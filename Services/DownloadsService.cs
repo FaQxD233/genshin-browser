@@ -275,23 +275,26 @@ public sealed class DownloadsService : IDisposable
 
     private void QueuePersist()
     {
-        if (_downloadsPath is null || _disposed)
+        if (_downloadsPath is null)
         {
             return;
         }
 
         List<PersistedDownloadEntry> snapshot;
         int version;
+        CancellationToken token;
+        // 合并两段锁为一段，_disposed 检查必须在锁内（见 FavoritesService.QueueDebouncedSave 同类修复）。
         lock (_persistLock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             _version++;
             version = _version;
             snapshot = CreatePersistSnapshot();
-        }
 
-        CancellationToken token;
-        lock (_persistLock)
-        {
             _saveDebounceCts?.Cancel();
             _saveDebounceCts?.Dispose();
             _saveDebounceCts = new CancellationTokenSource();

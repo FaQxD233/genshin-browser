@@ -37,6 +37,7 @@ public sealed class HotkeySchemaCompatTests
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
         // VK 被旧 WPF 当 Key 枚举 round-trip 后的典型损坏：模式=RightCtrl、播放=NumPad1、均无修饰键。
+        // HotkeyCorruptionRepairAttempted 未置位（旧配置首次加载）。
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
             SchemaVersion = 1,
@@ -51,5 +52,31 @@ public sealed class HotkeySchemaCompatTests
 
         Assert.Equal(Key.F8, settings.ToggleModeKey);
         Assert.Equal(Key.K, settings.TogglePlaybackKey);
+        // 修复后置位标志，后续加载不再尝试。
+        Assert.True(settings.HotkeyCorruptionRepairAttempted);
+    }
+
+    [Fact]
+    public void Load_DoesNotResetLegitimateHotkeyAfterRepairAttempted()
+    {
+        // BUG-2 回归：用户合法设置 RightCtrl + NumPad1 时，若 RepairAttempted 已为 true，
+        // 不应被 RepairKnownHotkeyCorruption 重置为默认。
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            SchemaVersion = 1,
+            ToggleModeKey = Key.RightCtrl,
+            ToggleModeModifiers = ModifierKeys.None,
+            TogglePlaybackKey = Key.NumPad1,
+            TogglePlaybackModifiers = ModifierKeys.None,
+            HotkeyCorruptionRepairAttempted = true,
+        }));
+
+        using var settingsService = new SettingsService(settingsPath);
+        var settings = settingsService.Load();
+
+        Assert.Equal(Key.RightCtrl, settings.ToggleModeKey);
+        Assert.Equal(Key.NumPad1, settings.TogglePlaybackKey);
     }
 }

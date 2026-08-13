@@ -68,4 +68,11 @@ public sealed class AppSettings
     /// 默认 DateTime.MinValue 表示从未检查过，下次启动会执行。
     /// </summary>
     public DateTime LastWebView2CacheCheckUtc { get; set; } = DateTime.MinValue;
+
+    /// <summary>
+    /// 是否已尝试过「VK 被当成 Key 枚举 round-trip」的损坏修复（一次性迁移标志）。
+    /// 默认 false：旧配置首次加载时尝试一次 RepairKnownHotkeyCorruption 并置 true；
+    /// 之后即使用户把热键改成与损坏特征相同的组合（RightCtrl + NumPad1）也不会再被重置。
+    /// </summary>
+    public bool HotkeyCorruptionRepairAttempted { get; set; }
 }

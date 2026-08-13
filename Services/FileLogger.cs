@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text;
 using System.Threading.Channels;
 using GenshinBrowser.Constants;
 
@@ -19,8 +20,6 @@ public static class FileLogger
     /// <summary>
     /// 有界写盘队列（容量 1000）。SingleReader=true：所有磁盘 IO（含目录创建与日志滚动）只在单个后台线程
     /// 串行执行；队列满时 DropWrite 静默丢弃新日志，绝不阻塞 UI 线程或造成 OOM。
-    /// 注意：DropWrite 模式下 TryWrite 在队列满时仍返回 true，无法靠返回值判断是否丢弃；
-    /// 因此 FlushAsync 用 ChannelReader.Count 而非手工计数器来判断排空，避免计数泄漏。
     /// </summary>
     private static readonly Channel<(string LogPath, string Entry)> Queue =
         Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(1000)
@@ -29,6 +28,13 @@ public static class FileLogger
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropWrite,
         });
+
+    /// <summary>
+    /// 当前正在写盘的条目数（0 或 1）。在 TryRead 之前递增、WriteEntry 完成后递减。
+    /// FlushAsync 必须同时等待 Queue.Reader.Count == 0 与 _activeWriteCount == 0，
+    /// 否则会在最后一条日志写完前返回（Count 在 TryRead 时即减，早于写盘完成）。
+    /// </summary>
+    private static int _activeWriteCount;
 
     /// <summary>后台写盘线程是否已异常终止。</summary>
     private static volatile bool _writerFaulted;
@@ -63,13 +69,15 @@ public static class FileLogger
     }
 
     /// <summary>
-    /// 等待队列中所有日志写完。关闭流程应在退出前调用，避免进程结束丢日志。
+    /// 等待队列中所有日志写完（包括正在写盘的最后一条）。关闭流程应在退出前调用，避免进程结束丢日志。
     /// 带超时保护：后台写盘线程意外退出时不会无限等待。
     /// </summary>
     public static async Task FlushAsync(int timeoutMs = 3000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
-        while (Queue.Reader.Count > 0)
+        // 双条件：队列空 AND 当前没有正在写盘的条目。
+        // 仅看 Count 不够：TryRead 时 Count 即减，但 WriteEntry 可能尚未完成。
+        while (Queue.Reader.Count > 0 || Volatile.Read(ref _activeWriteCount) > 0)
         {
             if (_writerFaulted || Environment.TickCount64 >= deadline)
             {
@@ -120,7 +128,7 @@ public static class FileLogger
     private static void Enqueue(string logPath, string entry)
     {
         // DropWrite 模式下 TryWrite 永远不阻塞：队列满时返回 true 但条目被静默丢弃。
-        // 不再维护手工计数器，FlushAsync 直接读 ChannelReader.Count。
+        // 不维护"已入队"计数器（DropWrite 无法可靠回滚），FlushAsync 改用 Count + _activeWriteCount 双条件。
         Queue.Writer.TryWrite((logPath, entry));
     }
 
@@ -130,8 +138,17 @@ public static class FileLogger
         {
             while (await Queue.Reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                while (Queue.Reader.TryRead(out var item))
+                while (true)
                 {
+                    // 先标记"正在写"，再 TryRead。若 TryRead 失败则回滚标记并退出内层循环。
+                    // 这样 FlushAsync 的 `_activeWriteCount > 0` 检查不会漏掉"刚 TryRead 成功、WriteEntry 尚未开始"的窗口。
+                    Interlocked.Increment(ref _activeWriteCount);
+                    if (!Queue.Reader.TryRead(out var item))
+                    {
+                        Interlocked.Decrement(ref _activeWriteCount);
+                        break;
+                    }
+
                     try
                     {
                         WriteEntry(item.LogPath, item.Entry);
@@ -139,6 +156,10 @@ public static class FileLogger
                     catch
                     {
                         // 单条日志写盘失败不影响后续日志。
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref _activeWriteCount);
                     }
                 }
             }
@@ -190,12 +211,15 @@ public static class FileLogger
     /// </summary>
     private static void AppendWithRolling(string logPath, string entry)
     {
+        // entry.Length 是 UTF-16 字符数，而文件以 UTF-8 写入；中文字符 UTF-8 占 3 字节。
+        // 用 UTF-8 字节数比较，避免阈值被低估。
+        var entryByteCount = Encoding.UTF8.GetByteCount(entry);
         try
         {
             if (File.Exists(logPath))
             {
                 var info = new FileInfo(logPath);
-                if (info.Length + entry.Length > MaxLogFileSizeBytes)
+                if (info.Length + entryByteCount > MaxLogFileSizeBytes)
                 {
                     RollLogs(logPath);
                 }

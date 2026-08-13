@@ -149,14 +149,16 @@ public sealed class FavoritesService : IDisposable
 
     private void QueueDebouncedSave()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
         CancellationToken token;
         lock (_debounceLock)
         {
+            // _disposed 检查必须在锁内：否则 Dispose 可能在检查通过后、新 CTS 创建前清空 _saveDebounceCts，
+            // 导致此处 new 出一个永远不被取消的 CTS，DebouncedSaveAsync 在 500ms 后向已关闭的服务写盘。
+            if (_disposed)
+            {
+                return;
+            }
+
             _saveDebounceCts?.Cancel();
             _saveDebounceCts?.Dispose();
             _saveDebounceCts = new CancellationTokenSource();
