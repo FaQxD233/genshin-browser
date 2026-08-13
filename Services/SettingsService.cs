@@ -122,9 +122,8 @@ public sealed class SettingsService : IDisposable
 
     private static AppSettings DeserializeAndSanitize(string json)
     {
-        using var document = JsonDocument.Parse(json);
         var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions);
-        if (settings is not null && UsesWinUiVirtualKeySchema(document.RootElement))
+        if (settings is not null && settings.SchemaVersion >= 2)
         {
             // WinUI schema 2 存的是 VK；System.Text.Json 会把 119/75 填进 Key 枚举槽位，
             // 显示成 RightCtrl / NumPad1。这里按 VK→Key 纠正后再 Sanitize。
@@ -133,18 +132,6 @@ public sealed class SettingsService : IDisposable
         }
 
         return Sanitize(settings);
-    }
-
-    private static bool UsesWinUiVirtualKeySchema(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty(nameof(AppSettings.SchemaVersion), out var schemaElement) ||
-            !schemaElement.TryGetInt32(out var schemaVersion))
-        {
-            return false;
-        }
-
-        return schemaVersion >= 2;
     }
 
     private static System.Windows.Input.Key KeyFromVirtualKey(int virtualKey)

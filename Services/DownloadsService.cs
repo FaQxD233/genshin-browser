@@ -242,7 +242,7 @@ public sealed class DownloadsService : IDisposable
             return;
         }
 
-        while (true)
+        while (!_disposed)
         {
             List<PersistedDownloadEntry> snapshot;
             int version;

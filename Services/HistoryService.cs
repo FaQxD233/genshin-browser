@@ -132,7 +132,7 @@ public sealed class HistoryService : IDisposable
     {
         CancelDebouncedSave();
 
-        while (true)
+        while (!_disposed)
         {
             IReadOnlyList<HistoryEntry> snapshot;
             int version;

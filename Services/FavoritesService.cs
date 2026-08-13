@@ -128,7 +128,7 @@ public sealed class FavoritesService : IDisposable
     {
         CancelDebouncedSave();
 
-        while (true)
+        while (!_disposed)
         {
             IReadOnlyList<FavoriteEntry> snapshot;
             int version;

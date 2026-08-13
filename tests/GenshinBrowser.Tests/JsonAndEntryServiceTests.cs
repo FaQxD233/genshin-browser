@@ -122,6 +122,13 @@ public sealed class JsonAndEntryServiceTests
 
         Assert.Equal(Key.F7, settings.ToggleModeKey);
         Assert.Equal(Key.K, settings.TogglePlaybackKey);
-        Assert.NotEqual(settings.ToggleModeKey, settings.TogglePlaybackKey);
+    }
+
+    [Fact]
+    public async Task FileLogger_FlushAsyncReturnsQuicklyAndHandlesLogEntries()
+    {
+        FileLogger.LogDebug("Test message 1");
+        FileLogger.LogException(new InvalidOperationException("Test exception"), "Unit Test");
+        await FileLogger.FlushAsync(2000);
     }
 }

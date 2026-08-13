@@ -17,18 +17,22 @@ public static class FileLogger
     private const int MaxRolledFiles = 3;
 
     /// <summary>
-    /// 无界写盘队列。SingleReader=true：所有磁盘 IO（含目录创建与日志滚动）只在单个后台线程
-    /// 串行执行；调用线程（含 UI 线程）仅做字符串格式化与入队，不再同步阻塞写盘。
+    /// 有界写盘队列（容量 1000）。SingleReader=true：所有磁盘 IO（含目录创建与日志滚动）只在单个后台线程
+    /// 串行执行；队列满时丢弃新日志并回滚计数，绝不阻塞 UI 线程或造成 OOM。
     /// </summary>
     private static readonly Channel<(string LogPath, string Entry)> Queue =
-        Channel.CreateUnbounded<(string, string)>(new UnboundedChannelOptions
+        Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(1000)
         {
             SingleReader = true,
             SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropWrite,
         });
 
     /// <summary>已入队但尚未写完的条目数，供 <see cref="FlushAsync"/> 等待排空。</summary>
     private static int _pendingCount;
+
+    /// <summary>后台写盘线程是否已异常终止。</summary>
+    private static volatile bool _writerFaulted;
 
     private static readonly Task WriterTask = Task.Run(WriterLoopAsync);
 
@@ -68,7 +72,7 @@ public static class FileLogger
         var deadline = Environment.TickCount64 + timeoutMs;
         while (Volatile.Read(ref _pendingCount) > 0)
         {
-            if (Environment.TickCount64 >= deadline)
+            if (_writerFaulted || Environment.TickCount64 >= deadline)
             {
                 return;
             }
@@ -149,7 +153,8 @@ public static class FileLogger
         }
         catch
         {
-            // 后台写盘循环意外退出；后续日志会堆积在无界队列中但不会崩溃应用。
+            // 后台写盘循环意外退出；标记 fault 避免 FlushAsync 盲目等待
+            _writerFaulted = true;
         }
     }
 
