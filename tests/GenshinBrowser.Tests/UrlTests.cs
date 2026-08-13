@@ -46,11 +46,4 @@ public sealed class UrlTests
         Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/b.zip?token=AbC&x=1"));
         Assert.False(MainWindow.DownloadUrisMatch(expected, "https://cdn.example.com/a.zip?token=abc&x=1"));
     }
-
-    [Fact]
-    public void PendingDownloadRetry_KeepsUntilUriMatch()
-    {
-        // 产品约定：URI 不匹配时保留 pending（keep-until-match），匹配或过期才消费。
-        Assert.True(MainWindow.ShouldKeepPendingDownloadRetryUntilMatch());
-    }
 }

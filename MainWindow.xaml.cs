@@ -1021,7 +1021,8 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 当页面 URL 改变时（包括用户点击链接、重定向、B 站 SPA 切集等），立即更新地址栏与 LastUrl
-        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        // 关闭流程开始后忽略：此时服务可能已 Dispose，晚到的 QueueSettingsSave 会打到已释放的保存闸。
+        if (!_browserReady || BrowserView.CoreWebView2 is null || _isShuttingDown)
         {
             return;
         }
@@ -1159,7 +1160,9 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void MainWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        // 精确匹配 Ctrl 单个修饰键：HasFlag 会把 Ctrl+Shift+= / Ctrl+Alt+= 也当成缩放
+        // 并吞掉，导致这些组合无法到达页面。仅当修饰键恰好是 Ctrl 时才拦截。
+        if (Keyboard.Modifiers != ModifierKeys.Control)
         {
             return;
         }
@@ -1191,12 +1194,31 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        CoreWebView2DownloadOperation? operation = null;
+        // WebView2 事件可能从后台线程触发（与 BytesReceivedChanged/StateChanged 一致）。
+        // 这里只捕获 COM operation 引用与结果路径字符串，避免在非 UI 线程改 UI 绑定状态；
+        // 事件参数本身不跨线程使用。
+        if (!Dispatcher.CheckAccess())
+        {
+            var operation = e.DownloadOperation;
+            var resultFilePath = e.ResultFilePath;
+            _ = Dispatcher.InvokeAsync(() => HandleDownloadStarting(operation, resultFilePath));
+            return;
+        }
+
+        HandleDownloadStarting(e.DownloadOperation, e.ResultFilePath);
+    }
+
+    private void HandleDownloadStarting(CoreWebView2DownloadOperation? operation, string? resultFilePath)
+    {
         DownloadItem? item = null;
         try
         {
-            operation = e.DownloadOperation;
-            var filePath = e.ResultFilePath ?? string.Empty;
+            if (operation is null)
+            {
+                throw new InvalidOperationException("DownloadStarting event carried no download operation.");
+            }
+
+            var filePath = resultFilePath ?? string.Empty;
             var fileName = !string.IsNullOrEmpty(filePath) ? Path.GetFileName(filePath) : LocalizationService.Get("Downloads.DefaultFileName", "下载文件");
 
             var sourceUri = operation.Uri ?? string.Empty;
@@ -1508,7 +1530,12 @@ public partial class MainWindow : Window, IControlBrowser
   }
 
   if (video.paused) {
-    video.play();
+    const p = video.play();
+    // play() 返回 Promise：等待其结算，自动播放被拦截时返回 play-blocked，
+    // 避免未处理的 Promise rejection 污染页面控制台，也避免误报为已播放。
+    if (p && typeof p.then === 'function') {
+      return p.then(() => 'play').catch(() => 'play-blocked');
+    }
     return 'play';
   }
 
@@ -1523,6 +1550,9 @@ public partial class MainWindow : Window, IControlBrowser
             {
                 case "\"play\"":
                     SetStatusMessage(LocalizationService.Get("Status.Played"), StatusLevel.Success);
+                    break;
+                case "\"play-blocked\"":
+                    SetStatusMessage(LocalizationService.Get("Status.PlaybackBlocked"), StatusLevel.Warning);
                     break;
                 case "\"pause\"":
                     SetStatusMessage(LocalizationService.Get("Status.Paused"), StatusLevel.Success);
@@ -2320,11 +2350,6 @@ public partial class MainWindow : Window, IControlBrowser
         return true;
     }
 
-    /// <summary>
-    /// 供单元测试：pending 在 URI 不匹配时必须保留（keep-until-match），而非首次 Starting 即消费。
-    /// </summary>
-    internal static bool ShouldKeepPendingDownloadRetryUntilMatch() => true;
-
     private void ModeToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleWindowMode();
 
     private void MinButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -2472,8 +2497,13 @@ public partial class MainWindow : Window, IControlBrowser
         var work = WindowBoundsHelper.GetWorkArea(this);
         var ratio = e.GetPosition(this).X / ActualWidth;
         ToggleMaximize();
-        Left = e.GetPosition(null).X - _savedBounds.Width * ratio;
-        Top = e.GetPosition(null).Y - SystemParameters.CaptionHeight / 2.0;
+        // GetPosition(null) 返回相对「还原后窗口」客户区（root visual）的坐标，
+        // 而 Left/Top 是屏幕坐标。本窗口是无边框分层窗（WindowStyle=None），
+        // 客户区原点即窗口 Left/Top，因此屏幕坐标 = 还原后的 Left/Top + 客户区相对坐标，
+        // 必须补上窗口偏移，否则窗口会按客户区坐标直接落位导致错位。
+        var pos = e.GetPosition(null);
+        Left = Left + pos.X - _savedBounds.Width * ratio;
+        Top = Top + pos.Y - SystemParameters.CaptionHeight / 2.0;
         Left = Math.Max(work.Left, Math.Min(Left, work.Right - Width));
         Top = Math.Max(work.Top, Math.Min(Top, work.Bottom - Height));
         DragMove();

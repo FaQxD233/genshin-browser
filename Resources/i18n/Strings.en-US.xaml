@@ -121,6 +121,10 @@
   <sys:String x:Key="Context.RemoveFavorite">Remove favorite</sys:String>
   <sys:String x:Key="Context.RemoveHistory">Remove from history</sys:String>
 
+  <!-- Relative time ({0}=HH:mm) -->
+  <sys:String x:Key="Time.Today">Today {0}</sys:String>
+  <sys:String x:Key="Time.Yesterday">Yesterday {0}</sys:String>
+
   <!-- Title bar -->
   <sys:String x:Key="TitleBar.Minimize">Minimize</sys:String>
   <sys:String x:Key="TitleBar.Maximize">Maximize / Restore</sys:String>
@@ -170,6 +174,7 @@
   <sys:String x:Key="Status.Played">Playing.</sys:String>
   <sys:String x:Key="Status.Paused">Paused.</sys:String>
   <sys:String x:Key="Status.NoVideo">No controllable video on this page.</sys:String>
+  <sys:String x:Key="Status.PlaybackBlocked">The browser blocked autoplay. Please click the in-page play button first.</sys:String>
   <sys:String x:Key="Status.PlaybackCommandSent">Playback command sent.</sys:String>
   <sys:String x:Key="Status.PlaybackFailed">Playback control failed: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">Reload failed: {0}</sys:String>

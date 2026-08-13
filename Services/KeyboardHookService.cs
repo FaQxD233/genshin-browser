@@ -305,6 +305,15 @@ public sealed class KeyboardHookService : IDisposable
                 lock (_keyStateLock)
                 {
                     isFirstKeyDown = _pressedKeys.Add(vkCode);
+                    if (!isFirstKeyDown && !IsKeyPhysicallyDown(vkCode))
+                    {
+                        // 上次 KeyUp 丢失（Alt-Tab / 按键瞬间切窗 / 焦点变化等）导致 VK 残留在
+                        // _pressedKeys 中，之后该热键会永久失效（Add 一直返回 false）。
+                        // 用 GetAsyncKeyState 确认物理按键已弹起后，重置集合并按新的一次按下处理；
+                        // 若确实仍在长按则保持不重复触发。
+                        _pressedKeys.Remove(vkCode);
+                        isFirstKeyDown = _pressedKeys.Add(vkCode);
+                    }
                 }
 
                 if (isFirstKeyDown)
@@ -358,14 +367,39 @@ public sealed class KeyboardHookService : IDisposable
                winPressed == expectedWin;
     }
 
+    /// <summary>
+    /// 判断某虚拟键当前是否处于物理按下状态。用于区分「长按中的重复 KeyDown」
+    /// 与「上次 KeyUp 丢失后的残留状态」。
+    /// </summary>
+    private static bool IsKeyPhysicallyDown(int vkCode) => (GetAsyncKeyState(vkCode) & 0x8000) != 0;
+
     private static readonly HashSet<string> NonGameProcessNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "explorer", "taskmgr", "cmd", "powershell", "wt", "bash",
+        // 系统 / 桌面
+        "explorer", "taskmgr", "cmd", "powershell", "wt", "bash", "pwsh",
+        "runtimebroker", "shellexperiencehost", "searchhost", "textinputhost", "startmenuexperiencehost",
+        // 浏览器
         "chrome", "firefox", "msedge", "opera", "brave", "iexplore", "safari", "360se", "sogouexplorer",
+        "vivaldi", "centbrowser", "qqbrowser", "maxthon", "ucbrowser", "yandex", "mychrome",
+        // 通讯 / 协作
         "qq", "tim", "wechat", "discord", "feishu", "dingtalk", "slack", "teams", "telegram", "whatsapp", "line",
+        "skype", "zoom", "outlook", "thunderbird", "mstsc",
+        // 编辑器 / IDE
         "notepad", "notepad++", "code", "devenv", "rider", "sublime_text",
-        "wps", "winword", "excel", "powerpnt"
+        "idea64", "pycharm64", "goland64", "clion64", "webstorm64", "datagrip64", "androidstudio", "vim", "emacs",
+        // 办公
+        "wps", "winword", "excel", "powerpnt", "onenote", "acrobat", "foxitreader",
+        // 工具 / 下载 / 媒体
+        "baidunetdisk", "thunder", "idm", "qbit", "spotify", "vlc", "potplayer", "everything", "ditto",
     };
+
+    // 前台进程名惰性缓存：低级钩子回调必须毫秒级返回，禁止每次按键都做进程枚举。
+    // 仅当前台 PID 变化或缓存过期时才查询一次，其余命中直接复用。全部访问都发生在
+    // 安装钩子的同一 UI 线程（见 Start），无需加锁。
+    private uint _cachedForegroundPid;
+    private string? _cachedForegroundName;
+    private DateTime _cacheFetchedAtUtc;
+    private static readonly TimeSpan ForegroundCacheTtl = TimeSpan.FromSeconds(2);
 
     private bool IsGameOrBrowserForeground()
     {
@@ -387,27 +421,50 @@ public sealed class KeyboardHookService : IDisposable
         // 2. 如果处于浮窗模式，且前台窗口是非排他性进程（即可能是任意游戏），允许触发
         if (_isGamingMode)
         {
-            try
-            {
-                using var process = Process.GetProcessById((int)pid);
-                var processName = process.ProcessName;
+            var processName = GetCachedForegroundProcessName(pid);
 
-                // 排除已知的非游戏常用软件（如浏览器、聊天软件、文本编辑器等）
-                if (!NonGameProcessNames.Contains(processName))
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                // 如果无法获取进程信息（通常是高权限进程，比如管理员身份运行的游戏），
-                // 且当前正处于置顶浮窗模式下，我们默认将其视为游戏，允许触发。
-                // 这样即使用户以管理员运行了其他游戏，热键也能正常工作。
-                return true;
-            }
+            // 排除已知的非游戏常用软件（如浏览器、聊天软件、文本编辑器等）。
+            // 无法确认进程名（权限不足 / 进程已退出）时保持「浮窗模式下视为游戏」的默认语义，
+            // 使以管理员运行的游戏在置顶浮窗模式下也能正常响应热键。
+            return processName is null || !NonGameProcessNames.Contains(processName);
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 读取前台进程名，仅在缓存缺失（PID 变化或 TTL 过期）时做进程查询。
+    /// 进程枚举是慢操作（打开句柄 + NtQuery），放在低级键盘钩子回调里会拖慢系统输入，
+    /// 因此用前台 PID 作为缓存键：切前台窗口才重新查询，同一前台连续按键命中缓存。
+    /// </summary>
+    private string? GetCachedForegroundProcessName(uint pid)
+    {
+        if (_cachedForegroundPid == pid && DateTime.UtcNow - _cacheFetchedAtUtc < ForegroundCacheTtl)
+        {
+            return _cachedForegroundName;
+        }
+
+        string? name;
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            name = process.ProcessName;
+        }
+        catch (ArgumentException)
+        {
+            // 进程已退出（前台窗口刚被关闭）：缓存为 null，下一次前台变化再查。
+            name = null;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // 权限不足（如管理员进程）：无法读取进程名，保持「视为游戏」语义。
+            name = null;
+        }
+
+        _cachedForegroundPid = pid;
+        _cachedForegroundName = name;
+        _cacheFetchedAtUtc = DateTime.UtcNow;
+        return name;
     }
 
     private void Raise(EventHandler? handler)

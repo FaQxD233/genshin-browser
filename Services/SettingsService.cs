@@ -41,28 +41,6 @@ public sealed class SettingsService : IDisposable
         }
     }
 
-    public async Task<AppSettings> LoadAsync()
-    {
-        if (!File.Exists(_settingsPath))
-        {
-            return new AppSettings();
-        }
-
-        try
-        {
-            var json = await JsonFileWriter.ReadAllTextBoundedAsync(
-                _settingsPath,
-                AppConfig.Data.MaxSettingsFileSizeBytes).ConfigureAwait(false);
-            return DeserializeAndSanitize(json);
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            FileLogger.LogException(ex, "Load settings");
-            // 文件损坏或无法访问，使用默认设置
-            return new AppSettings();
-        }
-    }
-
     public async Task SaveAsync(AppSettings settings)
     {
         var snapshot = new AppSettings

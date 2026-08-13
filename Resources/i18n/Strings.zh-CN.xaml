@@ -121,6 +121,10 @@
   <sys:String x:Key="Context.RemoveFavorite">删除收藏</sys:String>
   <sys:String x:Key="Context.RemoveHistory">从历史中移除</sys:String>
 
+  <!-- 相对时间（{0}=HH:mm） -->
+  <sys:String x:Key="Time.Today">今天 {0}</sys:String>
+  <sys:String x:Key="Time.Yesterday">昨天 {0}</sys:String>
+
   <!-- Title bar -->
   <sys:String x:Key="TitleBar.Minimize">最小化</sys:String>
   <sys:String x:Key="TitleBar.Maximize">最大化 / 还原</sys:String>
@@ -170,6 +174,7 @@
   <sys:String x:Key="Status.Played">已播放。</sys:String>
   <sys:String x:Key="Status.Paused">已暂停。</sys:String>
   <sys:String x:Key="Status.NoVideo">当前页面没有可控制的视频。</sys:String>
+  <sys:String x:Key="Status.PlaybackBlocked">浏览器拦截了自动播放，请点击页面内的播放按钮后再试。</sys:String>
   <sys:String x:Key="Status.PlaybackCommandSent">已发送播放控制命令。</sys:String>
   <sys:String x:Key="Status.PlaybackFailed">播放控制失败: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">刷新失败: {0}</sys:String>

@@ -34,17 +34,6 @@ public sealed class DownloadsService : IDisposable
 
     public ObservableCollection<DownloadItem> Downloads { get; } = new();
 
-    public int ActiveCount
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _operations.Count;
-            }
-        }
-    }
-
     public void Track(DownloadItem item, CoreWebView2DownloadOperation operation)
     {
         lock (_gate)

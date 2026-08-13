@@ -84,16 +84,6 @@ public static class AppConfig
     public static class Ui
     {
         /// <summary>
-        /// 占位符文本颜色（次要文本）
-        /// </summary>
-        public static readonly System.Windows.Media.Color PlaceholderTextColor = System.Windows.Media.Color.FromRgb(0x6E, 0x76, 0x81);
-
-        /// <summary>
-        /// 活动文本颜色（主文本）
-        /// </summary>
-        public static readonly System.Windows.Media.Color ActiveTextColor = System.Windows.Media.Color.FromRgb(0xE6, 0xED, 0xF3);
-
-        /// <summary>
         /// 平滑滚动动画时长（毫秒）
         /// </summary>
         public const int SmoothScrollDurationMs = 200;

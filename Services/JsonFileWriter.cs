@@ -24,16 +24,6 @@ internal static class JsonFileWriter
         return reader.ReadToEnd();
     }
 
-    public static async Task<string> ReadAllTextBoundedAsync(string path, int maxBytes)
-    {
-        await using var stream = OpenBoundedRead(
-            path,
-            maxBytes,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-        return await reader.ReadToEndAsync().ConfigureAwait(false);
-    }
-
     public static async Task WriteAtomicAsync<T>(string path, T value, JsonSerializerOptions options)
     {
         var directory = Path.GetDirectoryName(path);
