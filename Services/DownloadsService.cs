@@ -325,9 +325,9 @@ public sealed class DownloadsService : IDisposable
         {
             // A newer snapshot replaced this one.
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ObjectDisposedException)
         {
-            // SaveAsync already logged the concrete failure.
+            // SaveAsync already logged the concrete failure; ODE is the Dispose race on shutdown.
         }
     }
 
@@ -372,7 +372,14 @@ public sealed class DownloadsService : IDisposable
         }
         finally
         {
-            _saveGate.Release();
+            try
+            {
+                _saveGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 关闭竞态：Dispose 已先行释放 _saveGate；写盘已成功或被取消，无需 Release。
+            }
         }
     }
 

@@ -18,7 +18,9 @@ public static class FileLogger
 
     /// <summary>
     /// 有界写盘队列（容量 1000）。SingleReader=true：所有磁盘 IO（含目录创建与日志滚动）只在单个后台线程
-    /// 串行执行；队列满时丢弃新日志并回滚计数，绝不阻塞 UI 线程或造成 OOM。
+    /// 串行执行；队列满时 DropWrite 静默丢弃新日志，绝不阻塞 UI 线程或造成 OOM。
+    /// 注意：DropWrite 模式下 TryWrite 在队列满时仍返回 true，无法靠返回值判断是否丢弃；
+    /// 因此 FlushAsync 用 ChannelReader.Count 而非手工计数器来判断排空，避免计数泄漏。
     /// </summary>
     private static readonly Channel<(string LogPath, string Entry)> Queue =
         Channel.CreateBounded<(string, string)>(new BoundedChannelOptions(1000)
@@ -27,9 +29,6 @@ public static class FileLogger
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropWrite,
         });
-
-    /// <summary>已入队但尚未写完的条目数，供 <see cref="FlushAsync"/> 等待排空。</summary>
-    private static int _pendingCount;
 
     /// <summary>后台写盘线程是否已异常终止。</summary>
     private static volatile bool _writerFaulted;
@@ -64,13 +63,13 @@ public static class FileLogger
     }
 
     /// <summary>
-    /// 等待所有已入队日志写完。关闭流程应在退出前调用，避免进程结束丢日志。
+    /// 等待队列中所有日志写完。关闭流程应在退出前调用，避免进程结束丢日志。
     /// 带超时保护：后台写盘线程意外退出时不会无限等待。
     /// </summary>
     public static async Task FlushAsync(int timeoutMs = 3000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
-        while (Volatile.Read(ref _pendingCount) > 0)
+        while (Queue.Reader.Count > 0)
         {
             if (_writerFaulted || Environment.TickCount64 >= deadline)
             {
@@ -120,12 +119,9 @@ public static class FileLogger
 
     private static void Enqueue(string logPath, string entry)
     {
-        Interlocked.Increment(ref _pendingCount);
-        if (!Queue.Writer.TryWrite((logPath, entry)))
-        {
-            // 队列已 Complete（正常流程不会发生）；计数回滚避免 FlushAsync 永久等待。
-            Interlocked.Decrement(ref _pendingCount);
-        }
+        // DropWrite 模式下 TryWrite 永远不阻塞：队列满时返回 true 但条目被静默丢弃。
+        // 不再维护手工计数器，FlushAsync 直接读 ChannelReader.Count。
+        Queue.Writer.TryWrite((logPath, entry));
     }
 
     private static async Task WriterLoopAsync()
@@ -143,10 +139,6 @@ public static class FileLogger
                     catch
                     {
                         // 单条日志写盘失败不影响后续日志。
-                    }
-                    finally
-                    {
-                        Interlocked.Decrement(ref _pendingCount);
                     }
                 }
             }
@@ -180,9 +172,17 @@ public static class FileLogger
 
     private static string ResolveLogRoot()
     {
+        if (LogRootOverride is { } overrideRoot)
+        {
+            return overrideRoot;
+        }
+
         var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
         return Path.Combine(dataRoot, "logs");
     }
+
+    /// <summary>测试专用：覆盖日志目录。生产代码不应设置。</summary>
+    internal static string? LogRootOverride;
 
     /// <summary>
     /// 追加日志。若当前文件超过 <see cref="MaxLogFileSizeBytes"/>，先滚动到 .1.log/.2.log/... 再写入新内容。

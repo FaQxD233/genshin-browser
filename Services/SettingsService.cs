@@ -11,6 +11,7 @@ public sealed class SettingsService : IDisposable
     private readonly string _settingsPath;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private long _saveRequestVersion;
+    private volatile bool _disposed;
 
     public SettingsService(string settingsPath)
     {
@@ -111,12 +112,25 @@ public sealed class SettingsService : IDisposable
         }
         finally
         {
-            _saveGate.Release();
+            try
+            {
+                _saveGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 关闭竞态：Dispose 已先行释放 _saveGate；写盘已成功或被取消，无需 Release。
+            }
         }
     }
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _saveGate.Dispose();
     }
 
@@ -141,8 +155,7 @@ public sealed class SettingsService : IDisposable
             return System.Windows.Input.Key.None;
         }
 
-        var key = System.Windows.Input.KeyInterop.KeyFromVirtualKey(virtualKey);
-        return key == System.Windows.Input.Key.None ? System.Windows.Input.Key.None : key;
+        return System.Windows.Input.KeyInterop.KeyFromVirtualKey(virtualKey);
     }
 
     private static AppSettings Sanitize(AppSettings? settings)

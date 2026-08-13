@@ -127,8 +127,61 @@ public sealed class JsonAndEntryServiceTests
     [Fact]
     public async Task FileLogger_FlushAsyncReturnsQuicklyAndHandlesLogEntries()
     {
-        FileLogger.LogDebug("Test message 1");
-        FileLogger.LogException(new InvalidOperationException("Test exception"), "Unit Test");
-        await FileLogger.FlushAsync(2000);
+        using var directory = new TestDirectory();
+        var previousOverride = FileLogger.LogRootOverride;
+        FileLogger.LogRootOverride = directory.Path;
+        try
+        {
+            FileLogger.LogDebug("Test message 1");
+            FileLogger.LogException(new InvalidOperationException("Test exception"), "Unit Test");
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await FileLogger.FlushAsync(2000);
+            sw.Stop();
+
+            // 计数泄漏会死等满超时；正常应在毫秒级完成。
+            Assert.True(sw.ElapsedMilliseconds < 1500,
+                $"FlushAsync took {sw.ElapsedMilliseconds}ms, expected < 1500ms");
+
+            var logFile = System.IO.Path.Combine(directory.Path, $"{DateTime.Now:yyyy-MM-dd}.log");
+            Assert.True(System.IO.File.Exists(logFile), $"Log file should exist at {logFile}");
+            var content = await System.IO.File.ReadAllTextAsync(logFile);
+            Assert.Contains("Test message 1", content);
+            Assert.Contains("Test exception", content);
+            Assert.Contains("InvalidOperationException", content);
+        }
+        finally
+        {
+            FileLogger.LogRootOverride = previousOverride;
+        }
+    }
+
+    [Fact]
+    public async Task FileLogger_FlushAsyncReturnsQuicklyUnderFloodWithoutCountLeak()
+    {
+        // 复现 a7729f8 引入的计数泄漏：1000 容量被打满后 DropWrite 丢弃的条目
+        // 若不通过 ItemDropped 回滚 _pendingCount，FlushAsync 会死等满超时。
+        using var directory = new TestDirectory();
+        var previousOverride = FileLogger.LogRootOverride;
+        FileLogger.LogRootOverride = directory.Path;
+        try
+        {
+            // 远超队列容量 1000，迫使 DropWrite 触发。
+            for (var i = 0; i < 5000; i++)
+            {
+                FileLogger.LogDebug($"Flood-{i}");
+            }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await FileLogger.FlushAsync(2000);
+            sw.Stop();
+
+            Assert.True(sw.ElapsedMilliseconds < 1500,
+                $"FlushAsync took {sw.ElapsedMilliseconds}ms under flood, expected < 1500ms (count leak?)");
+        }
+        finally
+        {
+            FileLogger.LogRootOverride = previousOverride;
+        }
     }
 }

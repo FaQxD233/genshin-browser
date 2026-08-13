@@ -203,9 +203,9 @@ public sealed class FavoritesService : IDisposable
         {
             // 被更新的写入请求取消，预期行为
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ObjectDisposedException)
         {
-            // SaveAsync 已记录具体异常；后台防抖任务不能留下未观察异常。
+            // SaveAsync 已记录具体异常；ODE 为 Dispose 与后台写盘的关闭竞态；后台任务不能留下未观察异常。
         }
     }
 
@@ -287,7 +287,14 @@ public sealed class FavoritesService : IDisposable
         }
         finally
         {
-            _saveGate.Release();
+            try
+            {
+                _saveGate.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // 关闭竞态：Dispose 已先行释放 _saveGate；写盘已成功或被取消，无需 Release。
+            }
         }
     }
 
