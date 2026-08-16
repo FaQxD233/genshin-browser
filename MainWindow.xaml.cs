@@ -457,22 +457,26 @@ public partial class MainWindow : Window, IControlBrowser
             // 与下面的数据服务加载、控制窗构造同时进行
             StartEnvironmentPreload();
 
-            // 启动时 settings 已 Sanitize 无冲突；原子写入避免分步 setter 中间态
-            _keyboardHookService.TrySetToggleModeHotkey(
-                KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey),
-                _settings.ToggleModeModifiers);
-            _keyboardHookService.TrySetTogglePlaybackHotkey(
-                KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey),
-                _settings.TogglePlaybackModifiers);
-            _keyboardHookService.TrySetToggleHideHotkey(
-                KeyInterop.VirtualKeyFromKey(_settings.ToggleHideKey),
-                _settings.ToggleHideModifiers);
-            _keyboardHookService.TrySetSeekBackwardHotkey(
-                KeyInterop.VirtualKeyFromKey(_settings.SeekBackwardKey),
-                _settings.SeekBackwardModifiers);
-            _keyboardHookService.TrySetSeekForwardHotkey(
-                KeyInterop.VirtualKeyFromKey(_settings.SeekForwardKey),
-                _settings.SeekForwardModifiers);
+            // 启动时 settings 已 Sanitize 无冲突；批量原子应用——逐个 TrySet 会被
+            // 「交叉占用」配置（后写槽位的目标键是未更新槽位的默认键）整批拒绝
+            if (!_keyboardHookService.TrySetBuiltInHotkeys(
+                    KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey), _settings.ToggleModeModifiers,
+                    KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey), _settings.TogglePlaybackModifiers,
+                    KeyInterop.VirtualKeyFromKey(_settings.ToggleHideKey), _settings.ToggleHideModifiers,
+                    KeyInterop.VirtualKeyFromKey(_settings.SeekBackwardKey), _settings.SeekBackwardModifiers,
+                    KeyInterop.VirtualKeyFromKey(_settings.SeekForwardKey), _settings.SeekForwardModifiers))
+            {
+                FileLogger.LogException(
+                    new InvalidOperationException(
+                        $"Hotkeys in settings could not be applied (internal conflict): " +
+                        $"mode={_settings.ToggleModeKey}+{_settings.ToggleModeModifiers}, " +
+                        $"playback={_settings.TogglePlaybackKey}+{_settings.TogglePlaybackModifiers}, " +
+                        $"hide={_settings.ToggleHideKey}+{_settings.ToggleHideModifiers}, " +
+                        $"seekBack={_settings.SeekBackwardKey}+{_settings.SeekBackwardModifiers}, " +
+                        $"seekFwd={_settings.SeekForwardKey}+{_settings.SeekForwardModifiers}. " +
+                        "Falling back to built-in defaults."),
+                    "Apply hotkeys from settings");
+            }
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
             _keyboardHookService.HotkeyScope = _settings.HotkeyScope;
             UpdateWindowTitle();
@@ -1759,7 +1763,15 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        _ = Dispatcher.InvokeAsync(() => _ = ToggleVideoPlaybackAsync());
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (IsKeyboardFocusInTextInput())
+            {
+                return; // 控制窗地址栏/搜索框输入中，不误触播放
+            }
+
+            _ = ToggleVideoPlaybackAsync();
+        });
     }
 
     private void KeyboardHookService_OnModeTogglePressed(object? sender, EventArgs e)
@@ -1789,7 +1801,15 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        _ = Dispatcher.InvokeAsync(() => _ = SeekVideoAsync(-5));
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (IsKeyboardFocusInTextInput())
+            {
+                return;
+            }
+
+            _ = SeekVideoAsync(-5);
+        });
     }
 
     private void KeyboardHookService_OnSeekForwardPressed(object? sender, EventArgs e)
@@ -1799,8 +1819,30 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        _ = Dispatcher.InvokeAsync(() => _ = SeekVideoAsync(5));
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (IsKeyboardFocusInTextInput())
+            {
+                return;
+            }
+
+            _ = SeekVideoAsync(5);
+        });
     }
+
+    /// <summary>
+    /// 键盘焦点是否在本应用的文本输入控件上（控制窗地址栏/搜索框/数值输入框等）。
+    /// 热键触发时静默忽略，避免打字误触播放/快进；页面内输入框由脚本侧
+    /// document.activeElement 检测（见 BuildSeekScript / ToggleVideoPlaybackAsync）。
+    /// </summary>
+    private static bool IsKeyboardFocusInTextInput() =>
+        System.Windows.Input.Keyboard.FocusedElement switch
+        {
+            System.Windows.Controls.Primitives.TextBoxBase => true,
+            System.Windows.Controls.PasswordBox => true,
+            System.Windows.Controls.ComboBox { IsEditable: true } => true,
+            _ => false,
+        };
 
     /// <summary>
     /// 临时隐藏/恢复显示窗口（热键 F7 默认），浏览与浮窗模式均可用。
@@ -1855,12 +1897,18 @@ public partial class MainWindow : Window, IControlBrowser
             WindowState = WindowState.Normal;
         }
 
-        UpdateControlWindowVisibility();
+        // 控制窗同样不激活，保持「恢复不抢前台焦点」语义
+        UpdateControlWindowVisibility(withoutControlWindowActivation: true);
     }
 
     /// <summary>视频快进/倒退（秒）。找到当前可见的视频元素并钳制在 [0, duration] 内跳转。</summary>
     public async Task SeekVideoAsync(double deltaSeconds)
     {
+        if (double.IsNaN(deltaSeconds) || double.IsInfinity(deltaSeconds) || Math.Abs(deltaSeconds) < 0.001)
+        {
+            return;
+        }
+
         if (!_browserReady || BrowserView.CoreWebView2 is null)
         {
             SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
@@ -1874,6 +1922,9 @@ public partial class MainWindow : Window, IControlBrowser
             var secondsText = Math.Abs(deltaSeconds).ToString("0");
             switch (result)
             {
+                case "\"typing\"":
+                    // 正在页面输入框中打字，静默忽略
+                    break;
                 case "\"ok\"":
                     SetStatusMessage(
                         LocalizationService.Format(
@@ -1904,6 +1955,14 @@ public partial class MainWindow : Window, IControlBrowser
     {
         const string template = """
 (() => {
+  // 页面聚焦且焦点在输入框时视为正在打字，静默忽略（浮窗叠游戏时页面无焦点，不影响热键）
+  if (document.hasFocus()) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+      return 'typing';
+    }
+  }
+
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(v => {
     const rect = v.getBoundingClientRect();
@@ -2069,6 +2128,14 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         const string script = @"(() => {
+  // 页面聚焦且焦点在输入框时视为正在打字，静默忽略（浮窗叠游戏时页面无焦点，不影响热键）
+  if (document.hasFocus()) {
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+      return 'typing';
+    }
+  }
+
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(v => {
     const rect = v.getBoundingClientRect();
@@ -2098,6 +2165,9 @@ public partial class MainWindow : Window, IControlBrowser
             var result = await BrowserView.CoreWebView2.ExecuteScriptAsync(script);
             switch (result)
             {
+                case "\"typing\"":
+                    // 正在页面输入框中打字，静默忽略
+                    break;
                 case "\"play\"":
                     SetStatusMessage(LocalizationService.Get("Status.Played"), StatusLevel.Success);
                     break;
@@ -2347,6 +2417,8 @@ public partial class MainWindow : Window, IControlBrowser
     {
         WindowOpacity = 1.0;
         ApplyWindowOpacity(1.0);
+        // 生效范围与热键同属「快捷键」设置，一并恢复默认
+        HotkeyScope = HotkeyScope.Blacklist;
         RestoreDefaultHotkeys();
         SetZoom(1.0);
         QueueSettingsSave();
@@ -2386,7 +2458,9 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12];
+        // 泊位数须 ≥ 槽位数（5）：全部槽位都需让位时仍有空位，恢复默认必成功；
+        // 与 SettingsService.HotkeyFallbackKeys 同源（F9-F12 + F6）
+        ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12, Key.F6];
         var defaultKeys = defaults.Values.Select(pair => pair.Key).ToHashSet();
         foreach (var slot in slots)
         {
@@ -3487,7 +3561,11 @@ public partial class MainWindow : Window, IControlBrowser
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
-    private void UpdateControlWindowVisibility()
+    /// <param name="withoutControlWindowActivation">
+    /// 为 true 时控制窗用 ShowActivated=false 显示（热键恢复路径：主窗已用 SW_SHOWNOACTIVATE
+    /// 不抢前台焦点，控制窗 Show() 若激活会抵消该语义）；任务栏点击恢复等用户主动路径用默认 false。
+    /// </param>
+    private void UpdateControlWindowVisibility(bool withoutControlWindowActivation = false)
     {
         if (_controlWindow is null || _isShuttingDown)
         {
@@ -3497,11 +3575,30 @@ public partial class MainWindow : Window, IControlBrowser
         if (_settings.WindowMode == WindowMode.Free)
         {
             _controlWindow.ShowNearBrowserWindow();
-            _controlWindow.Show();
+            if (withoutControlWindowActivation)
+            {
+                _controlWindow.ShowActivated = false;
+                try
+                {
+                    _controlWindow.Show();
+                }
+                finally
+                {
+                    _controlWindow.ShowActivated = true;
+                }
+            }
+            else
+            {
+                _controlWindow.Show();
+            }
+
             UpdateWindowTitle();
             return;
         }
 
+        // Hide() 不经过 OnClosing 的取消录制逻辑：录制中切到浮窗模式会把
+        // SuspendBuiltInHotkeys=true 永久残留（F8 恰是被挂起的键），先显式取消
+        _controlWindow.CancelHotkeyRecordingIfActive();
         _controlWindow.Hide();
         UpdateWindowTitle();
     }

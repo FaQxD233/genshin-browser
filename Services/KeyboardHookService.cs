@@ -231,6 +231,99 @@ public sealed class KeyboardHookService : IDisposable
     }
 
     /// <summary>
+    /// 批量原子应用五组内置热键。只校验「目标组合彼此互异」与「不与非内置自定义注册冲突」，
+    /// 不与替换前的旧内置注册比较——用于启动时从配置整体恢复：旧注册仍是默认组合，
+    /// 逐个 TrySet 会被交叉占用配置（如 Mode=K、Playback=F8）整批拒绝。
+    /// 任一校验失败返回 false 且不改动任何状态。
+    /// </summary>
+    public bool TrySetBuiltInHotkeys(
+        int toggleModeVk, ModifierKeys toggleModeModifiers,
+        int togglePlaybackVk, ModifierKeys togglePlaybackModifiers,
+        int toggleHideVk, ModifierKeys toggleHideModifiers,
+        int seekBackwardVk, ModifierKeys seekBackwardModifiers,
+        int seekForwardVk, ModifierKeys seekForwardModifiers)
+    {
+        var pairs = new (int Vk, ModifierKeys Mods)[]
+        {
+            (toggleModeVk, toggleModeModifiers),
+            (togglePlaybackVk, togglePlaybackModifiers),
+            (toggleHideVk, toggleHideModifiers),
+            (seekBackwardVk, seekBackwardModifiers),
+            (seekForwardVk, seekForwardModifiers),
+        };
+
+        foreach (var pair in pairs)
+        {
+            if (pair.Vk is <= 0 or > 0xFF)
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < pairs.Length; i++)
+        {
+            for (var j = i + 1; j < pairs.Length; j++)
+            {
+                if (pairs[i].Vk == pairs[j].Vk && pairs[i].Mods == pairs[j].Mods)
+                {
+                    return false;
+                }
+            }
+        }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            foreach (var pair in _registrations)
+            {
+                if (IsBuiltInRegistrationId(pair.Key))
+                {
+                    continue;
+                }
+
+                foreach (var candidate in pairs)
+                {
+                    if (candidate.Vk == pair.Value.VirtualKey && candidate.Mods == pair.Value.Modifiers)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            _toggleModeVk = toggleModeVk;
+            _toggleModeModifiers = toggleModeModifiers;
+            _togglePlaybackVk = togglePlaybackVk;
+            _togglePlaybackModifiers = togglePlaybackModifiers;
+            _toggleHideVk = toggleHideVk;
+            _toggleHideModifiers = toggleHideModifiers;
+            _seekBackwardVk = seekBackwardVk;
+            _seekBackwardModifiers = seekBackwardModifiers;
+            _seekForwardVk = seekForwardVk;
+            _seekForwardModifiers = seekForwardModifiers;
+            RebuildBuiltInRegistrationsLocked();
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    private static bool IsBuiltInRegistrationId(string id) =>
+        id is ToggleModeRegistrationId or TogglePlaybackRegistrationId or ToggleHideRegistrationId
+            or SeekBackwardRegistrationId or SeekForwardRegistrationId;
+
+    private void RebuildBuiltInRegistrationsLocked()
+    {
+        _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
+        _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
+        _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
+        _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
+        _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
+    }
+
+    /// <summary>
     /// 为 true 时内置模式/播放热键不触发（录制快捷键期间使用），不影响已注册的其它热键。
     /// </summary>
     public bool SuspendBuiltInHotkeys
@@ -254,11 +347,7 @@ public sealed class KeyboardHookService : IDisposable
         _proc = HookCallback;
         lock (_registrationLock)
         {
-            _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
-            _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
-            _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
-            _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
-            _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
+            RebuildBuiltInRegistrationsLocked();
             PublishSnapshotLocked();
         }
     }

@@ -4,7 +4,6 @@
   <CornerRadius x:Key="CornerRadiusSm">6</CornerRadius>
 
   <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut"/>
-  <Thickness x:Key="PanelSpacing">0,0,0,8</Thickness>
 
   <Style x:Key="Mdl2IconText" TargetType="TextBlock">
     <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>

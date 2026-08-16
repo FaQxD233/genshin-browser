@@ -224,6 +224,79 @@ public sealed class KeyboardHookServiceTests
         Assert.False(service.TrySetSeekForwardHotkey(0x75, ModifierKeys.None));
     }
 
+
+    [Fact]
+    public void TrySetBuiltInHotkeys_AppliesCrossOccupiedConfigAtomically()
+    {
+        // 交叉占用配置（Mode=K、Playback=F8 互换默认）：逐个 TrySet 会因旧注册仍持默认被
+        // 整批拒绝；批量接口不与旧状态比较，应原子落位
+        using var service = new KeyboardHookService();
+        const int vkF8 = 0x77;
+        const int vkK = 0x4B;
+        const int vkF7 = 0x76;
+        const int vkSemicolon = 0xBA;
+        const int vkQuote = 0xDE;
+
+        Assert.False(service.TrySetToggleModeHotkey(vkK, ModifierKeys.None), "单键设置应被旧默认 Playback=K 拒绝（佐证交叉占用问题）");
+
+        Assert.True(service.TrySetBuiltInHotkeys(
+            vkK, ModifierKeys.None,
+            vkF8, ModifierKeys.None,
+            vkF7, ModifierKeys.None,
+            vkSemicolon, ModifierKeys.None,
+            vkQuote, ModifierKeys.None));
+        Assert.Equal(vkK, service.ToggleModeVk);
+        Assert.Equal(vkF8, service.TogglePlaybackVk);
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkK));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF8));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF7));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkSemicolon));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkQuote));
+
+        // 再换回默认同样成功
+        Assert.True(service.TrySetBuiltInHotkeys(
+            vkF8, ModifierKeys.None,
+            vkK, ModifierKeys.None,
+            vkF7, ModifierKeys.None,
+            vkSemicolon, ModifierKeys.None,
+            vkQuote, ModifierKeys.None));
+        Assert.Equal(vkF8, service.ToggleModeVk);
+    }
+
+    [Fact]
+    public void TrySetBuiltInHotkeys_RejectsInternalConflictAndInvalidInput()
+    {
+        using var service = new KeyboardHookService();
+        const int vkF8 = 0x77;
+        const int vkK = 0x4B;
+
+        // 内部重复（两组同组合）拒绝且不改动任何状态
+        Assert.False(service.TrySetBuiltInHotkeys(
+            vkF8, ModifierKeys.None,
+            vkF8, ModifierKeys.None,
+            0x76, ModifierKeys.None,
+            0xBA, ModifierKeys.None,
+            0xDE, ModifierKeys.None));
+        Assert.Equal(vkF8, service.ToggleModeVk);
+        Assert.Equal(vkK, service.TogglePlaybackVk);
+
+        // 同键不同修饰键不算冲突（合法）
+        Assert.True(service.TrySetBuiltInHotkeys(
+            vkF8, ModifierKeys.None,
+            vkF8, ModifierKeys.Control,
+            0x76, ModifierKeys.None,
+            0xBA, ModifierKeys.None,
+            0xDE, ModifierKeys.None));
+
+        // 非法 VK 拒绝
+        Assert.False(service.TrySetBuiltInHotkeys(
+            0, ModifierKeys.None,
+            vkK, ModifierKeys.None,
+            0x76, ModifierKeys.None,
+            0xBA, ModifierKeys.None,
+            0xDE, ModifierKeys.None));
+    }
+
     private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
     {
         var method = typeof(KeyboardHookService).GetMethod(

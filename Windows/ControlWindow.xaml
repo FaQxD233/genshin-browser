@@ -580,7 +580,7 @@
                 <BeginStoryboard>
                   <Storyboard>
                     <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
-                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="230" Duration="0:0:0.2"
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="270" Duration="0:0:0.2"
                                      EasingFunction="{StaticResource EaseOutCubic}"/>
                   </Storyboard>
                 </BeginStoryboard>
@@ -602,6 +602,9 @@
               CornerRadius="6"
               Padding="10,8"
               Margin="0,0,0,12">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      MaxHeight="236">
         <StackPanel>
           <TextBlock Text="{DynamicResource Keys.Title}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,0,6"/>
@@ -709,6 +712,7 @@
                   </Button>
                 </Grid>
         </StackPanel>
+        </ScrollViewer>
       </Border>
     </Border>
 
@@ -788,7 +792,7 @@
       </Border>
     </Border>
 
-    <!-- Row 3: 地址栏 — 主次动作分层；进度条与地址框对齐 -->
+    <!-- Row 4: 地址栏 — 主次动作分层；进度条与地址框对齐 -->
     <Grid Grid.Row="4" Margin="0,0,0,12">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto"/>

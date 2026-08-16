@@ -137,12 +137,13 @@ public sealed class HotkeySchemaCompatTests
     }
 
     [Fact]
-    public void Load_MigratesLegacyBracketSeekDefaultsToSemicolonQuote()
+    public void Load_DoesNotMigrateLegacyBracketSeekDefaults()
     {
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
 
-        // 旧默认 [ ]（与 B 站切换上下集冲突）应一次性迁移到新默认 ; '
+        // 决策：不做 [ ]→; ' 迁移（每次保存都会改写用户故意设回的旧默认组合）。
+        // 旧默认组合原样保留，用户通过「恢复默认」或手动改键更新。
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
             SchemaVersion = 1,
@@ -152,18 +153,7 @@ public sealed class HotkeySchemaCompatTests
 
         using var settingsService = new SettingsService(settingsPath);
         var settings = settingsService.Load();
-        Assert.Equal(Key.OemSemicolon, settings.SeekBackwardKey);
-        Assert.Equal(Key.OemQuotes, settings.SeekForwardKey);
-
-        // 用户自定义组合不被迁移触碰
-        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
-        {
-            SchemaVersion = 1,
-            SeekBackwardKey = Key.Z,
-            SeekForwardKey = Key.X,
-        }));
-        var custom = settingsService.Load();
-        Assert.Equal(Key.Z, custom.SeekBackwardKey);
-        Assert.Equal(Key.X, custom.SeekForwardKey);
+        Assert.Equal(Key.OemOpenBrackets, settings.SeekBackwardKey);
+        Assert.Equal(Key.OemCloseBrackets, settings.SeekForwardKey);
     }
 }

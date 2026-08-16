@@ -187,18 +187,8 @@ public sealed class SettingsService : IDisposable
         settings.ToggleHideModifiers = NormalizeModifiers(settings.ToggleHideModifiers);
         settings.SeekBackwardModifiers = NormalizeModifiers(settings.SeekBackwardModifiers);
         settings.SeekForwardModifiers = NormalizeModifiers(settings.SeekForwardModifiers);
-        // 一次性迁移：快进/倒退默认键从 [ ] 换为 ; '（[ ] 与 B 站切换上下集快捷键冲突）。
-        // 仅当仍是旧默认组合时改写，用户自定义值不受影响。
-        if (settings.SeekBackwardKey == System.Windows.Input.Key.OemOpenBrackets &&
-            settings.SeekBackwardModifiers == System.Windows.Input.ModifierKeys.None &&
-            settings.SeekForwardKey == System.Windows.Input.Key.OemCloseBrackets &&
-            settings.SeekForwardModifiers == System.Windows.Input.ModifierKeys.None)
-        {
-            settings.SeekBackwardKey = defaults.SeekBackwardKey;
-            settings.SeekBackwardModifiers = System.Windows.Input.ModifierKeys.None;
-            settings.SeekForwardKey = defaults.SeekForwardKey;
-            settings.SeekForwardModifiers = System.Windows.Input.ModifierKeys.None;
-        }
+        // 注意：不做 [ ]→; ' 的默认键迁移——迁移会在每次保存时改写用户故意设回的旧默认组合。
+        // 旧配置仍持 [ ] 的用户通过「恢复默认」或手动改键更新。
         // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
         // 仅在一次性迁移标志未置位时尝试，避免覆盖用户后来合法设置的相同组合。
         if (!settings.HotkeyCorruptionRepairAttempted)

@@ -58,6 +58,15 @@ public partial class ControlWindow : Window
 
     public bool AllowClose { get; set; }
 
+    /// <summary>
+    /// 取消进行中的热键录制并恢复钩子。程序化隐藏控制窗前调用——
+    /// Hide() 不经过 OnClosing 的取消逻辑，否则 SuspendBuiltInHotkeys 会残留。
+    /// </summary>
+    public void CancelHotkeyRecordingIfActive()
+    {
+        _viewModel.CancelActiveRecording();
+    }
+
     private void ControlWindow_OnSourceInitialized(object? sender, EventArgs e)
     {
         ApplyNativeTitleBarTheme();

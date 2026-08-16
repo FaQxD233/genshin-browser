@@ -1247,6 +1247,21 @@ public sealed class ControlWindowViewModel : ViewModelBase
         ShowToast(LocalizationService.Format(setKey, formatActual()), StatusLevel.Success);
     }
 
+    /// <summary>
+    /// 静默取消进行中的录制并恢复钩子（不弹 toast）。
+    /// 供控制窗被程序化隐藏前调用（如录制中切到浮窗模式）。
+    /// </summary>
+    public void CancelActiveRecording()
+    {
+        if (!IsRecordingAnyKey)
+        {
+            return;
+        }
+
+        StopHotkeyRecording();
+        NotifyHotkeyDependentTexts();
+    }
+
     private void StopHotkeyRecording()
     {
         _isRecordingToggleModeKey = false;
