@@ -23,8 +23,8 @@ public sealed class KeyboardHookService : IDisposable
     private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
     private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
     private volatile int _toggleHideVk = 0x76; // Default F7 (VK_F7)
-    private volatile int _seekBackwardVk = 0xDB; // Default [ (VK_OEM_4)
-    private volatile int _seekForwardVk = 0xDD; // Default ] (VK_OEM_6)
+    private volatile int _seekBackwardVk = 0xBA; // Default ; (VK_OEM_1)
+    private volatile int _seekForwardVk = 0xDE; // Default ' (VK_OEM_7)
     private volatile ModifierKeys _toggleModeModifiers = ModifierKeys.None;
     private volatile ModifierKeys _togglePlaybackModifiers = ModifierKeys.None;
     private volatile ModifierKeys _toggleHideModifiers = ModifierKeys.None;
@@ -536,9 +536,10 @@ public sealed class KeyboardHookService : IDisposable
         // 小程序/内嵌浏览器宿主为 WeChatAppEx，旧版才是 wechat）
         "qq", "tim", "wechat", "weixin", "wechatappex", "discord", "feishu", "dingtalk", "slack", "teams", "ms-teams", "telegram", "whatsapp", "line",
         "skype", "zoom", "outlook", "thunderbird", "mstsc",
-        // 编辑器 / IDE（Rider 2020.1+ 进程名为 rider64）
+        // 编辑器 / IDE（Rider 2020.1+ 进程名为 rider64；AI IDE：Trae / Antigravity / ZCode）
         "notepad", "notepad++", "code", "devenv", "rider64", "sublime_text",
         "idea64", "pycharm64", "goland64", "clion64", "webstorm64", "datagrip64", "androidstudio", "vim", "emacs",
+        "trae", "antigravity", "zcode",
         // 办公
         "wps", "winword", "excel", "powerpnt", "onenote", "acrobat", "foxitreader",
         // 工具 / 下载 / 媒体（IDM=IDMan，qBittorrent=qbittorrent，PotPlayer 64 位=PotPlayerMini64）

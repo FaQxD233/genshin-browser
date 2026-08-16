@@ -52,13 +52,13 @@ public sealed class AppSettings
 
     public ModifierKeys ToggleHideModifiers { get; set; } = ModifierKeys.None;
 
-    /// <summary>视频倒退 5 秒热键。默认 [（US 布局 VK_OEM_4）。</summary>
-    public Key SeekBackwardKey { get; set; } = Key.OemOpenBrackets;
+    /// <summary>视频倒退 5 秒热键。默认 ;（US 布局 VK_OEM_1；曾用 [，与 B 站切换上下集冲突而更换）。</summary>
+    public Key SeekBackwardKey { get; set; } = Key.OemSemicolon;
 
     public ModifierKeys SeekBackwardModifiers { get; set; } = ModifierKeys.None;
 
-    /// <summary>视频快进 5 秒热键。默认 ]（US 布局 VK_OEM_6）。</summary>
-    public Key SeekForwardKey { get; set; } = Key.OemCloseBrackets;
+    /// <summary>视频快进 5 秒热键。默认 '（US 布局 VK_OEM_7；曾用 ]，与 B 站切换上下集冲突而更换）。</summary>
+    public Key SeekForwardKey { get; set; } = Key.OemQuotes;
 
     public ModifierKeys SeekForwardModifiers { get; set; } = ModifierKeys.None;
 

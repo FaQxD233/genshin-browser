@@ -139,6 +139,10 @@ public sealed class KeyboardHookServiceTests
         Assert.Contains("wechat", names);
         Assert.Contains("weixin", names);
         Assert.Contains("wechatappex", names);
+        // AI IDE：Trae / Antigravity / ZCode
+        Assert.Contains("trae", names);
+        Assert.Contains("antigravity", names);
+        Assert.Contains("zcode", names);
 
         // 曾用/常见的错误别名不应存在（HashSet 精确匹配，别名永远命中不了真实进程名）
         Assert.DoesNotContain("qbit", names);
@@ -185,18 +189,18 @@ public sealed class KeyboardHookServiceTests
     {
         using var service = new KeyboardHookService();
         const int vkF7 = 0x76;
-        const int vkOpenBracket = 0xDB; // '['
-        const int vkCloseBracket = 0xDD; // ']'
+        const int vkSemicolon = 0xBA; // ';'
+        const int vkQuote = 0xDE; // '\''
 
         // 默认注册占用三个键，各一条（与其余内置键互斥）
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF7));
-        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkOpenBracket));
-        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkCloseBracket));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkSemicolon));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkQuote));
 
         // 与任一内置默认冲突的赋值被拒绝
         Assert.False(service.TrySetTogglePlaybackHotkey(vkF7, ModifierKeys.None));
-        Assert.False(service.TrySetToggleModeHotkey(vkOpenBracket, ModifierKeys.None));
-        Assert.False(service.TrySetSeekBackwardHotkey(vkCloseBracket, ModifierKeys.None));
+        Assert.False(service.TrySetToggleModeHotkey(vkSemicolon, ModifierKeys.None));
+        Assert.False(service.TrySetSeekBackwardHotkey(vkQuote, ModifierKeys.None));
 
         // 空闲键可正常更新并迁移注册
         const int vkF6 = 0x75;

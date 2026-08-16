@@ -49,7 +49,7 @@
   <sys:String x:Key="Keys.Title">Key bindings</sys:String>
   <sys:String x:Key="Toolbar.KeysTooltip">Key bindings (shortcuts &amp; scope)</sys:String>
   <sys:String x:Key="Toolbar.KeysName">Key bindings</sys:String>
-  <sys:String x:Key="Settings.HotkeyScopeTooltip">Where global hotkeys (K, F8, F7, [, ], …) respond</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeTooltip">Where global hotkeys (K, F8, F7, ;, ', …) respond</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklist">Not blacklist</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklistTooltip">Respond everywhere except blacklisted apps (WeChat, QQ, browsers, editors, …)</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeAllApps">All apps</sys:String>

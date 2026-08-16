@@ -135,4 +135,35 @@ public sealed class HotkeySchemaCompatTests
             """{"SchemaVersion":1,"HotkeyScope":2}""");
         Assert.Equal(HotkeyScope.Off, settingsService.Load().HotkeyScope);
     }
+
+    [Fact]
+    public void Load_MigratesLegacyBracketSeekDefaultsToSemicolonQuote()
+    {
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+
+        // 旧默认 [ ]（与 B 站切换上下集冲突）应一次性迁移到新默认 ; '
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            SchemaVersion = 1,
+            SeekBackwardKey = Key.OemOpenBrackets,
+            SeekForwardKey = Key.OemCloseBrackets,
+        }));
+
+        using var settingsService = new SettingsService(settingsPath);
+        var settings = settingsService.Load();
+        Assert.Equal(Key.OemSemicolon, settings.SeekBackwardKey);
+        Assert.Equal(Key.OemQuotes, settings.SeekForwardKey);
+
+        // 用户自定义组合不被迁移触碰
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            SchemaVersion = 1,
+            SeekBackwardKey = Key.Z,
+            SeekForwardKey = Key.X,
+        }));
+        var custom = settingsService.Load();
+        Assert.Equal(Key.Z, custom.SeekBackwardKey);
+        Assert.Equal(Key.X, custom.SeekForwardKey);
+    }
 }

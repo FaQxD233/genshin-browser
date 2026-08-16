@@ -2353,7 +2353,7 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 恢复默认热键：模式=F8、播放=K、隐藏=F7、倒退=[、快进=]。
+    /// 恢复默认热键：模式=F8、播放=K、隐藏=F7、倒退=;、快进='。
     /// 先把非默认热键泊到 F9–F12 的空闲位（不能是任何默认值或其它热键当前值），
     /// 避免槽位间交叉占用导致目标默认值写不进去。
     /// </summary>
@@ -2377,8 +2377,8 @@ public partial class MainWindow : Window, IControlBrowser
             [HotkeySlot.Mode] = (Key.F8, ModifierKeys.None),
             [HotkeySlot.Playback] = (Key.K, ModifierKeys.None),
             [HotkeySlot.Hide] = (Key.F7, ModifierKeys.None),
-            [HotkeySlot.SeekBackward] = (Key.OemOpenBrackets, ModifierKeys.None),
-            [HotkeySlot.SeekForward] = (Key.OemCloseBrackets, ModifierKeys.None),
+            [HotkeySlot.SeekBackward] = (Key.OemSemicolon, ModifierKeys.None),
+            [HotkeySlot.SeekForward] = (Key.OemQuotes, ModifierKeys.None),
         };
 
         if (slots.All(slot => slot.GetKey() == defaults[slot.Slot].Key && slot.GetMods() == defaults[slot.Slot].Mods))
