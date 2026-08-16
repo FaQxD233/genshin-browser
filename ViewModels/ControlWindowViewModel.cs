@@ -82,6 +82,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
         SetThemeDarkCommand = new RelayCommand(() => SetTheme(ThemeService.Dark));
         SetThemeLightCommand = new RelayCommand(() => SetTheme(ThemeService.Light));
         SetThemeSystemCommand = new RelayCommand(() => SetTheme(ThemeService.System));
+        SetHotkeyScopeBlacklistCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Blacklist));
+        SetHotkeyScopeAllAppsCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.AllApps));
+        SetHotkeyScopeOffCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Off));
         SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
         SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
         MoveBrowserToCornerCommand = new RelayCommand(MoveBrowserToCorner);
@@ -179,6 +182,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand SetThemeLightCommand { get; }
 
     public RelayCommand SetThemeSystemCommand { get; }
+
+    public RelayCommand SetHotkeyScopeBlacklistCommand { get; }
+
+    public RelayCommand SetHotkeyScopeAllAppsCommand { get; }
+
+    public RelayCommand SetHotkeyScopeOffCommand { get; }
 
     public RelayCommand SetLanguageZhCommand { get; }
 
@@ -523,10 +532,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
             ModeText = _browser.CurrentMode == WindowMode.Fixed
                 ? LocalizationService.Get("Mode.Fixed", "浮窗")
                 : LocalizationService.Get("Mode.Free", "浏览");
-            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
+            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
             OnPropertyChanged(nameof(IsBrowsingMode));
             OnPropertyChanged(nameof(IsFloatingMode));
             NotifyHotkeyDependentTexts();
+            RefreshHotkeyScopeFlags();
         }
 
         if (kind.HasFlag(BrowserStateChangeKind.Status))
@@ -1366,6 +1376,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     public bool IsThemeSystem => string.Equals(_browser.ThemeMode, ThemeService.System, StringComparison.OrdinalIgnoreCase);
 
+    public bool IsHotkeyScopeBlacklist => _browser.HotkeyScope == HotkeyScope.Blacklist;
+
+    public bool IsHotkeyScopeAllApps => _browser.HotkeyScope == HotkeyScope.AllApps;
+
+    public bool IsHotkeyScopeOff => _browser.HotkeyScope == HotkeyScope.Off;
+
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
 
     public bool IsLanguageEn => string.Equals(_browser.UiLanguage, LocalizationService.EnUs, StringComparison.OrdinalIgnoreCase);
@@ -1381,6 +1397,31 @@ public sealed class ControlWindowViewModel : ViewModelBase
             _ => LocalizationService.Get("Toast.ThemeDark", "已切换到暗色主题"),
         };
         ShowToast(toast, StatusLevel.Success);
+    }
+
+    private void SetHotkeyScope(HotkeyScope scope)
+    {
+        if (_browser.HotkeyScope == scope)
+        {
+            return;
+        }
+
+        _browser.HotkeyScope = scope;
+        RefreshHotkeyScopeFlags();
+        var toast = scope switch
+        {
+            HotkeyScope.AllApps => LocalizationService.Get("Toast.HotkeyScopeAllApps", "热键范围：全部应用"),
+            HotkeyScope.Off => LocalizationService.Get("Toast.HotkeyScopeOff", "热键范围：已关闭"),
+            _ => LocalizationService.Get("Toast.HotkeyScopeBlacklist", "热键范围：黑名单外"),
+        };
+        ShowToast(toast, StatusLevel.Success);
+    }
+
+    private void RefreshHotkeyScopeFlags()
+    {
+        OnPropertyChanged(nameof(IsHotkeyScopeBlacklist));
+        OnPropertyChanged(nameof(IsHotkeyScopeAllApps));
+        OnPropertyChanged(nameof(IsHotkeyScopeOff));
     }
 
     private void SetLanguage(string language)

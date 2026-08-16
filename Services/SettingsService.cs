@@ -72,6 +72,7 @@ public sealed class SettingsService : IDisposable
             SeekForwardModifiers = settings.SeekForwardModifiers,
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
+            HotkeyScope = settings.HotkeyScope,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
             HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
@@ -197,6 +198,7 @@ public sealed class SettingsService : IDisposable
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
         settings.Language = LocalizationService.Normalize(settings.Language);
+        settings.HotkeyScope = Enum.IsDefined(settings.HotkeyScope) ? settings.HotkeyScope : defaults.HotkeyScope;
         settings.LastWebView2CacheCheckUtc = NormalizeCacheCheckTime(settings.LastWebView2CacheCheckUtc);
         return settings;
     }

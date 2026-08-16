@@ -149,6 +149,11 @@ public interface IControlBrowser
     string UiLanguage { get; set; }
 
     /// <summary>
+    /// 全局热键生效范围（黑名单外 / 全部应用 / 关闭）。
+    /// </summary>
+    HotkeyScope HotkeyScope { get; set; }
+
+    /// <summary>
     /// 浏览器主窗当前宽度（逻辑像素）。
     /// </summary>
     double BrowserWindowWidth { get; set; }

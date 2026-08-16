@@ -474,6 +474,7 @@ public partial class MainWindow : Window, IControlBrowser
                 KeyInterop.VirtualKeyFromKey(_settings.SeekForwardKey),
                 _settings.SeekForwardModifiers);
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
+            _keyboardHookService.HotkeyScope = _settings.HotkeyScope;
             UpdateWindowTitle();
 
             // 异步初始化历史/收藏/下载服务（构造函数不再同步读盘）。
@@ -1790,12 +1791,13 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 浮窗模式下临时隐藏/恢复显示浮窗（热键 F7 默认）。仅浮窗模式生效；
-    /// 恢复显示时用 ShowActivated=false 避免从游戏抢焦点。隐藏期间视频继续播放（保留声音）。
+    /// 临时隐藏/恢复显示窗口（热键 F7 默认），浏览与浮窗模式均可用。
+    /// 隐藏时连同控制窗一起收起（视频继续播放，保留声音）；恢复不抢前台焦点。
+    /// 隐藏期间隐藏键是唯一恢复入口：钩子层 AlwaysAllowHideToggle 使其不受生效范围限制。
     /// </summary>
     public void ToggleFloatingHidden()
     {
-        if (_isShuttingDown || _settings.WindowMode != WindowMode.Fixed)
+        if (_isShuttingDown)
         {
             return;
         }
@@ -1803,6 +1805,7 @@ public partial class MainWindow : Window, IControlBrowser
         if (_hiddenByHotkey)
         {
             _hiddenByHotkey = false;
+            _keyboardHookService.AlwaysAllowHideToggle = false;
             ShowActivated = false;
             try
             {
@@ -1813,11 +1816,23 @@ public partial class MainWindow : Window, IControlBrowser
                 ShowActivated = true;
             }
 
+            // 控制窗跟随主窗恢复：浏览模式显示在侧边，浮窗模式保持隐藏
+            UpdateControlWindowVisibility();
             SetStatusMessage(LocalizationService.Get("Status.WindowShown"), StatusLevel.Success);
         }
         else
         {
             _hiddenByHotkey = true;
+            _keyboardHookService.AlwaysAllowHideToggle = true;
+            try
+            {
+                _controlWindow?.Hide();
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Hide control window");
+            }
+
             Hide();
             SetStatusMessage(
                 LocalizationService.Format("Status.WindowHidden", FormatToggleHideHotkey()),
@@ -2099,6 +2114,7 @@ public partial class MainWindow : Window, IControlBrowser
         if (_hiddenByHotkey)
         {
             _hiddenByHotkey = false;
+            _keyboardHookService.AlwaysAllowHideToggle = false;
             Show();
         }
 
@@ -2380,10 +2396,27 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    /// <summary>全局热键生效范围（黑名单外 / 全部应用 / 关闭），对所有内置热键统一生效。</summary>
+    public HotkeyScope HotkeyScope
+    {
+        get => _settings.HotkeyScope;
+        set
+        {
+            if (!Enum.IsDefined(value) || _settings.HotkeyScope == value)
+            {
+                return;
+            }
+
+            _settings.HotkeyScope = value;
+            _keyboardHookService.HotkeyScope = value;
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
     public string ThemeMode
     {
-        get => ThemeService.Normalize(_settings.ThemeMode);
-        set
+        get => ThemeService.Normalize(_settings.ThemeMode);        set
         {
             var mode = ThemeService.Normalize(value);
             if (string.Equals(_settings.ThemeMode, mode, StringComparison.OrdinalIgnoreCase))

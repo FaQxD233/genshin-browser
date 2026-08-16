@@ -118,4 +118,21 @@ public sealed class HotkeySchemaCompatTests
         // 前位保留：模式键仍是 F8
         Assert.Equal(Key.F8, settings.ToggleModeKey);
     }
+
+    [Fact]
+    public void Load_NormalizesInvalidHotkeyScopeToBlacklist()
+    {
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        // 越界值（(HotkeyScope)99）应回退默认 Blacklist；合法值透传
+        File.WriteAllText(settingsPath,
+            """{"SchemaVersion":1,"HotkeyScope":99}""");
+
+        using var settingsService = new SettingsService(settingsPath);
+        Assert.Equal(HotkeyScope.Blacklist, settingsService.Load().HotkeyScope);
+
+        File.WriteAllText(settingsPath,
+            """{"SchemaVersion":1,"HotkeyScope":2}""");
+        Assert.Equal(HotkeyScope.Off, settingsService.Load().HotkeyScope);
+    }
 }

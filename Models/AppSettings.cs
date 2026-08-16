@@ -73,6 +73,11 @@ public sealed class AppSettings
     public string Language { get; set; } = "zh-CN";
 
     /// <summary>
+    /// 全局热键生效范围：黑名单外 / 全部应用 / 关闭。默认黑名单外。
+    /// </summary>
+    public HotkeyScope HotkeyScope { get; set; } = HotkeyScope.Blacklist;
+
+    /// <summary>
     /// 是否已展示过「首次进入浮窗」引导 toast。
     /// </summary>
     public bool HasSeenFloatingModeHint { get; set; }

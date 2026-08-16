@@ -45,6 +45,14 @@
   <sys:String x:Key="Settings.HideOverlay">Hide overlay</sys:String>
   <sys:String x:Key="Settings.SeekBackward">Rewind 5s</sys:String>
   <sys:String x:Key="Settings.SeekForward">Forward 5s</sys:String>
+  <sys:String x:Key="Settings.HotkeyScope">Hotkey scope</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeTooltip">Where global hotkeys (K, F8, F7, [, ], …) respond</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeBlacklist">Not blacklist</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeBlacklistTooltip">Respond everywhere except blacklisted apps (WeChat, QQ, browsers, editors, …)</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeAllApps">All apps</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeAllAppsTooltip">Respond in every app, including blacklisted ones</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeOff">Off</sys:String>
+  <sys:String x:Key="Settings.HotkeyScopeOffTooltip">Disable all global hotkeys; a window hidden by hotkey can still be restored with the hide key</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
   <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
@@ -153,6 +161,9 @@
   <sys:String x:Key="Toast.HideSet">“Hide overlay” set to {0}</sys:String>
   <sys:String x:Key="Toast.SeekBackwardSet">“Rewind 5s” set to {0}</sys:String>
   <sys:String x:Key="Toast.SeekForwardSet">“Forward 5s” set to {0}</sys:String>
+  <sys:String x:Key="Toast.HotkeyScopeBlacklist">Hotkey scope: not blacklist</sys:String>
+  <sys:String x:Key="Toast.HotkeyScopeAllApps">Hotkey scope: all apps</sys:String>
+  <sys:String x:Key="Toast.HotkeyScopeOff">Hotkey scope: off</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
   <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
   <sys:String x:Key="Toast.ThemeSystem">Switched to system theme</sys:String>
@@ -185,8 +196,8 @@
   <sys:String x:Key="Status.SeekBackward">Rewound {0}s.</sys:String>
   <sys:String x:Key="Status.SeekForward">Forwarded {0}s.</sys:String>
   <sys:String x:Key="Status.SeekAtEdge">Reached the start or end of the video.</sys:String>
-  <sys:String x:Key="Status.WindowHidden">Overlay hidden. Press {0} to show it again (video keeps playing).</sys:String>
-  <sys:String x:Key="Status.WindowShown">Overlay shown.</sys:String>
+  <sys:String x:Key="Status.WindowHidden">Window hidden. Press {0} to show it again (video keeps playing).</sys:String>
+  <sys:String x:Key="Status.WindowShown">Window shown.</sys:String>
   <sys:String x:Key="Status.PlaybackBlocked">The browser blocked autoplay. Please click the in-page play button first.</sys:String>
   <sys:String x:Key="Status.PlaybackCommandSent">Playback command sent.</sys:String>
   <sys:String x:Key="Status.PlaybackFailed">Playback control failed: {0}</sys:String>

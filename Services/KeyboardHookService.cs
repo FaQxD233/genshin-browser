@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
+using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
 
@@ -276,6 +277,26 @@ public sealed class KeyboardHookService : IDisposable
     // 浏览模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
     private volatile bool _isGamingMode;
     private volatile bool _isAppActive = true;
+    // 热键生效范围（黑名单外 / 全部应用 / 关闭），由 MainWindow 同步自设置
+    private volatile HotkeyScope _hotkeyScope = HotkeyScope.Blacklist;
+    // 浮窗被热键隐藏时置 true：此时隐藏键是唯一恢复入口，不受范围/前台限制
+    private volatile bool _alwaysAllowHideToggle;
+
+    /// <summary>全局热键生效范围。改变后立即对全部内置热键生效。</summary>
+    public HotkeyScope HotkeyScope
+    {
+        get => _hotkeyScope;
+        set => _hotkeyScope = value;
+    }
+
+    /// <summary>
+    /// 为 true 时隐藏浮窗键无视 HotkeyScope 与前台限制（浮窗已隐藏时它是唯一恢复手段）。
+    /// </summary>
+    public bool AlwaysAllowHideToggle
+    {
+        get => _alwaysAllowHideToggle;
+        set => _alwaysAllowHideToggle = value;
+    }
 
     public bool IsGamingMode
     {
@@ -511,8 +532,9 @@ public sealed class KeyboardHookService : IDisposable
         // 浏览器
         "chrome", "firefox", "msedge", "opera", "brave", "iexplore", "safari", "360se", "sogouexplorer",
         "vivaldi", "centbrowser", "qqbrowser", "maxthon", "ucbrowser", "yandex", "mychrome",
-        // 通讯 / 协作（新版 Teams 进程名为 ms-teams）
-        "qq", "tim", "wechat", "discord", "feishu", "dingtalk", "slack", "teams", "ms-teams", "telegram", "whatsapp", "line",
+        // 通讯 / 协作（新版 Teams 进程名为 ms-teams；微信 4.x 主进程为 Weixin，
+        // 小程序/内嵌浏览器宿主为 WeChatAppEx，旧版才是 wechat）
+        "qq", "tim", "wechat", "weixin", "wechatappex", "discord", "feishu", "dingtalk", "slack", "teams", "ms-teams", "telegram", "whatsapp", "line",
         "skype", "zoom", "outlook", "thunderbird", "mstsc",
         // 编辑器 / IDE（Rider 2020.1+ 进程名为 rider64）
         "notepad", "notepad++", "code", "devenv", "rider64", "sublime_text",
@@ -641,36 +663,45 @@ public sealed class KeyboardHookService : IDisposable
                 _toggleModeVk,
                 _toggleModeModifiers,
                 () => Raise(ModeTogglePressed),
-                CanExecuteBuiltInHotkey),
+                CanExecuteScopedHotkey),
             TogglePlaybackRegistrationId => new HotkeyRegistration(
                 _togglePlaybackVk,
                 _togglePlaybackModifiers,
                 () => Raise(KPressed),
-                CanExecutePlaybackHotkey),
+                CanExecuteScopedHotkey),
             ToggleHideRegistrationId => new HotkeyRegistration(
                 _toggleHideVk,
                 _toggleHideModifiers,
                 () => Raise(HideTogglePressed),
-                // 模式门控（仅浮窗模式生效）在 MainWindow 侧做，钩子层只做录制期挂起
-                CanExecuteBuiltInHotkey),
+                CanExecuteHideToggleHotkey),
             SeekBackwardRegistrationId => new HotkeyRegistration(
                 _seekBackwardVk,
                 _seekBackwardModifiers,
                 () => Raise(SeekBackwardPressed),
-                // 快进/倒退与播放键同一门控：浮窗模式全局（黑名单除外），浏览模式仅应用前台
-                CanExecutePlaybackHotkey),
+                CanExecuteScopedHotkey),
             SeekForwardRegistrationId => new HotkeyRegistration(
                 _seekForwardVk,
                 _seekForwardModifiers,
                 () => Raise(SeekForwardPressed),
-                CanExecutePlaybackHotkey),
+                CanExecuteScopedHotkey),
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };
     }
 
-    private bool CanExecuteBuiltInHotkey() => !_suspendBuiltInHotkeys;
+    /// <summary>
+    /// 按生效范围门控全部内置热键：关闭=不触发；全部应用=仅排除录制期挂起；
+    /// 黑名单外=沿用播放键的前台判定（浮窗模式排除黑名单软件，浏览模式仅应用前台）。
+    /// </summary>
+    private bool CanExecuteScopedHotkey() => _hotkeyScope switch
+    {
+        HotkeyScope.Off => false,
+        HotkeyScope.AllApps => !_suspendBuiltInHotkeys,
+        _ => !_suspendBuiltInHotkeys && IsGameOrBrowserForeground(),
+    };
 
-    private bool CanExecutePlaybackHotkey() => !_suspendBuiltInHotkeys && IsGameOrBrowserForeground();
+    /// <summary>隐藏浮窗键的门控：浮窗已被热键隐藏时它是唯一恢复入口，无视范围与前台限制。</summary>
+    private bool CanExecuteHideToggleHotkey() =>
+        !_suspendBuiltInHotkeys && (_alwaysAllowHideToggle || CanExecuteScopedHotkey());
 
     private void PublishSnapshotLocked()
     {

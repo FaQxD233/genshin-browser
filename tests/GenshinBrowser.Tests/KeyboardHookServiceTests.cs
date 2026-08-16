@@ -135,6 +135,10 @@ public sealed class KeyboardHookServiceTests
         Assert.Contains("windowsterminal", names);
         Assert.Contains("potplayermini64", names);
         Assert.Contains("ms-teams", names);
+        // 微信 4.x 主进程为 Weixin、小程序宿主为 WeChatAppEx，旧版才是 wechat
+        Assert.Contains("wechat", names);
+        Assert.Contains("weixin", names);
+        Assert.Contains("wechatappex", names);
 
         // 曾用/常见的错误别名不应存在（HashSet 精确匹配，别名永远命中不了真实进程名）
         Assert.DoesNotContain("qbit", names);
