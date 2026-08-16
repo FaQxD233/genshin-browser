@@ -2547,6 +2547,10 @@ public partial class MainWindow : Window, IControlBrowser
             _isMaximized = false;
             MaxIcon.Text = "\uE740";
         }
+
+        // 赋值期间的位置/尺寸事件已被 _isMaximized 守卫拦截，
+        // 控制窗跟随与尺寸显示在这里显式补一次（防抖）
+        QueueControlWindowBoundsUiRefresh();
     }
 
     private void RestoreFromMaximizeOnDrag(MouseButtonEventArgs e)
