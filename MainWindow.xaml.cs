@@ -69,6 +69,8 @@ public partial class MainWindow : Window, IControlBrowser
     // 鼠标移出窗口检测：光标离开后向页面补发鼠标事件，避免播放器控件停在移出前的位置常驻
     private DispatcherTimer? _mouseLeaveWatchTimer;
     private bool _mouseOutsideNotified;
+    // 页面上是否已打 data-gb-mouse-out 强制隐藏标记（离开→回到窗口内的一次性闩锁）
+    private bool _mouseOutForcedOnPage;
 
     // 最大化状态：透明无边框窗口不能用 WindowState.Maximized（会覆盖任务栏），
     // 这里用手工记录工作区矩形并保存还原前的边界。
@@ -2009,12 +2011,18 @@ public partial class MainWindow : Window, IControlBrowser
         if (_isShuttingDown || !_browserReady || _hiddenByHotkey || WindowState == WindowState.Minimized)
         {
             _mouseOutsideNotified = false;
+            ClearMouseOutFromPage();
             return;
         }
 
         if (IsCursorOverWindow())
         {
-            _mouseOutsideNotified = false;
+            if (_mouseOutsideNotified)
+            {
+                _mouseOutsideNotified = false;
+                ClearMouseOutFromPage();
+            }
+
             return;
         }
 
@@ -2023,6 +2031,18 @@ public partial class MainWindow : Window, IControlBrowser
             _mouseOutsideNotified = true;
             _ = DispatchMouseLeftPageAsync();
         }
+    }
+
+    /// <summary>清除页面上的「鼠标在外」强制隐藏态（窗口重新可见/光标回到窗口内时调用）。</summary>
+    private void ClearMouseOutFromPage()
+    {
+        if (!_mouseOutForcedOnPage)
+        {
+            return;
+        }
+
+        _mouseOutForcedOnPage = false;
+        _ = DispatchMouseReenteredPageAsync();
     }
 
     private bool IsCursorOverWindow()
@@ -2072,6 +2092,8 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
+        _mouseOutForcedOnPage = true;
+
         try
         {
             await core.ExecuteScriptAsync(MouseLeftPageScript);
@@ -2080,15 +2102,70 @@ public partial class MainWindow : Window, IControlBrowser
         {
             FileLogger.LogException(ex, "Notify mouse left page");
         }
+
+        // 合成 MouseEvent 是 untrusted，改变不了 Chromium 内部悬停状态（光标快速离开时
+        // hover 会卡在最后位置，正是控制栏常驻的根因）。经 CDP 派发 trusted mouseMoved
+        // 到左上角，与真实鼠标移动等效地修正内部 :hover 与播放器闲置计时。
+        try
+        {
+            await core.CallDevToolsProtocolMethodAsync(
+                "Input.dispatchMouseEvent",
+                """{"type":"mouseMoved","x":2,"y":2}""");
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Dispatch trusted mouse move via CDP");
+        }
+    }
+
+    private async Task DispatchMouseReenteredPageAsync()
+    {
+        CoreWebView2? core;
+        try
+        {
+            core = BrowserView.CoreWebView2;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (core is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await core.ExecuteScriptAsync(MouseReenteredPageScript);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Notify mouse reentered page");
+        }
     }
 
     /// <summary>
-    /// 注入页面：把页面感知的鼠标位置挪到左上角（远离底部控制栏），并对常见
-    /// 播放器容器补发 mouseleave/mouseout，使其收起控制栏、恢复闲置自动隐藏。
+    /// 鼠标离开窗口时注入：给 html 打 data-gb-mouse-out 标记，CSS 强制隐藏 B 站两代
+    /// 播放器的控制栏/顶栏（不依赖播放器自身逻辑，untrusted 事件说服不了它时的兜底）；
+    /// 同时补发合成 mouseleave/mouseout 促使播放器收起。回到窗口内时移除标记恢复。
     /// </summary>
     private const string MouseLeftPageScript = """
 (() => {
   try {
+    if (!document.getElementById('gb-mouse-out-style')) {
+      const s = document.createElement('style');
+      s.id = 'gb-mouse-out-style';
+      s.textContent =
+        'html[data-gb-mouse-out] .bpx-player-control-wrap,' +
+        'html[data-gb-mouse-out] .bilibili-player-video-control,' +
+        'html[data-gb-mouse-out] .bpx-player-top-wrap,' +
+        'html[data-gb-mouse-out] .bilibili-player-video-top' +
+        '{opacity:0 !important;visibility:hidden !important;pointer-events:none !important;}';
+      (document.head || document.documentElement || document.body).appendChild(s);
+    }
+    document.documentElement.setAttribute('data-gb-mouse-out', '');
+
     document.dispatchEvent(new MouseEvent('mousemove', {
       bubbles: true, cancelable: true, view: window, clientX: 2, clientY: 2
     }));
@@ -2098,6 +2175,14 @@ public partial class MainWindow : Window, IControlBrowser
       el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false, cancelable: true, view: window }));
       el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, cancelable: true, view: window }));
     }
+  } catch (_) {}
+})();
+""";
+
+    private const string MouseReenteredPageScript = """
+(() => {
+  try {
+    document.documentElement.removeAttribute('data-gb-mouse-out');
   } catch (_) {}
 })();
 """;
@@ -3675,7 +3760,8 @@ public partial class MainWindow : Window, IControlBrowser
     private const double TitleBarExpandedHeight = 30;
 
     /// <summary>
-    /// 注入到每个页面：透明背景 + 取消播放器 cursor:none。
+    /// 注入到每个页面：透明背景 + 取消播放器 cursor:none +
+    /// 预置「鼠标在外」强制隐藏控制栏的样式（标记本身由鼠标离开检测动态打/移除）。
     /// </summary>
     private const string PageBootstrapScript = """
 (() => {
@@ -3688,7 +3774,12 @@ public partial class MainWindow : Window, IControlBrowser
         'video,video *{cursor:default !important;}',
         '.bpx-player-container,.bpx-player-video-wrap,.bpx-player-video-area,',
         '.bpx-player-video-perch,.bilibili-player,.bilibili-player-area,',
-        '.bilibili-player-video-wrap,.bilibili-player-video-perch{cursor:default !important;}'
+        '.bilibili-player-video-wrap,.bilibili-player-video-perch{cursor:default !important;}',
+        'html[data-gb-mouse-out] .bpx-player-control-wrap,',
+        'html[data-gb-mouse-out] .bilibili-player-video-control,',
+        'html[data-gb-mouse-out] .bpx-player-top-wrap,',
+        'html[data-gb-mouse-out] .bilibili-player-video-top',
+        '{opacity:0 !important;visibility:hidden !important;pointer-events:none !important;}'
       ].join('');
       (document.documentElement || document.head || document.body).appendChild(s);
     }
