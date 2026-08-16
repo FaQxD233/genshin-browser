@@ -2106,15 +2106,21 @@ public partial class MainWindow : Window, IControlBrowser
         // 合成 MouseEvent 是 untrusted，改变不了 Chromium 内部悬停状态（光标快速离开时
         // hover 会卡在最后位置，正是控制栏常驻的根因）。经 CDP 派发 trusted mouseMoved
         // 到左上角，与真实鼠标移动等效地修正内部 :hover 与播放器闲置计时。
-        try
+        // 派发前再确认光标仍在窗外：离开后一个轮询周期内快速返回时，晚到的 (2,2) 会
+        // 覆盖真实位置，使停在窗内的光标按 (2,2) 处元素的光标渲染（自定义光标站点
+        // 常为 none）→ 光标「概率性消失」的来源
+        if (!IsCursorOverWindow())
         {
-            await core.CallDevToolsProtocolMethodAsync(
-                "Input.dispatchMouseEvent",
-                """{"type":"mouseMoved","x":2,"y":2}""");
-        }
-        catch (Exception ex)
-        {
-            FileLogger.LogException(ex, "Dispatch trusted mouse move via CDP");
+            try
+            {
+                await core.CallDevToolsProtocolMethodAsync(
+                    "Input.dispatchMouseEvent",
+                    """{"type":"mouseMoved","x":2,"y":2}""");
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Dispatch trusted mouse move via CDP");
+            }
         }
     }
 
@@ -2142,6 +2148,59 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Notify mouse reentered page");
+        }
+
+        // 把 Chromium 的可信位置同步回真实光标处：清掉此前 (2,2) 派发的残留，
+        // 立即恢复正确的悬停与光标形态，不必等下一次真实 mousemove
+        if (TryGetCursorPagePosition() is { } point)
+        {
+            try
+            {
+                var payload =
+                    "{\"type\":\"mouseMoved\",\"x\":" +
+                    ((int)Math.Clamp(point.X, 0, Math.Max(0, BrowserView.ActualWidth))).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    ",\"y\":" +
+                    ((int)Math.Clamp(point.Y, 0, Math.Max(0, BrowserView.ActualHeight))).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    "}";
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", payload);
+            }
+            catch (Exception ex)
+            {
+                FileLogger.LogException(ex, "Resync trusted mouse position");
+            }
+        }
+    }
+
+    /// <summary>真实光标在 WebView 视口内的页面坐标（DIP→CSS 像素，超出时钳制到边缘）。失败返回 null。</summary>
+    private System.Windows.Point? TryGetCursorPagePosition()
+    {
+        try
+        {
+            if (!GetCursorPos(out var cursor))
+            {
+                return null;
+            }
+
+            var origin = BrowserView.PointToScreen(new Point(0, 0));
+            var source = PresentationSource.FromVisual(BrowserView);
+            if (source?.CompositionTarget is null)
+            {
+                return null;
+            }
+
+            var transform = source.CompositionTarget.TransformToDevice;
+            if (transform.M11 <= 0 || transform.M22 <= 0)
+            {
+                return null;
+            }
+
+            return new System.Windows.Point(
+                (cursor.X - origin.X) / transform.M11,
+                (cursor.Y - origin.Y) / transform.M22);
+        }
+        catch
+        {
+            return null;
         }
     }
 
