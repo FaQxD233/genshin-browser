@@ -417,7 +417,8 @@ public sealed class KeyboardHookService : IDisposable
         }
 
         GetWindowThreadProcessId(foregroundHWnd, out uint pid);
-        var currentPid = (uint)Process.GetCurrentProcess().Id;
+        // Environment.ProcessId 是进程内常量；Process.GetCurrentProcess().Id 每次按键都分配 Process 对象
+        var currentPid = (uint)Environment.ProcessId;
 
         // 1. 如果前台窗口是我们自己的进程，允许触发
         if (pid == currentPid)

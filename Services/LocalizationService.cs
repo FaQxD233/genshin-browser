@@ -32,6 +32,13 @@ public static class LocalizationService
         // 合并字典属 DispatcherObject，必须封送到 UI 线程替换（与 ThemeService.ApplyEffective 一致）
         void ApplyOnUi()
         {
+            // 已是该语言时跳过：省一次字符串字典 BAML 加载与全应用 DynamicResource 重算
+            //（App.xaml 默认合并 zh-CN 字典，中文用户的常见启动路径）
+            if (string.Equals(Current, lang, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             var source = lang == EnUs ? EnSource : ZhSource;
             ThemeService.ReplaceMergedDictionary(app.Resources.MergedDictionaries, IsStringDictionary, source);
             Current = lang;

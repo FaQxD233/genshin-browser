@@ -45,6 +45,9 @@ public partial class MainWindow : Window, IControlBrowser
     private CancellationTokenSource? _cacheCheckCts;
     private Task? _cacheCheckTask;
     private string? _webViewUserDataFolder;
+    // 启动预加载的 WebView2 环境：OnLoaded 一开始就并行拉起浏览器进程
+    //（启动最慢一环），首次初始化消费一次；失败/缺运行时返回 null 走原路径
+    private Task<CoreWebView2Environment?>? _environmentPreloadTask;
     /// <summary>
     /// 为 false 时忽略 Location/SizeChanged 对边界的写回，
     /// 防止启动默认坐标在配置恢复前覆盖 settings.json。
@@ -328,6 +331,10 @@ public partial class MainWindow : Window, IControlBrowser
                 return;
             }
 
+            // 浏览器进程拉起是启动最慢的一环：先并行预创建环境，
+            // 与下面的数据服务加载、控制窗构造同时进行
+            StartEnvironmentPreload();
+
             // 启动时 settings 已 Sanitize 无冲突；原子写入避免分步 setter 中间态
             _keyboardHookService.TrySetToggleModeHotkey(
                 KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey),
@@ -364,12 +371,8 @@ public partial class MainWindow : Window, IControlBrowser
             UpdateControlWindowVisibility();
             NotifyBrowserState(BrowserStateChangeKind.All);
 
-            await EnsureWebView2RuntimeAsync();
-            if (_isShuttingDown)
-            {
-                return;
-            }
-
+            // 运行时检查/安装移入 GetOrCreateBrowserEnvironmentAsync：
+            // 常见路径下预启动环境已就绪，这里直接消费
             await InitializeBrowserAsync();
             if (_isShuttingDown)
             {
@@ -450,6 +453,64 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    /// <summary>
+    /// 并行预创建 WebView2 环境（拉起浏览器进程）。运行时缺失或创建失败时返回 null，
+    /// 正式初始化走原路径（含运行时安装交互）。异常全部吞掉，预启动只是优化。
+    /// </summary>
+    private void StartEnvironmentPreload()
+    {
+        if (_environmentPreloadTask is not null || _isShuttingDown)
+        {
+            return;
+        }
+
+        var userDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "GenshinBrowser", "WebViewProfile");
+        _webViewUserDataFolder = userDataFolder;
+        _environmentPreloadTask = Task.Run(async () =>
+        {
+            try
+            {
+                if (!IsWebView2RuntimeInstalled())
+                {
+                    return null;
+                }
+
+                return await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+            }
+            catch
+            {
+                return null;
+            }
+        });
+    }
+
+    /// <summary>
+    /// 取可用的 WebView2 环境：优先消费启动预加载（仅首次初始化使用一次，
+    /// 浏览器进程崩溃后的重建路径必须重新创建，旧环境对象随进程失效）；
+    /// 无预加载或预加载失败时按原路径检查运行时并创建。
+    /// </summary>
+    private async Task<CoreWebView2Environment> GetOrCreateBrowserEnvironmentAsync()
+    {
+        var preload = _environmentPreloadTask;
+        if (preload is not null)
+        {
+            _environmentPreloadTask = null;
+            if (await preload.ConfigureAwait(true) is { } preloaded)
+            {
+                return preloaded;
+            }
+        }
+
+        await EnsureWebView2RuntimeAsync();
+        var userDataFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "GenshinBrowser", "WebViewProfile");
+        _webViewUserDataFolder = userDataFolder;
+        return await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+    }
+
     private bool IsWebView2RuntimeInstalled()
     {
         try
@@ -501,9 +562,7 @@ public partial class MainWindow : Window, IControlBrowser
         var browser = BrowserView;
         try
         {
-            var userDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser", "WebViewProfile");
-            _webViewUserDataFolder = userDataFolder;
-            var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+            var environment = await GetOrCreateBrowserEnvironmentAsync();
             await browser.EnsureCoreWebView2Async(environment);
             if (_isShuttingDown || !ReferenceEquals(browser, BrowserView))
             {

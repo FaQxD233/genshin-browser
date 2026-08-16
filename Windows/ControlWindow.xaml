@@ -29,7 +29,8 @@
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
           <TextBlock Text="{Binding FileName}" FontSize="12" FontWeight="Medium"
-                     TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimary}"
+                     TextTrimming="CharacterEllipsis"
+                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
                      ToolTip="{Binding FileName}" VerticalAlignment="Center"/>
           <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="11"
                      Margin="12,0,0,0" Foreground="{DynamicResource TextTertiary}"
@@ -787,13 +788,16 @@
             <Style TargetType="ListBox" BasedOn="{StaticResource ModernListBox}">
               <Setter Property="Background" Value="Transparent"/>
               <!-- 保留 Visibility=Visible 让 Opacity 动画起效（Collapsed 会跳过渲染管线）；
-                   用 IsHitTestVisible=False 屏蔽非激活 Tab 的鼠标事件 -->
+                   用 IsHitTestVisible=False 屏蔽非激活 Tab 的鼠标事件，
+                   TabNavigation=None 让非激活 Tab 整棵子树不进入 Tab 键导航 -->
               <Setter Property="Visibility" Value="Visible"/>
               <Setter Property="Opacity" Value="0"/>
               <Setter Property="IsHitTestVisible" Value="False"/>
+              <Setter Property="KeyboardNavigation.TabNavigation" Value="None"/>
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
                   <Setter Property="IsHitTestVisible" Value="True"/>
+                  <Setter Property="KeyboardNavigation.TabNavigation" Value="Continue"/>
                   <DataTrigger.EnterActions>
                     <BeginStoryboard>
                       <Storyboard>
@@ -833,6 +837,7 @@
               <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFavoritesTab}" Value="True">
                   <Setter Property="IsHitTestVisible" Value="False"/>
+                  <Setter Property="KeyboardNavigation.TabNavigation" Value="None"/>
                   <DataTrigger.EnterActions>
                     <BeginStoryboard>
                       <Storyboard>

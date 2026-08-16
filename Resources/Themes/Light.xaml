@@ -17,7 +17,8 @@
   <!-- 模式强调色：浏览=蓝，浮窗=橙（分段高亮 / 主窗描边闪） -->
   <Color x:Key="ColorModeBrowsingAccent">#0969DA</Color>
   <Color x:Key="ColorModeFloatingAccent">#BF8700</Color>
-  <Color x:Key="ColorModeFloatingAccentSoft">#33F0A020</Color>
+  <!-- 浮窗软色 = 同主题浮窗强调色 + 0x33 透明度（与 Dark 的 #F0A020/#33F0A020 配对方式一致） -->
+  <Color x:Key="ColorModeFloatingAccentSoft">#33BF8700</Color>
   <Color x:Key="ColorListDivider">#D8DEE4</Color>
   <Color x:Key="ColorTextPrimary">#1F2328</Color>
   <Color x:Key="ColorTextSecondary">#656D76</Color>

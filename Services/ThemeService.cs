@@ -121,6 +121,13 @@ public static class ThemeService
 
         void ApplyOnUi()
         {
+            // 已是生效主题时跳过：省一次主题 BAML 加载与替换引起的
+            // 全应用 DynamicResource 失效重算（默认 Dark 启动的常见路径）
+            if (string.Equals(Current, effective, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             var source = effective == Light ? LightSource : DarkSource;
             ReplaceMergedDictionary(app.Resources.MergedDictionaries, IsThemeDictionary, source);
             Current = effective;

@@ -44,7 +44,10 @@ public static class NavigationTarget
                 return LimitLength(absoluteUri.ToString());
             }
 
-            if (target.Contains("://", StringComparison.Ordinal))
+            // 非 http(s) 的绝对 URI 视为不可导航（mailto: / tel: / file: / notes:// 等），
+            // 不再落入搜索。注意 host[:port] 形式（无 scheme 前缀）会被 Uri 解析进
+            // scheme 位（localhost:8080 → scheme=localhost），须放行给后续主机判定。
+            if (target.Contains("://", StringComparison.Ordinal) || !SchemeLooksLikeHost(absoluteUri.Scheme))
             {
                 return null;
             }
@@ -87,6 +90,25 @@ public static class NavigationTarget
             return false;
         }
 
+        // userinfo 前缀（user@host / user:pass@host）：取最后一个 @ 之后的 authority
+        var atIndex = hostPart.LastIndexOf('@');
+        if (atIndex >= 0)
+        {
+            hostPart = hostPart[(atIndex + 1)..];
+            if (hostPart.Length == 0)
+            {
+                return false;
+            }
+        }
+
+        // [IPv6] 字面量（可带 :port）：只校验括号配对与内容非空，
+        // 括号内格式交给 Build 侧 Uri.TryCreate 最终裁决
+        if (hostPart.StartsWith('['))
+        {
+            var closeBracket = hostPart.IndexOf(']');
+            return closeBracket > 1 && hostPart.IndexOf(']', closeBracket + 1) < 0;
+        }
+
         var colonIndex = hostPart.LastIndexOf(':');
         if (colonIndex > 0 && hostPart.IndexOf(':') == colonIndex)
         {
@@ -95,5 +117,16 @@ public static class NavigationTarget
 
         return hostPart.Equals("localhost", StringComparison.OrdinalIgnoreCase)
             || (hostPart.Contains('.', StringComparison.Ordinal) && Uri.CheckHostName(hostPart) != UriHostNameType.Unknown);
+    }
+
+    /// <summary>
+    /// scheme 位是否其实是「主机形」输入。无 scheme 前缀的 host[:port] 会被 Uri
+    /// 解析成 scheme=host（"localhost:8080" → scheme=localhost），这类要放行；
+    /// 其余（mailto / tel / file 等真协议名）按不可导航处理。
+    /// </summary>
+    private static bool SchemeLooksLikeHost(string scheme)
+    {
+        return scheme.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || scheme.Contains('.');
     }
 }
