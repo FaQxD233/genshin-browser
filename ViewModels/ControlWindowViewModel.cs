@@ -669,7 +669,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void Browser_OnZoomChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(ZoomPercentageText));
-        SyncOpacityZoomTexts();
+        // 输入框有用户正在编辑的内容时跳过回填（提交/失焦时由 Apply 路径刷新），
+        // 与 RefreshFromBrowser(Appearance) 的守卫策略一致
+        if (string.IsNullOrWhiteSpace(_zoomPercentText) || string.IsNullOrWhiteSpace(_opacityPercentText))
+        {
+            SyncOpacityZoomTexts();
+        }
     }
 
     private void Browser_OnDownloadsChanged(object? sender, EventArgs e)

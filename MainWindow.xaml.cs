@@ -2528,15 +2528,18 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _savedBounds = new Rect(Left, Top, Width, Height);
             var work = WindowBoundsHelper.GetWorkArea(this);
+            // 先置标志再赋值：Left/Top/Width/Height 赋值会同步触发 LocationChanged/SizeChanged，
+            // 守卫若未生效会把最大化边界写入 settings，关闭时丢失还原前的窗口位置。
+            _isMaximized = true;
             Left = work.Left;
             Top = work.Top;
             Width = work.Width;
             Height = work.Height;
-            _isMaximized = true;
             MaxIcon.Text = "\uE73F";
         }
         else
         {
+            // 赋值期间 _isMaximized 仍为 true：还原后的边界不落盘，等用户随后的移动/缩放再写
             Left = _savedBounds.Left;
             Top = _savedBounds.Top;
             Width = _savedBounds.Width;

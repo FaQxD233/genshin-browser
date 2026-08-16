@@ -303,7 +303,18 @@ public partial class ControlWindow : Window
         menu.Items.Add(openItem);
 
         var copyItem = new MenuItem { Header = LocalizationService.Get("Context.CopyLink", "复制链接") };
-        copyItem.Click += (_, _) => System.Windows.Clipboard.SetText(item.Url);
+        copyItem.Click += (_, _) =>
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(item.Url);
+            }
+            catch (Exception ex)
+            {
+                // 剪贴板可能被其它进程短暂锁定；失败仅记日志，不让异常走到全局未处理弹框
+                FileLogger.LogException(ex, "Copy link to clipboard");
+            }
+        };
         menu.Items.Add(copyItem);
         menu.Items.Add(new Separator());
 

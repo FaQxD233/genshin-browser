@@ -29,10 +29,23 @@ public static class LocalizationService
             return;
         }
 
-        var source = lang == EnUs ? EnSource : ZhSource;
-        ThemeService.ReplaceMergedDictionary(app.Resources.MergedDictionaries, IsStringDictionary, source);
-        Current = lang;
-        LanguageChanged?.Invoke(null, EventArgs.Empty);
+        // 合并字典属 DispatcherObject，必须封送到 UI 线程替换（与 ThemeService.ApplyEffective 一致）
+        void ApplyOnUi()
+        {
+            var source = lang == EnUs ? EnSource : ZhSource;
+            ThemeService.ReplaceMergedDictionary(app.Resources.MergedDictionaries, IsStringDictionary, source);
+            Current = lang;
+            LanguageChanged?.Invoke(null, EventArgs.Empty);
+        }
+
+        if (app.Dispatcher.CheckAccess())
+        {
+            ApplyOnUi();
+        }
+        else
+        {
+            app.Dispatcher.Invoke(ApplyOnUi);
+        }
     }
 
     public static string Normalize(string? language)

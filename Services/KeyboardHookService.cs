@@ -168,27 +168,32 @@ public sealed class KeyboardHookService : IDisposable
 
     public bool Start(out int errorCode)
     {
-        errorCode = 0;
-
-        if (_isDisposed)
+        // _hookId 的检查与安装必须在 _registrationLock 内：与 Dispose 的卸钩互斥，
+        // 否则并发交错时可能在 Dispose 之后装上永不卸载的钩子。
+        lock (_registrationLock)
         {
-            errorCode = ObjectDisposedErrorCode;
+            errorCode = 0;
+
+            if (_isDisposed)
+            {
+                errorCode = ObjectDisposedErrorCode;
+                return false;
+            }
+
+            if (_hookId != IntPtr.Zero)
+            {
+                return true;
+            }
+
+            _hookId = SetHook(_proc);
+            if (_hookId != IntPtr.Zero)
+            {
+                return true;
+            }
+
+            errorCode = Marshal.GetLastWin32Error();
             return false;
         }
-
-        if (_hookId != IntPtr.Zero)
-        {
-            return true;
-        }
-
-        _hookId = SetHook(_proc);
-        if (_hookId != IntPtr.Zero)
-        {
-            return true;
-        }
-
-        errorCode = Marshal.GetLastWin32Error();
-        return false;
     }
 
     /// <summary>
@@ -258,12 +263,14 @@ public sealed class KeyboardHookService : IDisposable
             _isDisposed = true;
             _registrations.Clear();
             Volatile.Write(ref _hotkeySnapshot, HotkeySnapshot.Empty);
-        }
 
-        if (_hookId != IntPtr.Zero)
-        {
-            UnhookWindowsHookEx(_hookId);
-            _hookId = IntPtr.Zero;
+            // 卸钩也在锁内：HookCallback 不获取 _registrationLock（只读快照 + _keyStateLock），
+            // 持锁调用 UnhookWindowsHookEx 无死锁风险，且与 Start 的安装严格互斥。
+            if (_hookId != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hookId);
+                _hookId = IntPtr.Zero;
+            }
         }
 
         lock (_keyStateLock)
@@ -276,9 +283,9 @@ public sealed class KeyboardHookService : IDisposable
 
     private static IntPtr SetHook(LowLevelKeyboardProc proc)
     {
-        using var currentProcess = Process.GetCurrentProcess();
-        using var currentModule = currentProcess.MainModule;
-        return SetWindowsHookEx(WhKeyboardLl, proc, GetModuleHandle(currentModule?.ModuleName), 0);
+        // WH_KEYBOARD_LL 是全局钩子，hMod 仅作来源标识，用本进程 exe 模块句柄即可；
+        // 不要走 Process.MainModule：单文件发布等场景下会抛 Win32Exception。
+        return SetWindowsHookEx(WhKeyboardLl, proc, GetModuleHandle(null), 0);
     }
 
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)

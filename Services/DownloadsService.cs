@@ -33,11 +33,20 @@ public sealed class DownloadsService : IDisposable
 
     /// <summary>
     /// 异步从磁盘加载下载记录。构造函数不再同步读盘，避免阻塞首帧。
-    /// 应在 UI 准备好显示下载列表前调用一次（如 MainWindow_OnLoaded）。
+    /// 必须从 UI 线程调用：填充 <see cref="Downloads"/>（ObservableCollection）依赖本方法
+    /// 首个 await 捕获的调用方上下文，磁盘读取与反序列化全程在线程池执行。
     /// </summary>
     public async Task InitializeAsync()
     {
-        _version = await LoadFromDiskAsync().ConfigureAwait(true) ? 1 : 0;
+        var (sanitized, changed) = await LoadFromDiskAsync().ConfigureAwait(true);
+        // 这里已恢复到调用方（UI）线程：LoadFromDiskAsync 内部全程 ConfigureAwait(false)，
+        // 不会再触碰 ObservableCollection；首个 await 在 UI 线程上捕获上下文，恢复才有效。
+        foreach (var item in sanitized)
+        {
+            Downloads.Add(item);
+        }
+
+        _version = changed ? 1 : 0;
     }
 
     public ObservableCollection<DownloadItem> Downloads { get; } = new();
@@ -391,16 +400,17 @@ public sealed class DownloadsService : IDisposable
         }
     }
 
-    private async Task<bool> LoadFromDiskAsync()
+    private async Task<(List<DownloadItem> Sanitized, bool Changed)> LoadFromDiskAsync()
     {
         if (_downloadsPath is null || !File.Exists(_downloadsPath))
         {
-            return false;
+            return (new List<DownloadItem>(), false);
         }
 
         try
         {
-            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程
+            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程。
+            // 本方法只产出数据，不碰任何 ObservableCollection（填充在 InitializeAsync 的 UI 恢复点）。
             var json = await JsonFileWriter.ReadAllTextBoundedAsync(
                 _downloadsPath,
                 AppConfig.Data.MaxDownloadsFileSizeBytes).ConfigureAwait(false);
@@ -410,20 +420,14 @@ public sealed class DownloadsService : IDisposable
                 var l = JsonSerializer.Deserialize<List<PersistedDownloadEntry?>>(json)
                         ?? new List<PersistedDownloadEntry?>();
                 return (l, SanitizeEntries(l));
-            }).ConfigureAwait(true);
+            }).ConfigureAwait(false);
 
-            // 回到 UI 线程填充 ObservableCollection（ConfigureAwait(true) 默认）
-            foreach (var item in sanitized)
-            {
-                Downloads.Add(item);
-            }
-
-            return !EntriesMatch(loaded, sanitized);
+            return (sanitized, !EntriesMatch(loaded, sanitized));
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load downloads");
-            return false;
+            return (new List<DownloadItem>(), false);
         }
     }
 
