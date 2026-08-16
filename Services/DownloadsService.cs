@@ -29,7 +29,15 @@ public sealed class DownloadsService : IDisposable
     public DownloadsService(string? downloadsPath = null)
     {
         _downloadsPath = downloadsPath;
-        _version = LoadFromDisk() ? 1 : 0;
+    }
+
+    /// <summary>
+    /// 异步从磁盘加载下载记录。构造函数不再同步读盘，避免阻塞首帧。
+    /// 应在 UI 准备好显示下载列表前调用一次（如 MainWindow_OnLoaded）。
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        _version = await LoadFromDiskAsync().ConfigureAwait(true) ? 1 : 0;
     }
 
     public ObservableCollection<DownloadItem> Downloads { get; } = new();
@@ -211,13 +219,21 @@ public sealed class DownloadsService : IDisposable
 
     public void ClearFinished()
     {
-        var toRemove = Downloads.Where(d => d.State is DownloadState.Completed or DownloadState.Canceled or DownloadState.Interrupted).ToList();
-        foreach (var item in toRemove)
+        // 倒序 RemoveAt 避免 Where().ToList() + 正序 Remove 的 O(n²)：
+        // ObservableCollection.Remove(item) 内部是 O(n) 线性查找 + 移位，
+        // 循环执行整体 O(n²)；倒序 RemoveAt 直接按索引删除，整体 O(n)。
+        var removed = 0;
+        for (var i = Downloads.Count - 1; i >= 0; i--)
         {
-            Downloads.Remove(item);
+            var state = Downloads[i].State;
+            if (state is DownloadState.Completed or DownloadState.Canceled or DownloadState.Interrupted)
+            {
+                Downloads.RemoveAt(i);
+                removed++;
+            }
         }
 
-        if (toRemove.Count > 0)
+        if (removed > 0)
         {
             QueuePersist();
         }
@@ -375,7 +391,7 @@ public sealed class DownloadsService : IDisposable
         }
     }
 
-    private bool LoadFromDisk()
+    private async Task<bool> LoadFromDiskAsync()
     {
         if (_downloadsPath is null || !File.Exists(_downloadsPath))
         {
@@ -384,12 +400,19 @@ public sealed class DownloadsService : IDisposable
 
         try
         {
-            var json = JsonFileWriter.ReadAllTextBounded(
+            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程
+            var json = await JsonFileWriter.ReadAllTextBoundedAsync(
                 _downloadsPath,
-                AppConfig.Data.MaxDownloadsFileSizeBytes);
-            var loaded = JsonSerializer.Deserialize<List<PersistedDownloadEntry?>>(json)
-                         ?? new List<PersistedDownloadEntry?>();
-            var sanitized = SanitizeEntries(loaded);
+                AppConfig.Data.MaxDownloadsFileSizeBytes).ConfigureAwait(false);
+
+            var (loaded, sanitized) = await Task.Run(() =>
+            {
+                var l = JsonSerializer.Deserialize<List<PersistedDownloadEntry?>>(json)
+                        ?? new List<PersistedDownloadEntry?>();
+                return (l, SanitizeEntries(l));
+            }).ConfigureAwait(true);
+
+            // 回到 UI 线程填充 ObservableCollection（ConfigureAwait(true) 默认）
             foreach (var item in sanitized)
             {
                 Downloads.Add(item);

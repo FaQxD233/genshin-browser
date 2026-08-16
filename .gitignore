@@ -19,3 +19,6 @@ TestResults/
 
 # Local Claude Code / agent workspace (never ship)
 .claude/
+
+# Trae IDE local workspace
+.trae/

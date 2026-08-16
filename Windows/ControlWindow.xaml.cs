@@ -18,6 +18,17 @@ public partial class ControlWindow : Window
     private bool _hasUserMovedWindow;
     private bool _isRestoringBounds;
     private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
+    // 滚轮平滑滚动动画复用，避免每次滚轮事件 new DoubleAnimation + CubicEase 增加 Gen0 GC
+    private static readonly System.Windows.Media.Animation.EasingFunctionBase SmoothScrollEasing =
+        new System.Windows.Media.Animation.CubicEase
+        {
+            EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
+        };
+    private readonly System.Windows.Media.Animation.DoubleAnimation _smoothScrollAnimation = new()
+    {
+        Duration = TimeSpan.FromMilliseconds(AppConfig.Ui.SmoothScrollDurationMs),
+        EasingFunction = SmoothScrollEasing,
+    };
 
     public ControlWindow(IControlBrowser browser)
     {
@@ -258,18 +269,10 @@ public partial class ControlWindow : Window
         }
 
         scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, null);
-        var animation = new System.Windows.Media.Animation.DoubleAnimation
-        {
-            From = currentOffset,
-            To = targetOffset,
-            Duration = TimeSpan.FromMilliseconds(AppConfig.Ui.SmoothScrollDurationMs),
-            EasingFunction = new System.Windows.Media.Animation.CubicEase
-            {
-                EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
-            }
-        };
+        _smoothScrollAnimation.From = currentOffset;
+        _smoothScrollAnimation.To = targetOffset;
 
-        scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, animation);
+        scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, _smoothScrollAnimation);
         e.Handled = true;
     }
 

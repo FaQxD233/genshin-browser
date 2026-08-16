@@ -61,6 +61,7 @@ public sealed class JsonAndEntryServiceTests
         }));
         using (var historyService = new HistoryService(historyPath))
         {
+            await historyService.InitializeAsync();
             Assert.Single(historyService.GetEntries());
             Assert.Equal(AppConfig.Data.MaxEntryTitleLength, historyService.GetEntries()[0].Title.Length);
             await historyService.FlushAsync();
@@ -74,6 +75,7 @@ public sealed class JsonAndEntryServiceTests
             new() { Url = "https://example.com/item?utm_source=ad", Title = "item" },
         }));
         using var favoritesService = new FavoritesService(favoritesPath);
+        await favoritesService.InitializeAsync();
         Assert.Single(favoritesService.GetEntries());
         Assert.DoesNotContain("utm_source", favoritesService.GetEntries()[0].Url);
         await favoritesService.FlushAsync();

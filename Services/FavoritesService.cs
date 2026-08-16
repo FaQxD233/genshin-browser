@@ -12,6 +12,8 @@ public sealed class FavoritesService : IDisposable
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<FavoriteEntry> _entries = new();
+    // URL 镜像集合：O(1) Contains 查询（每次导航都会调），同时用于 AddOrUpdate/Remove 的去重检查
+    private readonly HashSet<string> _urlSet = new(StringComparer.OrdinalIgnoreCase);
     private int _version;
     private int _savedVersion;
     private bool _disposed;
@@ -28,7 +30,15 @@ public sealed class FavoritesService : IDisposable
     public FavoritesService(string favoritesPath)
     {
         _favoritesPath = favoritesPath;
-        _version = LoadFromDisk() ? 1 : 0;
+    }
+
+    /// <summary>
+    /// 异步从磁盘加载收藏。构造函数不再同步读盘，避免阻塞首帧。
+    /// 应在 UI 准备好显示收藏前调用一次（如 MainWindow_OnLoaded）。
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        _version = await LoadFromDiskAsync().ConfigureAwait(false) ? 1 : 0;
     }
 
     public IReadOnlyList<FavoriteEntry> GetEntries()
@@ -57,16 +67,25 @@ public sealed class FavoritesService : IDisposable
 
         lock (_entriesLock)
         {
-            _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            // 仅在 URL 已存在时才做删除（O(n)），避免新 URL 的全表扫描
+            if (_urlSet.Contains(normalizedUrl))
+            {
+                _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            }
             _entries.Insert(0, new FavoriteEntry
             {
                 Url = normalizedUrl,
                 Title = safeTitle,
                 SavedAt = DateTime.UtcNow,
             });
+            _urlSet.Add(normalizedUrl);
 
             if (_entries.Count > AppConfig.Data.MaxFavoriteEntries)
             {
+                for (var i = AppConfig.Data.MaxFavoriteEntries; i < _entries.Count; i++)
+                {
+                    _urlSet.Remove(_entries[i].Url);
+                }
                 _entries.RemoveRange(AppConfig.Data.MaxFavoriteEntries, _entries.Count - AppConfig.Data.MaxFavoriteEntries);
             }
 
@@ -88,7 +107,12 @@ public sealed class FavoritesService : IDisposable
 
         lock (_entriesLock)
         {
+            if (!_urlSet.Contains(normalizedUrl))
+            {
+                return Task.CompletedTask;
+            }
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            _urlSet.Remove(normalizedUrl);
             _snapshotCache = null;
             _version++;
             _snapshotCache = _entries.AsReadOnly();
@@ -107,7 +131,7 @@ public sealed class FavoritesService : IDisposable
 
         lock (_entriesLock)
         {
-            return _entries.Any(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            return _urlSet.Contains(normalizedUrl);
         }
     }
 
@@ -232,7 +256,7 @@ public sealed class FavoritesService : IDisposable
         return copy;
     }
 
-    private bool LoadFromDisk()
+    private async Task<bool> LoadFromDiskAsync()
     {
         if (!File.Exists(_favoritesPath))
         {
@@ -241,16 +265,37 @@ public sealed class FavoritesService : IDisposable
 
         try
         {
-            var json = JsonFileWriter.ReadAllTextBounded(_favoritesPath, AppConfig.Data.MaxFavoritesFileSizeBytes);
-            var loaded = JsonSerializer.Deserialize<List<FavoriteEntry?>>(json) ?? new List<FavoriteEntry?>();
-            _entries = SanitizeEntries(loaded);
-            return !EntriesMatch(loaded, _entries);
+            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程
+            var json = await JsonFileWriter.ReadAllTextBoundedAsync(
+                _favoritesPath,
+                AppConfig.Data.MaxFavoritesFileSizeBytes).ConfigureAwait(false);
+
+            var (loaded, sanitized) = await Task.Run(() =>
+            {
+                var l = JsonSerializer.Deserialize<List<FavoriteEntry?>>(json) ?? new List<FavoriteEntry?>();
+                return (l, SanitizeEntries(l));
+            }).ConfigureAwait(false);
+
+            lock (_entriesLock)
+            {
+                _entries = sanitized;
+                _urlSet.Clear();
+                foreach (var e in _entries)
+                {
+                    _urlSet.Add(e.Url);
+                }
+                _snapshotCache = _entries.AsReadOnly();
+                return !EntriesMatch(loaded, _entries);
+            }
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load favorites");
-            // 文件损坏或无法访问，从空列表开始
-            _entries = new List<FavoriteEntry>();
+            lock (_entriesLock)
+            {
+                _entries = new List<FavoriteEntry>();
+                _urlSet.Clear();
+            }
             return false;
         }
     }

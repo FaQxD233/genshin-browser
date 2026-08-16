@@ -12,6 +12,8 @@ public sealed class HistoryService : IDisposable
     private readonly object _entriesLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private List<HistoryEntry> _entries = new();
+    // URL 镜像集合：O(1) 判断 URL 是否已存在，避免 AddEntryAsync/RemoveAsync 中 O(n) RemoveAll 全表扫描。
+    private readonly HashSet<string> _urlSet = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 缓存的只读快照。仅在 _entries 变更时重建，避免每次 GetEntries() 都 ToList() 分配新副本。
@@ -33,7 +35,15 @@ public sealed class HistoryService : IDisposable
     public HistoryService(string historyPath)
     {
         _historyPath = historyPath;
-        if (LoadFromDisk())
+    }
+
+    /// <summary>
+    /// 异步从磁盘加载历史。构造函数不再同步读盘，避免阻塞首帧。
+    /// 应在 UI 准备好显示历史前调用一次（如 MainWindow_OnLoaded）。
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        if (await LoadFromDiskAsync().ConfigureAwait(false))
         {
             QueueDebouncedSave();
         }
@@ -65,16 +75,26 @@ public sealed class HistoryService : IDisposable
 
         lock (_entriesLock)
         {
-            _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            // 仅在 URL 已存在时才做删除（O(n)），避免新 URL 的全表扫描
+            if (_urlSet.Contains(normalizedUrl))
+            {
+                _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            }
             _entries.Insert(0, new HistoryEntry
             {
                 Url = normalizedUrl,
                 Title = safeTitle,
                 VisitedAt = DateTime.UtcNow,
             });
+            _urlSet.Add(normalizedUrl);
 
             if (_entries.Count > AppConfig.Data.MaxHistoryEntries)
             {
+                // 同步移除被裁剪条目的 URL 镜像
+                for (var i = AppConfig.Data.MaxHistoryEntries; i < _entries.Count; i++)
+                {
+                    _urlSet.Remove(_entries[i].Url);
+                }
                 _entries.RemoveRange(AppConfig.Data.MaxHistoryEntries, _entries.Count - AppConfig.Data.MaxHistoryEntries);
             }
 
@@ -98,7 +118,12 @@ public sealed class HistoryService : IDisposable
 
         lock (_entriesLock)
         {
+            if (!_urlSet.Contains(normalizedUrl))
+            {
+                return Task.CompletedTask;
+            }
             _entries.RemoveAll(item => string.Equals(item.Url, normalizedUrl, StringComparison.OrdinalIgnoreCase));
+            _urlSet.Remove(normalizedUrl);
             _snapshotCache = null;
             _version++;
         }
@@ -115,6 +140,7 @@ public sealed class HistoryService : IDisposable
         lock (_entriesLock)
         {
             _entries.Clear();
+            _urlSet.Clear();
             _snapshotCache = null;
             _version++;
         }
@@ -247,7 +273,7 @@ public sealed class HistoryService : IDisposable
         return copy;
     }
 
-    private bool LoadFromDisk()
+    private async Task<bool> LoadFromDiskAsync()
     {
         if (!File.Exists(_historyPath))
         {
@@ -256,20 +282,42 @@ public sealed class HistoryService : IDisposable
 
         try
         {
-            var json = JsonFileWriter.ReadAllTextBounded(_historyPath, AppConfig.Data.MaxHistoryFileSizeBytes);
-            var loaded = JsonSerializer.Deserialize<List<HistoryEntry?>>(json) ?? new List<HistoryEntry?>();
-            _entries = SanitizeEntries(loaded);
-            var changed = !EntriesMatch(loaded, _entries);
-            _version = changed ? 1 : 0;
-            _savedVersion = 0;
-            return changed;
+            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程
+            var json = await JsonFileWriter.ReadAllTextBoundedAsync(
+                _historyPath,
+                AppConfig.Data.MaxHistoryFileSizeBytes).ConfigureAwait(false);
+
+            var (loaded, sanitized) = await Task.Run(() =>
+            {
+                var l = JsonSerializer.Deserialize<List<HistoryEntry?>>(json) ?? new List<HistoryEntry?>();
+                return (l, SanitizeEntries(l));
+            }).ConfigureAwait(false);
+
+            lock (_entriesLock)
+            {
+                _entries = sanitized;
+                _urlSet.Clear();
+                foreach (var e in _entries)
+                {
+                    _urlSet.Add(e.Url);
+                }
+                var changed = !EntriesMatch(loaded, _entries);
+                _version = changed ? 1 : 0;
+                _savedVersion = 0;
+                _snapshotCache = null;
+                return changed;
+            }
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load history");
-            _entries = new List<HistoryEntry>();
-            _version = 0;
-            _savedVersion = 0;
+            lock (_entriesLock)
+            {
+                _entries = new List<HistoryEntry>();
+                _urlSet.Clear();
+                _version = 0;
+                _savedVersion = 0;
+            }
             return false;
         }
     }

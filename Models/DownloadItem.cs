@@ -18,6 +18,7 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private string _filePath = string.Empty;
     private bool _canCancel = true;
     private bool _canOpen;
+    private bool _canOpenInFolder;
 
     /// <summary>
     /// 显示用的文件名（来自下载路径或 URI）。
@@ -147,13 +148,8 @@ public sealed class DownloadItem : INotifyPropertyChanged
 
     public bool CanOpenInFolder
     {
-        get
-        {
-            var directory = Path.GetDirectoryName(FilePath);
-            return State != DownloadState.Canceled &&
-                   !string.IsNullOrEmpty(directory) &&
-                   Directory.Exists(directory);
-        }
+        get => _canOpenInFolder;
+        private set => SetProperty(ref _canOpenInFolder, value);
     }
 
     public bool CanRetry =>
@@ -182,7 +178,10 @@ public sealed class DownloadItem : INotifyPropertyChanged
     private void RefreshAvailability()
     {
         CanOpen = State == DownloadState.Completed && File.Exists(FilePath);
-        OnPropertyChanged(nameof(CanOpenInFolder));
+        var directory = Path.GetDirectoryName(FilePath);
+        CanOpenInFolder = State != DownloadState.Canceled &&
+                          !string.IsNullOrEmpty(directory) &&
+                          Directory.Exists(directory);
     }
 
     private static string FormatBytes(long bytes)

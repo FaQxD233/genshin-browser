@@ -31,19 +31,28 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        // 启动时清理旧日志，避免无限增长
-        FileLogger.PurgeOldLogs();
+        // 启动时清理旧日志与 stale .tmp 文件，延后到后台线程避免阻塞首帧
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                FileLogger.PurgeOldLogs();
+            }
+            catch
+            {
+                // 清理失败不影响启动
+            }
 
-        // 清理原子写流程残留的 stale .tmp 文件（进程崩溃 / 强制终止可能留下）
-        try
-        {
-            var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
-            JsonFileWriter.PurgeStaleTempFiles(dataRoot);
-        }
-        catch
-        {
-            // 清理失败不影响启动
-        }
+            try
+            {
+                var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
+                JsonFileWriter.PurgeStaleTempFiles(dataRoot);
+            }
+            catch
+            {
+                // 清理失败不影响启动
+            }
+        });
     }
 
     private static void App_OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -541,10 +541,10 @@ public sealed class KeyboardHookService : IDisposable
 
         Volatile.Write(ref _hotkeySnapshot, new HotkeySnapshot(byVirtualKey));
 
-        lock (_keyStateLock)
-        {
-            _pressedKeys.Clear();
-        }
+        // 不清空 _pressedKeys：快照变更不影响物理按键状态。
+        // 清空会导致正在长按的键失去 "已按下" 标记，下一次自动重复 KeyDown 会误触发热键；
+        // 同时在 _keyStateLock 内 Clear 会阻塞低级钩子回调（须 <300ms 返回）。
+        // 旧的 VK 残留在 _pressedKeys 中无副作用：HookCallback 仅处理新快照中存在的 VK。
     }
 
     private sealed record HotkeyRegistration(

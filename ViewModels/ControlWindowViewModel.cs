@@ -269,11 +269,18 @@ public sealed class ControlWindowViewModel : ViewModelBase
         get => _searchText;
         set
         {
+            var wasEmpty = string.IsNullOrEmpty(_searchText);
             if (SetProperty(ref _searchText, NormalizeSearch(value)))
             {
-                // 空状态提示随文本即时更新；列表过滤防抖，避免每敲一键做 O(n) 全量 diff
-                OnPropertyChanged(nameof(FavoritesEmptyText));
-                OnPropertyChanged(nameof(HistoryEmptyText));
+                // 仅在跨空/非空边界时通知 EmptyText（决定显示"无数据"还是"无匹配"），
+                // 避免每次按键都触发 getter 调 LocalizationService.Get 资源查找
+                var isEmpty = string.IsNullOrEmpty(_searchText);
+                if (wasEmpty != isEmpty)
+                {
+                    OnPropertyChanged(nameof(FavoritesEmptyText));
+                    OnPropertyChanged(nameof(HistoryEmptyText));
+                }
+                // 列表过滤防抖，避免每敲一键做 O(n) 全量 diff
                 ScheduleSearchFilter();
             }
         }
@@ -323,7 +330,16 @@ public sealed class ControlWindowViewModel : ViewModelBase
             if (SetProperty(ref _isFavoritesTab, value))
             {
                 OnPropertyChanged(nameof(IsHistoryTab));
-                // 切换 Tab 时重新过滤新显示的列表（搜索文本可能已变）
+                // 切换到的 Tab 在隐藏期间可能错过了 RefreshFromBrowser 推送，
+                // 立即从源同步一次确保数据新鲜，再执行过滤。
+                if (value)
+                {
+                    SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+                }
+                else
+                {
+                    SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+                }
                 FilterCurrentTab();
             }
         }
@@ -338,19 +354,22 @@ public sealed class ControlWindowViewModel : ViewModelBase
         set => IsFavoritesTab = !value;
     }
 
+    // EmptyText 缓存本地化字符串，避免 getter 每次绑定读取都做 TryFindResource 资源查找。
+    // 仅在语言切换时刷新（见 RefreshLocalizedTexts）。
+    private string _favoritesEmptyNoData = LocalizationService.Get("Empty.Favorites", "暂无收藏\n打开视频后点 ☆ 即可添加");
+    private string _favoritesEmptyNoMatch = LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+    private string _historyEmptyNoData = LocalizationService.Get("Empty.History", "暂无浏览记录\n访问过的页面会出现在这里");
+    private string _historyEmptyNoMatch = LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+
     /// <summary>
     /// 收藏列表为空时的提示文案（区分「无数据」与「搜索无结果」）。
     /// </summary>
-    public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText)
-            ? LocalizationService.Get("Empty.Favorites", "暂无收藏\n打开视频后点 ☆ 即可添加")
-            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+    public string FavoritesEmptyText => string.IsNullOrEmpty(SearchText) ? _favoritesEmptyNoData : _favoritesEmptyNoMatch;
 
     /// <summary>
     /// 历史列表为空时的提示文案。
     /// </summary>
-    public string HistoryEmptyText => string.IsNullOrEmpty(SearchText)
-            ? LocalizationService.Get("Empty.History", "暂无浏览记录\n访问过的页面会出现在这里")
-            : LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+    public string HistoryEmptyText => string.IsNullOrEmpty(SearchText) ? _historyEmptyNoData : _historyEmptyNoMatch;
 
     public string ToastMessage
     {
@@ -448,7 +467,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private string _downloadsBadgeText = string.Empty;
 
     /// <summary>是否显示下载角标（有进行中任务时）。</summary>
-    public bool HasDownloadsBadge => !string.IsNullOrEmpty(DownloadsBadgeText);
+    public bool HasDownloadsBadge => _hasDownloadsBadge;
+    private bool _hasDownloadsBadge;
 
     /// <summary>
     /// 是否存在中断的下载任务（用于角标变红警示，提醒用户重试或处理）。
@@ -463,14 +483,14 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private bool _hasInterruptedDownloads;
 
     /// <summary>下载列表是否为空（用于空状态展示）。</summary>
-    public bool HasNoDownloads => Downloads.Count == 0;
+    public bool HasNoDownloads => _hasNoDownloads;
+    private bool _hasNoDownloads = true;
 
     /// <summary>
-    /// 下载列表为空时的提示文案。
+    /// 下载列表为空时的提示文案。缓存本地化字符串，仅在语言切换时刷新。
     /// </summary>
-    public string DownloadsEmptyText => LocalizationService.Get(
-        "Downloads.Empty",
-        "暂无下载任务\n文件下载会出现在这里");
+    public string DownloadsEmptyText => _downloadsEmptyText;
+    private string _downloadsEmptyText = LocalizationService.Get("Downloads.Empty", "暂无下载任务\n文件下载会出现在这里");
 
     /// <summary>
     /// 全量刷新（兼容旧调用点，如恢复默认设置）。
@@ -524,8 +544,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         if (kind.HasFlag(BrowserStateChangeKind.Favorites))
         {
-            SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
-            FilterFavorites();
+            // 仅当前可见 Tab 才同步 VM 容器与过滤；隐藏 Tab 的数据在切换时按需从源同步
+            if (_isFavoritesTab)
+            {
+                SyncSourceItems(_allFavoriteItems, _browser.FavoriteEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+                FilterFavorites();
+            }
 
             // 收藏列表变更时同步当前页星标（即使未带 Navigation）
             if (!kind.HasFlag(BrowserStateChangeKind.Navigation))
@@ -540,8 +564,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         if (kind.HasFlag(BrowserStateChangeKind.History))
         {
-            SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
-            FilterHistory();
+            if (!_isFavoritesTab)
+            {
+                SyncSourceItems(_allHistoryItems, _browser.HistoryEntries, item => new ControlItemViewModel(item), (viewModel, item) => viewModel.Update(item));
+                FilterHistory();
+            }
         }
 
         if (kind.HasFlag(BrowserStateChangeKind.Status)
@@ -647,8 +674,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private void Browser_OnDownloadsChanged(object? sender, EventArgs e)
     {
+        // DownloadsEmptyText 仅在语言切换时变化（已缓存），无需每次下载进度更新都通知。
+        // HasNoDownloads 跨边界时的 EmptyText 通知由 UpdateDownloadsBadge 内部处理。
         UpdateDownloadsBadge();
-        OnPropertyChanged(nameof(DownloadsEmptyText));
     }
 
     private void Downloads_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -658,8 +686,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
         {
             IsDownloadsExpanded = true;
         }
-        UpdateDownloadsBadge();
-        OnPropertyChanged(nameof(DownloadsEmptyText));
+        // 角标与空状态文案由 Browser_OnDownloadsChanged 统一刷新，
+        // 避免双订阅（CollectionChanged + DownloadsChanged）重复计算 O(n) 扫描。
     }
 
     private void ToggleSettings()
@@ -687,8 +715,21 @@ public sealed class ControlWindowViewModel : ViewModelBase
                 ? interrupted.ToString()
                 : string.Empty;
         HasInterruptedDownloads = interrupted > 0;
-        OnPropertyChanged(nameof(HasDownloadsBadge));
-        OnPropertyChanged(nameof(HasNoDownloads));
+
+        // 仅在值实际变化时通知，避免下载进行中每 100ms 触发无意义的绑定重算
+        var newHasBadge = !string.IsNullOrEmpty(DownloadsBadgeText);
+        if (_hasDownloadsBadge != newHasBadge)
+        {
+            _hasDownloadsBadge = newHasBadge;
+            OnPropertyChanged(nameof(HasDownloadsBadge));
+        }
+        var newHasNoDownloads = _browser.Downloads.Count == 0;
+        if (_hasNoDownloads != newHasNoDownloads)
+        {
+            _hasNoDownloads = newHasNoDownloads;
+            OnPropertyChanged(nameof(HasNoDownloads));
+            OnPropertyChanged(nameof(DownloadsEmptyText));
+        }
     }
 
     private void RestoreDefaults()
@@ -830,8 +871,13 @@ public sealed class ControlWindowViewModel : ViewModelBase
             existingItem.UpdateFrom(sourceItem);
             if (sourceIndex >= target.Count || !string.Equals(target[sourceIndex].Url, sourceItem.Url, StringComparison.OrdinalIgnoreCase))
             {
-                target.Remove(existingItem);
-                target.Insert(sourceIndex, existingItem);
+                // 用 Move 替代 Remove+Insert：只触发 1 个 CollectionChanged（原方案 2 个），
+                // 减少 WPF ListBox 容器重建。existingItem 必在 target 中且不在 sourceIndex 处。
+                var currentIndex = target.IndexOf(existingItem);
+                if (currentIndex >= 0 && currentIndex != sourceIndex)
+                {
+                    target.Move(currentIndex, sourceIndex);
+                }
             }
         }
     }
@@ -1264,6 +1310,12 @@ public sealed class ControlWindowViewModel : ViewModelBase
         FavoriteToggleText = IsCurrentFavorite
             ? LocalizationService.Get("Fav.Added", "已收藏")
             : LocalizationService.Get("Fav.Add", "收藏当前页");
+        // 刷新缓存的本地化 EmptyText 字符串
+        _favoritesEmptyNoData = LocalizationService.Get("Empty.Favorites", "暂无收藏\n打开视频后点 ☆ 即可添加");
+        _favoritesEmptyNoMatch = LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+        _historyEmptyNoData = LocalizationService.Get("Empty.History", "暂无浏览记录\n访问过的页面会出现在这里");
+        _historyEmptyNoMatch = LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
+        _downloadsEmptyText = LocalizationService.Get("Downloads.Empty", "暂无下载任务\n文件下载会出现在这里");
         OnPropertyChanged(nameof(FavoritesEmptyText));
         OnPropertyChanged(nameof(HistoryEmptyText));
         OnPropertyChanged(nameof(DownloadsEmptyText));

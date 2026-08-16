@@ -25,6 +25,7 @@ public sealed class DownloadsServiceTests
 
         using (var service = new DownloadsService(path))
         {
+            await service.InitializeAsync();
             var item = Assert.Single(service.Downloads);
             Assert.Equal(DownloadState.Interrupted, item.State);
             Assert.True(item.CanRetry);
@@ -33,6 +34,7 @@ public sealed class DownloadsServiceTests
         }
 
         using var reloaded = new DownloadsService(path);
+        await reloaded.InitializeAsync();
         Assert.Equal(DownloadState.Interrupted, Assert.Single(reloaded.Downloads).State);
     }
 }

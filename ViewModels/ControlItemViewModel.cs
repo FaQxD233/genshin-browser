@@ -8,6 +8,8 @@ public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItem
     private string _url = string.Empty;
     private string _title = string.Empty;
     private string _timeDisplay = string.Empty;
+    // 缓存上次格式化时间，避免未变化时重复 FormatRelativeTime（资源查找 + 字符串分配）
+    private DateTime _lastFormattedUtc;
 
     public ControlItemViewModel(HistoryEntry item)
     {
@@ -41,21 +43,34 @@ public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItem
     {
         Url = item.Url;
         Title = item.Title;
-        TimeDisplay = TimeFormatter.FormatRelativeTime(item.VisitedAt);
+        // 仅在时间戳变化时才重新格式化；同一条历史被反复刷新时跳过资源查找与字符串分配
+        if (_lastFormattedUtc != item.VisitedAt)
+        {
+            _lastFormattedUtc = item.VisitedAt;
+            TimeDisplay = TimeFormatter.FormatRelativeTime(item.VisitedAt);
+        }
     }
 
     public void Update(FavoriteEntry item)
     {
         Url = item.Url;
         Title = item.Title;
-        TimeDisplay = TimeFormatter.FormatRelativeTime(item.SavedAt);
+        if (_lastFormattedUtc != item.SavedAt)
+        {
+            _lastFormattedUtc = item.SavedAt;
+            TimeDisplay = TimeFormatter.FormatRelativeTime(item.SavedAt);
+        }
     }
 
     public void UpdateFrom(ControlItemViewModel item)
     {
         Url = item.Url;
         Title = item.Title;
-        TimeDisplay = item.TimeDisplay;
+        if (_lastFormattedUtc != item._lastFormattedUtc)
+        {
+            _lastFormattedUtc = item._lastFormattedUtc;
+            TimeDisplay = item.TimeDisplay;
+        }
     }
 
     public bool Equals(ControlItemViewModel? other)

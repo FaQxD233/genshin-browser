@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -52,7 +54,10 @@ public partial class MainWindow : Window, IControlBrowser
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private StatusLevel _lastStatusLevel = StatusLevel.Info;
     private ControlWindow? _controlWindow;
-    private CancellationTokenSource? _settingsSaveCts;
+    // 配置保存防抖改用 DispatcherTimer，避免每次 UI 事件 new CTS + Cancel + Dispose 的分配开销
+    private DispatcherTimer? _settingsSaveTimer;
+    // SPA 连续切集时取消前序未完成的 RecordHistoryForCurrentSourceAsync 延迟任务
+    private CancellationTokenSource? _recordHistoryCts;
 
     // 最大化状态：透明无边框窗口不能用 WindowState.Maximized（会覆盖任务栏），
     // 这里用手工记录工作区矩形并保存还原前的边界。
@@ -81,8 +86,13 @@ public partial class MainWindow : Window, IControlBrowser
     private DispatcherTimer? _windowBoundsUiDebounceTimer;
 
     // WebView2 下载事件可能高频触发。这里只保留每个任务的最新状态，统一按 100ms 刷新 UI。
-    private readonly Dictionary<CoreWebView2DownloadOperation, DownloadItem> _downloadItemsByOperation = new();
-    private readonly Dictionary<DownloadItem, CoreWebView2DownloadOperation> _pendingDownloadProgress = new();
+    // 用 ConcurrentDictionary 让非 UI 线程的 BytesReceivedChanged 直接写入，避免每事件 Dispatcher.InvokeAsync 闭包堆积。
+    private readonly ConcurrentDictionary<CoreWebView2DownloadOperation, DownloadItem> _downloadItemsByOperation = new();
+    private readonly ConcurrentDictionary<DownloadItem, CoreWebView2DownloadOperation> _pendingDownloadProgress = new();
+    // 反向字典：DownloadItem → operation，供 CancelDownload O(1) 查找（替代 FirstOrDefault 线性扫描）
+    private readonly ConcurrentDictionary<DownloadItem, CoreWebView2DownloadOperation> _operationsByItem = new();
+    // 0=无待处理 dispatch，1=已入队 dispatch。配合 ConcurrentDictionary 实现"仅入队一次启动 timer"
+    private int _isProgressDispatchPending;
     private DispatcherTimer? _downloadProgressTimer;
     private PendingDownloadRetry? _pendingDownloadRetry;
     private DispatcherTimer? _pendingDownloadRetryWatchdog;
@@ -327,6 +337,13 @@ public partial class MainWindow : Window, IControlBrowser
                 _settings.TogglePlaybackModifiers);
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
             UpdateWindowTitle();
+
+            // 异步初始化历史/收藏/下载服务（构造函数不再同步读盘）。
+            // 并行加载，不阻塞 UI 线程；完成后再构造控制窗（它会读取这些数据）。
+            await Task.WhenAll(
+                _historyService.InitializeAsync(),
+                _favoritesService.InitializeAsync(),
+                _downloadsService.InitializeAsync()).ConfigureAwait(true);
 
             _controlWindow = new ControlWindow(this);
             UpdateControlWindowVisibility();
@@ -1092,6 +1109,12 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
+        // 取消前序未完成的记录任务：SPA 连续切集时避免堆积多个 Task.Delay(400) 延迟任务
+        _recordHistoryCts?.Cancel();
+        _recordHistoryCts?.Dispose();
+        _recordHistoryCts = new CancellationTokenSource();
+        var token = _recordHistoryCts.Token;
+
         try
         {
             var currentUrl = BrowserView.CoreWebView2.Source;
@@ -1101,8 +1124,8 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             // 给 SPA 一点时间更新 document.title
-            await Task.Delay(400).ConfigureAwait(true);
-            if (_isShuttingDown || BrowserView.CoreWebView2 is null)
+            await Task.Delay(400, token).ConfigureAwait(true);
+            if (_isShuttingDown || BrowserView.CoreWebView2 is null || token.IsCancellationRequested)
             {
                 return;
             }
@@ -1120,6 +1143,10 @@ public partial class MainWindow : Window, IControlBrowser
             {
                 NotifyBrowserState(BrowserStateChangeKind.History);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // 被新的 SourceChanged 取消，预期行为
         }
         catch (Exception ex)
         {
@@ -1251,6 +1278,7 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _downloadItemsByOperation[operation] = item;
+            _operationsByItem[item] = operation;
             operation.BytesReceivedChanged += DownloadOperation_OnBytesReceivedChanged;
             operation.StateChanged += DownloadOperation_OnStateChanged;
 
@@ -1266,7 +1294,8 @@ public partial class MainWindow : Window, IControlBrowser
 
             if (item is not null)
             {
-                _pendingDownloadProgress.Remove(item);
+                _pendingDownloadProgress.TryRemove(item, out _);
+                _operationsByItem.TryRemove(item, out _);
                 var isVisible = Downloads.Contains(item);
                 _downloadsService.MarkInterrupted(item);
                 if (isVisible)
@@ -1286,13 +1315,35 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        if (!Dispatcher.CheckAccess())
+        if (_isShuttingDown)
         {
-            _ = Dispatcher.InvokeAsync(() => QueueDownloadProgress(operation));
             return;
         }
 
-        QueueDownloadProgress(operation);
+        // 非 UI 线程：直接写 ConcurrentDictionary，仅入队一次 dispatch 启动 timer。
+        // 避免每事件都 Dispatcher.InvokeAsync 闭包入队（快下载时每秒数百事件 → 队列堆积）。
+        if (!_downloadItemsByOperation.TryGetValue(operation, out var item))
+        {
+            return;
+        }
+
+        _pendingDownloadProgress[item] = operation;
+
+        // 仅当没有待处理 dispatch 时才入队启动 timer
+        if (Interlocked.CompareExchange(ref _isProgressDispatchPending, 1, 0) == 0)
+        {
+            _ = Dispatcher.InvokeAsync(EnsureDownloadProgressTimerStarted);
+        }
+    }
+
+    private void EnsureDownloadProgressTimerStarted()
+    {
+        Volatile.Write(ref _isProgressDispatchPending, 0);
+        _downloadProgressTimer ??= CreateDownloadProgressTimer();
+        if (!_downloadProgressTimer.IsEnabled)
+        {
+            _downloadProgressTimer.Start();
+        }
     }
 
     private void BrowserView_OnZoomFactorChanged(object? sender, object e)
@@ -1311,21 +1362,6 @@ public partial class MainWindow : Window, IControlBrowser
         catch (Exception ex)
         {
             FileLogger.LogException(ex, "Capture WebView2 zoom factor");
-        }
-    }
-
-    private void QueueDownloadProgress(CoreWebView2DownloadOperation operation)
-    {
-        if (_isShuttingDown || !_downloadItemsByOperation.TryGetValue(operation, out var item))
-        {
-            return;
-        }
-
-        _pendingDownloadProgress[item] = operation;
-        _downloadProgressTimer ??= CreateDownloadProgressTimer();
-        if (!_downloadProgressTimer.IsEnabled)
-        {
-            _downloadProgressTimer.Start();
         }
     }
 
@@ -1414,12 +1450,12 @@ public partial class MainWindow : Window, IControlBrowser
         {
             FileLogger.LogException(ex, "Read final download state");
             _downloadsService.MarkInterrupted(item);
-            _pendingDownloadProgress.Remove(item);
+            _pendingDownloadProgress.TryRemove(item, out _);
             DetachDownloadOperation(operation);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
-        _pendingDownloadProgress.Remove(item);
+        _pendingDownloadProgress.TryRemove(item, out _);
 
         switch (operation.State)
         {
@@ -1459,7 +1495,10 @@ public partial class MainWindow : Window, IControlBrowser
         try { operation.StateChanged -= DownloadOperation_OnStateChanged; }
         catch { /* 浏览器进程退出后 operation 可能已失效。 */ }
 
-        _downloadItemsByOperation.Remove(operation);
+        if (_downloadItemsByOperation.TryRemove(operation, out var item))
+        {
+            _operationsByItem.TryRemove(item, out _);
+        }
     }
 
     private void DetachAllDownloadOperations(bool markInterrupted = false)
@@ -1472,6 +1511,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         _pendingDownloadProgress.Clear();
+        _operationsByItem.Clear();
         var changed = false;
         foreach (var pair in _downloadItemsByOperation.ToArray())
         {
@@ -2027,9 +2067,9 @@ public partial class MainWindow : Window, IControlBrowser
     {
         if (_downloadsService.TryCancel(item))
         {
-            _pendingDownloadProgress.Remove(item);
-            var operation = _downloadItemsByOperation.FirstOrDefault(pair => ReferenceEquals(pair.Value, item)).Key;
-            if (operation is not null)
+            _pendingDownloadProgress.TryRemove(item, out _);
+            // 用反向字典 O(1) 查找，替代 FirstOrDefault O(n) 线性扫描
+            if (_operationsByItem.TryGetValue(item, out var operation))
             {
                 DetachDownloadOperation(operation);
             }
@@ -2567,10 +2607,17 @@ public partial class MainWindow : Window, IControlBrowser
             Application.Current.Deactivated -= App_OnDeactivated;
         }
 
-        // 取消待处理的保存操作
-        _settingsSaveCts?.Cancel();
-        _settingsSaveCts?.Dispose();
-        _settingsSaveCts = null;
+        // 取消待处理的保存操作与历史记录延迟任务
+        if (_settingsSaveTimer is not null)
+        {
+            _settingsSaveTimer.Stop();
+            _settingsSaveTimer.Tick -= SettingsSaveTimer_OnTick;
+            _settingsSaveTimer = null;
+        }
+
+        _recordHistoryCts?.Cancel();
+        _recordHistoryCts?.Dispose();
+        _recordHistoryCts = null;
 
         if (_windowBoundsUiDebounceTimer is not null)
         {
@@ -2850,26 +2897,22 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void QueueSettingsSave()
     {
-        var oldCts = _settingsSaveCts;
-        _settingsSaveCts = new CancellationTokenSource();
-
-        oldCts?.Cancel();
-        oldCts?.Dispose();
-
-        _ = SaveSettingsDebouncedAsync(_settingsSaveCts.Token);
+        // 用 DispatcherTimer 防抖，避免每次 UI 事件 new CTS + Cancel + Dispose 的分配开销。
+        // 拖拽/缩放/透明度/导航等 16+ 处调用，拖拽时 30-60 次/秒。
+        _settingsSaveTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(AppConfig.Ui.SettingsSaveDebounceMs),
+        };
+        _settingsSaveTimer.Stop();
+        _settingsSaveTimer.Tick -= SettingsSaveTimer_OnTick;
+        _settingsSaveTimer.Tick += SettingsSaveTimer_OnTick;
+        _settingsSaveTimer.Start();
     }
 
-    private async Task SaveSettingsDebouncedAsync(CancellationToken cancellationToken)
+    private async void SettingsSaveTimer_OnTick(object? sender, EventArgs e)
     {
-        try
-        {
-            await Task.Delay(AppConfig.Ui.SettingsSaveDebounceMs, cancellationToken).ConfigureAwait(false);
-            await SaveSettingsAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // 被新的保存请求取消，这是预期行为
-        }
+        _settingsSaveTimer?.Stop();
+        await SaveSettingsAsync().ConfigureAwait(true);
     }
 
     private void UpdateControlWindowVisibility()

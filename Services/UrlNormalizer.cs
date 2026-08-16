@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace GenshinBrowser.Services;
 
 /// <summary>
@@ -52,40 +54,106 @@ public static class UrlNormalizer
         }
 
         var isBilibili = IsBilibiliHost(uri.Host);
-        var pairs = query.AsSpan(1).ToString().Split('&', StringSplitOptions.RemoveEmptyEntries);
-        var kept = new List<string>(pairs.Length);
-        foreach (var pair in pairs)
+        // 两遍扫描策略：第一遍仅检测是否存在需剥除的参数（零分配）；
+        // 仅当确实需要剥除时，第二遍才分配 StringBuilder 重建 query。
+        // 避免 Split 出 string[] + List，且常见 URL（无追踪参数）完全不分配。
+        if (!HasTrackingParameter(query.AsSpan(1), isBilibili))
         {
-            var eq = pair.IndexOf('=');
-            var encodedName = eq < 0 ? pair : pair[..eq];
-            string name;
-            try
-            {
-                name = Uri.UnescapeDataString(encodedName.Replace("+", " ", StringComparison.Ordinal));
-            }
-            catch (UriFormatException)
-            {
-                name = encodedName;
-            }
-
-            if (!GlobalTrackingParameters.Contains(name) &&
-                (!isBilibili || !BilibiliTrackingParameters.Contains(name)))
-            {
-                kept.Add(pair);
-            }
+            return uri.ToString();
         }
 
-        if (kept.Count == pairs.Length)
+        // 第二遍：重建仅含保留参数的 query
+        var newQuery = new StringBuilder(query.Length);
+        var remaining = query.AsSpan(1);
+        var first = true;
+
+        while (!remaining.IsEmpty)
         {
-            // 没有任何参数被剥除，返回原 URL 避免重新构造带来的大小写/编码差异
-            return uri.ToString();
+            var ampIndex = remaining.IndexOf('&');
+            ReadOnlySpan<char> pair;
+            if (ampIndex < 0)
+            {
+                pair = remaining;
+                remaining = ReadOnlySpan<char>.Empty;
+            }
+            else
+            {
+                pair = remaining[..ampIndex];
+                remaining = remaining[(ampIndex + 1)..];
+            }
+
+            if (pair.IsEmpty)
+            {
+                continue;
+            }
+
+            var name = TryGetParamName(pair);
+            if (GlobalTrackingParameters.Contains(name) ||
+                (isBilibili && BilibiliTrackingParameters.Contains(name)))
+            {
+                continue;
+            }
+
+            if (!first)
+            {
+                newQuery.Append('&');
+            }
+            newQuery.Append(pair);
+            first = false;
         }
 
         var builder = new UriBuilder(uri)
         {
-            Query = kept.Count == 0 ? string.Empty : string.Join('&', kept),
+            Query = newQuery.ToString(),
         };
         return builder.Uri.ToString();
+    }
+
+    private static bool HasTrackingParameter(ReadOnlySpan<char> querySpan, bool isBilibili)
+    {
+        while (!querySpan.IsEmpty)
+        {
+            var ampIndex = querySpan.IndexOf('&');
+            ReadOnlySpan<char> pair;
+            if (ampIndex < 0)
+            {
+                pair = querySpan;
+                querySpan = ReadOnlySpan<char>.Empty;
+            }
+            else
+            {
+                pair = querySpan[..ampIndex];
+                querySpan = querySpan[(ampIndex + 1)..];
+            }
+
+            if (pair.IsEmpty)
+            {
+                continue;
+            }
+
+            var name = TryGetParamName(pair);
+            if (GlobalTrackingParameters.Contains(name) ||
+                (isBilibili && BilibiliTrackingParameters.Contains(name)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string TryGetParamName(ReadOnlySpan<char> pair)
+    {
+        var eq = pair.IndexOf('=');
+        var encodedName = eq < 0 ? pair : pair[..eq];
+        try
+        {
+            return Uri.UnescapeDataString(encodedName.ToString().Replace("+", " ", StringComparison.Ordinal));
+        }
+        catch (UriFormatException)
+        {
+            return encodedName.ToString();
+        }
     }
 
     private static bool IsBilibiliHost(string host)
