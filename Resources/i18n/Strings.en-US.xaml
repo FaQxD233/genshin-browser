@@ -235,6 +235,6 @@
   <sys:String x:Key="Status.ClearingBrowsingData">Clearing browsing data...</sys:String>
   <sys:String x:Key="Status.BrowsingDataCleared">Browsing data cleared.</sys:String>
   <sys:String x:Key="Status.ClearBrowsingDataFailed">Failed to clear browsing data: {0}</sys:String>
-  <sys:String x:Key="Status.UnhandledException">Unhandled exception:\n{0}: {1}\n\nDetails were written to the log.</sys:String>
+  <sys:String x:Key="Status.UnhandledException">Unhandled exception:&#x0a;{0}: {1}&#x0a;&#x0a;Details were written to the log.</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser Error</sys:String>
 </ResourceDictionary>

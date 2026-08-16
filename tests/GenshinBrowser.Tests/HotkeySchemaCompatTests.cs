@@ -59,16 +59,18 @@ public sealed class HotkeySchemaCompatTests
     [Fact]
     public void Load_DoesNotResetLegitimateHotkeyAfterRepairAttempted()
     {
-        // BUG-2 回归：用户合法设置 RightCtrl + NumPad1 时，若 RepairAttempted 已为 true，
+        // BUG-2 回归：用户合法设置的非默认组合，若 RepairAttempted 已为 true，
         // 不应被 RepairKnownHotkeyCorruption 重置为默认。
+        // （原用例以 RightCtrl+NumPad1 验证；修饰键作主键现在是死键，任何标志下都会被
+        // 归一为默认，故改用普通键验证「一次性修复」语义本身。）
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
             SchemaVersion = 1,
-            ToggleModeKey = Key.RightCtrl,
+            ToggleModeKey = Key.F6,
             ToggleModeModifiers = ModifierKeys.None,
-            TogglePlaybackKey = Key.NumPad1,
+            TogglePlaybackKey = Key.D2,
             TogglePlaybackModifiers = ModifierKeys.None,
             HotkeyCorruptionRepairAttempted = true,
         }));
@@ -76,8 +78,29 @@ public sealed class HotkeySchemaCompatTests
         using var settingsService = new SettingsService(settingsPath);
         var settings = settingsService.Load();
 
-        Assert.Equal(Key.RightCtrl, settings.ToggleModeKey);
-        Assert.Equal(Key.NumPad1, settings.TogglePlaybackKey);
+        Assert.Equal(Key.F6, settings.ToggleModeKey);
+        Assert.Equal(Key.D2, settings.TogglePlaybackKey);
+    }
+
+    [Fact]
+    public void Load_RejectsModifierOnlyHotkeyEvenAfterRepairAttempted()
+    {
+        // 修饰键作主键是永不触发的死键：其 KeyDown 时修饰状态必然为按下，
+        // 与修饰期望矛盾。无论修复标志如何都应重置为默认组合。
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            SchemaVersion = 1,
+            ToggleModeKey = Key.RightCtrl,
+            ToggleModeModifiers = ModifierKeys.None,
+            HotkeyCorruptionRepairAttempted = true,
+        }));
+
+        using var settingsService = new SettingsService(settingsPath);
+        var settings = settingsService.Load();
+
+        Assert.Equal(Key.F8, settings.ToggleModeKey);
     }
 
     [Fact]

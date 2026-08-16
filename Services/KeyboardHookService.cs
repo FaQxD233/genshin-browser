@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Input;
+using System.Windows.Threading;
 using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
@@ -17,8 +18,24 @@ public sealed class KeyboardHookService : IDisposable
     private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
+    // KBDLLHOOKSTRUCT.flags（偏移 8）：注入事件标志。
+    private const int LlkhfInjected = 0x10;
+    private const int LlkhfLowerIlInjected = 0x02;
     /// <summary>Start() 在已 Dispose 时返回的伪错误码，便于 UI 区分。</summary>
     internal const int ObjectDisposedErrorCode = unchecked((int)0x80000013);
+    /// <summary>Start() 在非 UI 线程调用时返回的伪错误码（LL 钩子须经安装线程的消息泵派发）。</summary>
+    internal const int WrongThreadErrorCode = unchecked((int)0x80000014);
+
+    /// <summary>
+    /// 热键主键的合法 VK：非零、单字节且不是修饰键。
+    /// 修饰键作主键是永不触发的死键：其 KeyDown 时修饰状态必然为按下，
+    /// 与任何修饰期望都矛盾（VK_CONTROL 泛型状态覆盖 LCtrl/RCtrl）。
+    /// </summary>
+    private static bool IsValidHotkeyVirtualKey(int virtualKey) =>
+        virtualKey is > 0 and <= 0xFF && !IsModifierVirtualKey(virtualKey);
+
+    private static bool IsModifierVirtualKey(int virtualKey) =>
+        virtualKey is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C or (>= 0xA0 and <= 0xA5);
 
     private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
     private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
@@ -60,7 +77,7 @@ public sealed class KeyboardHookService : IDisposable
     /// </summary>
     public bool TrySetToggleModeHotkey(int virtualKey, ModifierKeys modifiers)
     {
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             return false;
         }
@@ -95,7 +112,7 @@ public sealed class KeyboardHookService : IDisposable
     /// </summary>
     public bool TrySetTogglePlaybackHotkey(int virtualKey, ModifierKeys modifiers)
     {
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             return false;
         }
@@ -130,7 +147,7 @@ public sealed class KeyboardHookService : IDisposable
     /// </summary>
     public bool TrySetToggleHideHotkey(int virtualKey, ModifierKeys modifiers)
     {
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             return false;
         }
@@ -165,7 +182,7 @@ public sealed class KeyboardHookService : IDisposable
     /// </summary>
     public bool TrySetSeekBackwardHotkey(int virtualKey, ModifierKeys modifiers)
     {
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             return false;
         }
@@ -200,7 +217,7 @@ public sealed class KeyboardHookService : IDisposable
     /// </summary>
     public bool TrySetSeekForwardHotkey(int virtualKey, ModifierKeys modifiers)
     {
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             return false;
         }
@@ -254,7 +271,7 @@ public sealed class KeyboardHookService : IDisposable
 
         foreach (var pair in pairs)
         {
-            if (pair.Vk is <= 0 or > 0xFF)
+            if (!IsValidHotkeyVirtualKey(pair.Vk))
             {
                 return false;
             }
@@ -401,6 +418,15 @@ public sealed class KeyboardHookService : IDisposable
 
     public bool Start(out int errorCode)
     {
+        // WH_KEYBOARD_LL 回调经由安装线程的消息循环派发，前台缓存等无锁字段也假设
+        // 全部访问发生在安装线程：只允许在 WPF UI 线程安装。Application.Current 为 null
+        // （单测环境无 WPF Application）时跳过该检查以保持可测性。
+        if (System.Windows.Application.Current is { } app && !app.Dispatcher.CheckAccess())
+        {
+            errorCode = WrongThreadErrorCode;
+            return false;
+        }
+
         // _hookId 的检查与安装必须在 _registrationLock 内：与 Dispose 的卸钩互斥，
         // 否则并发交错时可能在 Dispose 之后装上永不卸载的钩子。
         lock (_registrationLock)
@@ -421,11 +447,111 @@ public sealed class KeyboardHookService : IDisposable
             _hookId = SetHook(_proc);
             if (_hookId != IntPtr.Zero)
             {
+                StartHookHealthMonitor();
                 return true;
             }
 
             errorCode = Marshal.GetLastWin32Error();
             return false;
+        }
+    }
+
+    // —— 钩子健康监测 ——
+    // WH_KEYBOARD_LL 回调超时（LowLevelHooksTimeout，默认约 300ms）后 Windows 会静默摘除钩子，
+    // 全局热键随之失效且无任何报错。这里周期性比对「系统整体输入活跃」与「钩子上次收到事件」：
+    // 系统持续有输入而钩子长时间静默时判定失联，自动重装。纯鼠标用户会被误判，
+    // 但对正常钩子做一次 Unhook+SetHook 无副作用（冷却限频，重装日志走 DEBUG 级）。
+    private static readonly TimeSpan HookHealthCheckInterval = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan HookSilenceThreshold = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan HookReinstallCooldown = TimeSpan.FromMinutes(5);
+    private const uint SystemInputActiveWindowMs = 5_000;
+
+    private DispatcherTimer? _hookHealthTimer;
+    private DateTime _lastHookEventUtc;
+    private DateTime _lastHookReinstallUtc;
+
+    private void StartHookHealthMonitor()
+    {
+        _hookHealthTimer ??= new DispatcherTimer { Interval = HookHealthCheckInterval };
+        _hookHealthTimer.Tick -= HookHealthTimer_OnTick;
+        _hookHealthTimer.Tick += HookHealthTimer_OnTick;
+        _hookHealthTimer.Start();
+    }
+
+    private void StopHookHealthMonitor()
+    {
+        if (_hookHealthTimer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _hookHealthTimer.Stop();
+            _hookHealthTimer.Tick -= HookHealthTimer_OnTick;
+        }
+        catch
+        {
+            // Dispose 可能来自非常规线程：DispatcherTimer 跨线程访问会抛，忽略即可。
+        }
+
+        _hookHealthTimer = null;
+    }
+
+    private void HookHealthTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (_isDisposed || _hookId == IntPtr.Zero)
+        {
+            StopHookHealthMonitor();
+            return;
+        }
+
+        var info = new LastInputInfo
+        {
+            cbSize = (uint)Marshal.SizeOf<LastInputInfo>(),
+        };
+        if (!GetLastInputInfo(ref info))
+        {
+            return;
+        }
+
+        // 系统整体无输入（键盘+鼠标皆静）时无法区分「钩子失联」与「用户没按键」，跳过。
+        var systemIdleMs = unchecked((uint)Environment.TickCount - info.dwTime);
+        if (systemIdleMs > SystemInputActiveWindowMs)
+        {
+            return;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        // 与 HookCallback 同线程（UI 消息泵派发），普通读即可
+        if (nowUtc - _lastHookEventUtc < HookSilenceThreshold ||
+            nowUtc - _lastHookReinstallUtc < HookReinstallCooldown)
+        {
+            return;
+        }
+
+        IntPtr newHookId;
+        lock (_registrationLock)
+        {
+            if (_isDisposed || _hookId == IntPtr.Zero)
+            {
+                return;
+            }
+
+            UnhookWindowsHookEx(_hookId);
+            newHookId = _hookId = SetHook(_proc);
+        }
+
+        _lastHookReinstallUtc = nowUtc;
+        if (newHookId == IntPtr.Zero)
+        {
+            // 重装失败：停止监测，热键保持失效直至进程重启；记录错误码便于排查。
+            FileLogger.LogDebug($"Keyboard hook reinstall after silent removal failed: {Marshal.GetLastWin32Error()}");
+            StopHookHealthMonitor();
+        }
+        else
+        {
+            FileLogger.LogDebug("Keyboard hook reinstalled after silent removal.");
         }
     }
 
@@ -442,7 +568,7 @@ public sealed class KeyboardHookService : IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentNullException.ThrowIfNull(callback);
-        if (virtualKey is <= 0 or > 0xFF)
+        if (!IsValidHotkeyVirtualKey(virtualKey))
         {
             throw new ArgumentOutOfRangeException(nameof(virtualKey));
         }
@@ -501,10 +627,17 @@ public sealed class KeyboardHookService : IDisposable
             // 持锁调用 UnhookWindowsHookEx 无死锁风险，且与 Start 的安装严格互斥。
             if (_hookId != IntPtr.Zero)
             {
-                UnhookWindowsHookEx(_hookId);
+                if (!UnhookWindowsHookEx(_hookId))
+                {
+                    // 卸载失败（极少见）仅记录：句柄随进程退出回收，继续置零避免二次卸载。
+                    FileLogger.LogDebug($"UnhookWindowsHookEx failed: {Marshal.GetLastWin32Error()}");
+                }
+
                 _hookId = IntPtr.Zero;
             }
         }
+
+        StopHookHealthMonitor();
 
         lock (_keyStateLock)
         {
@@ -525,6 +658,18 @@ public sealed class KeyboardHookService : IDisposable
     {
         if (nCode >= 0)
         {
+            // 心跳先于注入过滤：注入事件同样证明钩子仍挂在链上，供健康监测判断。
+            // 回调经安装线程（UI）的消息泵派发，与 _hookHealthTimer 同线程，无需原子读。
+            _lastHookEventUtc = DateTime.UtcNow;
+
+            // 忽略注入事件（SendInput/keybd_event 合成）：密码管理器自动填充、输入法、
+            // 远程控制软件注入的按键不应触发热键——热键只响应用户物理按键。
+            var flags = Marshal.ReadInt32(lParam, 8);
+            if ((flags & (LlkhfInjected | LlkhfLowerIlInjected)) != 0)
+            {
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+            }
+
             var vkCode = Marshal.ReadInt32(lParam);
             var snapshot = Volatile.Read(ref _hotkeySnapshot);
             if (!snapshot.ByVirtualKey.TryGetValue(vkCode, out var registrations))
@@ -636,9 +781,11 @@ public sealed class KeyboardHookService : IDisposable
     };
 
     // 前台进程名惰性缓存：低级钩子回调必须毫秒级返回，禁止每次按键都做进程枚举。
-    // 仅当前台 PID 变化或缓存过期时才查询一次，其余命中直接复用。全部访问都发生在
-    // 安装钩子的同一 UI 线程（见 Start），无需加锁。
-    private uint _cachedForegroundPid;
+    // 仅当前台窗口变化或缓存过期时才查询一次，其余命中直接复用。全部访问都发生在
+    // 安装钩子的同一 UI 线程（见 Start），无需加锁。缓存键用 HWND 而非 PID：
+    // Windows 对 PID 的复用相当积极（进程退出后很快回收），同 PID 新进程会吃到
+    // 旧缓存；HWND 键下同一句柄必然属于同一进程，误判窗口远小于 PID 复用周期。
+    private IntPtr _cachedForegroundHwnd;
     private string? _cachedForegroundName;
     private DateTime _cacheFetchedAtUtc;
     private static readonly TimeSpan ForegroundCacheTtl = TimeSpan.FromSeconds(2);
@@ -664,7 +811,7 @@ public sealed class KeyboardHookService : IDisposable
         // 2. 如果处于浮窗模式，且前台窗口是非排他性进程（即可能是任意游戏），允许触发
         if (_isGamingMode)
         {
-            var processName = GetCachedForegroundProcessName(pid);
+            var processName = GetCachedForegroundProcessName(foregroundHWnd, pid);
 
             // 排除已知的非游戏常用软件（如浏览器、聊天软件、文本编辑器等）。
             // 无法确认进程名（权限不足 / 进程已退出）时保持「浮窗模式下视为游戏」的默认语义，
@@ -676,13 +823,13 @@ public sealed class KeyboardHookService : IDisposable
     }
 
     /// <summary>
-    /// 读取前台进程名，仅在缓存缺失（PID 变化或 TTL 过期）时做进程查询。
+    /// 读取前台进程名，仅在缓存缺失（窗口变化或 TTL 过期）时做进程查询。
     /// 进程枚举是慢操作（打开句柄 + NtQuery），放在低级键盘钩子回调里会拖慢系统输入，
-    /// 因此用前台 PID 作为缓存键：切前台窗口才重新查询，同一前台连续按键命中缓存。
+    /// 因此用前台 HWND 作为缓存键：切前台窗口才重新查询，同一前台连续按键命中缓存。
     /// </summary>
-    private string? GetCachedForegroundProcessName(uint pid)
+    private string? GetCachedForegroundProcessName(IntPtr foregroundHwnd, uint pid)
     {
-        if (_cachedForegroundPid == pid && DateTime.UtcNow - _cacheFetchedAtUtc < ForegroundCacheTtl)
+        if (_cachedForegroundHwnd == foregroundHwnd && DateTime.UtcNow - _cacheFetchedAtUtc < ForegroundCacheTtl)
         {
             return _cachedForegroundName;
         }
@@ -709,7 +856,7 @@ public sealed class KeyboardHookService : IDisposable
             name = null;
         }
 
-        _cachedForegroundPid = pid;
+        _cachedForegroundHwnd = foregroundHwnd;
         _cachedForegroundName = name;
         _cacheFetchedAtUtc = DateTime.UtcNow;
         return name;
@@ -843,6 +990,17 @@ public sealed class KeyboardHookService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInputInfo
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLastInputInfo(ref LastInputInfo plii);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

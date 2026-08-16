@@ -46,7 +46,11 @@ public sealed class DownloadsService : IDisposable
             Downloads.Add(item);
         }
 
-        _version = changed ? 1 : 0;
+        // 加载窗口内已有 Track/状态变更（版本 > 0）时保留其 dirty 标记，避免覆盖竞态期间的变更。
+        lock (_persistLock)
+        {
+            _version = changed ? Math.Max(_version, 1) : 0;
+        }
     }
 
     public ObservableCollection<DownloadItem> Downloads { get; } = new();
@@ -179,6 +183,17 @@ public sealed class DownloadsService : IDisposable
         QueuePersist();
     }
 
+    /// <summary>
+    /// 直接 shell 执行风险过高的扩展名：UseShellExecute 打开这些文件等于运行程序/脚本。
+    /// FilePath 持久化自磁盘上的 downloads.json，被篡改时可诱导「打开文件」按钮执行任意代码，
+    /// 因此这些类型不直接执行，改为在资源管理器中定位文件由用户手动决定。
+    /// </summary>
+    private static readonly HashSet<string> DirectExecuteRiskyExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".pif", ".hta",
+        ".lnk", ".url", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".ps1", ".msh",
+    };
+
     public bool OpenFile(DownloadItem item)
     {
         if (string.IsNullOrEmpty(item.FilePath) || !File.Exists(item.FilePath))
@@ -188,7 +203,35 @@ public sealed class DownloadsService : IDisposable
 
         try
         {
+            var extension = Path.GetExtension(item.FilePath);
+            if (DirectExecuteRiskyExtensions.Contains(extension))
+            {
+                // 高危类型不 shell 执行：资源管理器里选中该文件，交给用户判断；
+                // /select 参数形式 explorer 解析失败时退回仅打开所在文件夹。
+                return RevealInExplorer(item.FilePath) || OpenFolder(item);
+            }
+
             Process.Start(new ProcessStartInfo(item.FilePath) { UseShellExecute = true });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>在资源管理器中打开并选中指定文件。路径以独立参数传递，不经 shell 解析。</summary>
+    private static bool RevealInExplorer(string filePath)
+    {
+        try
+        {
+            var startInfo = new ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true,
+            };
+            startInfo.ArgumentList.Add("/select,");
+            startInfo.ArgumentList.Add(filePath);
+            Process.Start(startInfo);
             return true;
         }
         catch
@@ -358,7 +401,16 @@ public sealed class DownloadsService : IDisposable
             return;
         }
 
-        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose 与在途保存的关闭竞态：保存闸已释放，放弃本次写盘（不匹配下方过滤器的异常不能外泄）。
+            return;
+        }
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();

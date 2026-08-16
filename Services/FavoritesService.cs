@@ -38,7 +38,9 @@ public sealed class FavoritesService : IDisposable
     /// </summary>
     public async Task InitializeAsync()
     {
-        _version = await LoadFromDiskAsync().ConfigureAwait(false) ? 1 : 0;
+        // 版本号的写回在 LoadFromDiskAsync 的锁内完成：锁外赋值会与加载窗口内的
+        // AddOrUpdate/Remove 交错，覆盖竞态期间的变更与 dirty 标记。
+        await LoadFromDiskAsync().ConfigureAwait(false);
     }
 
     public IReadOnlyList<FavoriteEntry> GetEntries()
@@ -278,14 +280,47 @@ public sealed class FavoritesService : IDisposable
 
             lock (_entriesLock)
             {
-                _entries = sanitized;
+                // 加载窗口内已有写入（版本 > 0）时不能整体覆盖：异步初始化与早到写入竞态下，
+                // 整体替换会把加载期间的新增条目连同其 dirty 标记一起丢掉（内存与磁盘同时丢）。
+                // 把加载期间的新增/更新条目合并到磁盘数据之前（内存版本更新，优先保留）。
+                var pending = _version > 0 ? _entries : null;
+                var merged = sanitized;
+                if (pending is { Count: > 0 })
+                {
+                    var pendingUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    merged = new List<FavoriteEntry>(pending.Count + sanitized.Count);
+                    foreach (var e in pending)
+                    {
+                        if (pendingUrls.Add(e.Url))
+                        {
+                            merged.Add(e);
+                        }
+                    }
+
+                    foreach (var e in sanitized)
+                    {
+                        if (!pendingUrls.Contains(e.Url))
+                        {
+                            merged.Add(e);
+                        }
+                    }
+
+                    if (merged.Count > AppConfig.Data.MaxFavoriteEntries)
+                    {
+                        merged.RemoveRange(AppConfig.Data.MaxFavoriteEntries, merged.Count - AppConfig.Data.MaxFavoriteEntries);
+                    }
+                }
+
+                _entries = merged;
                 _urlSet.Clear();
                 foreach (var e in _entries)
                 {
                     _urlSet.Add(e.Url);
                 }
                 _snapshotCache = _entries.AsReadOnly();
-                return !EntriesMatch(loaded, _entries);
+                var changed = !EntriesMatch(loaded, _entries);
+                _version = changed ? Math.Max(_version, 1) : 0;
+                return changed;
             }
         }
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
@@ -295,6 +330,11 @@ public sealed class FavoritesService : IDisposable
             {
                 _entries = new List<FavoriteEntry>();
                 _urlSet.Clear();
+                // 读失败可能是暂时性的（文件被占用等）：清空版本号使 FlushAsync 不会用
+                // 空列表覆盖磁盘上的既有数据，并同步刷新快照避免 GetEntries() 返回陈旧数据。
+                _version = 0;
+                _savedVersion = 0;
+                _snapshotCache = _entries.AsReadOnly();
             }
             return false;
         }
@@ -305,7 +345,16 @@ public sealed class FavoritesService : IDisposable
         int version,
         CancellationToken cancellationToken = default)
     {
-        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose 与在途保存的关闭竞态：保存闸已释放，放弃本次写盘（不匹配下方过滤器的异常不能外泄）。
+            return;
+        }
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();

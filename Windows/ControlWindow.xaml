@@ -422,6 +422,7 @@
                            Height="26" Padding="2,2" FontSize="11" Margin="4,0"
                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                            Text="{Binding OpacityPercentText, UpdateSourceTrigger=PropertyChanged}"
+                           GotKeyboardFocus="PercentBox_OnGotKeyboardFocus"
                            LostKeyboardFocus="OpacityPercentBox_OnLostKeyboardFocus">
                     <TextBox.InputBindings>
                       <KeyBinding Key="Enter" Command="{Binding ApplyOpacityCommand}"/>
@@ -459,6 +460,7 @@
                            Height="26" Padding="2,2" FontSize="11" Margin="4,0"
                            VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                            Text="{Binding ZoomPercentText, UpdateSourceTrigger=PropertyChanged}"
+                           GotKeyboardFocus="PercentBox_OnGotKeyboardFocus"
                            LostKeyboardFocus="ZoomPercentBox_OnLostKeyboardFocus">
                     <TextBox.InputBindings>
                       <KeyBinding Key="Enter" Command="{Binding ApplyZoomCommand}"/>

@@ -99,6 +99,25 @@ public sealed class KeyboardHookServiceTests
     }
 
     [Fact]
+    public void TrySetHotkey_RejectsModifierVirtualKeyAsPrimary()
+    {
+        using var service = new KeyboardHookService();
+        // VK_RCONTROL=0xA3、VK_LSHIFT=0xA0、VK_LWIN=0x5B：修饰键作主键时 KeyDown
+        // 必然置位修饰状态，与任何修饰期望都矛盾（永不触发的死键），必须拒绝。
+        Assert.False(service.TrySetToggleModeHotkey(0xA3, ModifierKeys.None));
+        Assert.False(service.TrySetToggleHideHotkey(0xA0, ModifierKeys.None));
+        Assert.False(service.TrySetSeekBackwardHotkey(0x5B, ModifierKeys.None));
+        Assert.False(service.TrySetSeekForwardHotkey(0x5C, ModifierKeys.None));
+        Assert.False(service.TrySetTogglePlaybackHotkey(0x11, ModifierKeys.None));
+        Assert.False(service.TrySetBuiltInHotkeys(
+            0xA3, ModifierKeys.None,
+            0x4B, ModifierKeys.None,
+            0x76, ModifierKeys.None,
+            0xBA, ModifierKeys.None,
+            0xDE, ModifierKeys.None));
+    }
+
+    [Fact]
     public void Start_AfterDispose_ReturnsFalseWithoutInstallingHook()
     {
         var service = new KeyboardHookService();
@@ -317,6 +336,6 @@ public sealed class KeyboardHookServiceTests
             "GetCachedForegroundProcessName", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
         // TargetInvocationException 不会被吞：若内部 catch 漏了异常类型，这里会直接测试失败
-        return (string?)method!.Invoke(service, new object[] { pid });
+        return (string?)method!.Invoke(service, new object[] { IntPtr.Zero, pid });
     }
 }

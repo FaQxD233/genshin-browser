@@ -18,17 +18,14 @@ public partial class ControlWindow : Window
     private bool _hasUserMovedWindow;
     private bool _isRestoringBounds;
     private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
-    // 滚轮平滑滚动动画复用，避免每次滚轮事件 new DoubleAnimation + CubicEase 增加 Gen0 GC
+    // 滚轮平滑滚动的缓动函数可复用（无状态）；DoubleAnimation 必须每次实例化：
+    // WPF 动画时钟会跟随未冻结 Timeline 的属性变更，共享实例会让一个列表仍在
+    // 进行的滚动动画被另一个列表的目标位置劫持。
     private static readonly System.Windows.Media.Animation.EasingFunctionBase SmoothScrollEasing =
         new System.Windows.Media.Animation.CubicEase
         {
             EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
         };
-    private readonly System.Windows.Media.Animation.DoubleAnimation _smoothScrollAnimation = new()
-    {
-        Duration = TimeSpan.FromMilliseconds(AppConfig.Ui.SmoothScrollDurationMs),
-        EasingFunction = SmoothScrollEasing,
-    };
 
     public ControlWindow(IControlBrowser browser)
     {
@@ -137,8 +134,18 @@ public partial class ControlWindow : Window
         _viewModel.SyncWindowSizeTexts();
     }
 
+    private void PercentBox_OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _viewModel.UpdatePercentInputFocus(
+            OpacityPercentBox.IsKeyboardFocusWithin,
+            ZoomPercentBox.IsKeyboardFocusWithin);
+    }
+
     private void OpacityPercentBox_OnLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        _viewModel.UpdatePercentInputFocus(
+            OpacityPercentBox.IsKeyboardFocusWithin,
+            ZoomPercentBox.IsKeyboardFocusWithin);
         if (_viewModel.ApplyOpacityCommand.CanExecute(null))
         {
             _viewModel.ApplyOpacityCommand.Execute(null);
@@ -147,6 +154,9 @@ public partial class ControlWindow : Window
 
     private void ZoomPercentBox_OnLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
+        _viewModel.UpdatePercentInputFocus(
+            OpacityPercentBox.IsKeyboardFocusWithin,
+            ZoomPercentBox.IsKeyboardFocusWithin);
         if (_viewModel.ApplyZoomCommand.CanExecute(null))
         {
             _viewModel.ApplyZoomCommand.Execute(null);
@@ -278,10 +288,14 @@ public partial class ControlWindow : Window
         }
 
         scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, null);
-        _smoothScrollAnimation.From = currentOffset;
-        _smoothScrollAnimation.To = targetOffset;
-
-        scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, _smoothScrollAnimation);
+        var animation = new System.Windows.Media.Animation.DoubleAnimation(
+            currentOffset,
+            targetOffset,
+            TimeSpan.FromMilliseconds(AppConfig.Ui.SmoothScrollDurationMs))
+        {
+            EasingFunction = SmoothScrollEasing,
+        };
+        scrollViewer.BeginAnimation(ScrollViewerBehavior.VerticalOffsetProperty, animation);
         e.Handled = true;
     }
 
@@ -399,14 +413,22 @@ public partial class ControlWindow : Window
 
     private void ControlWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
+        // try/finally：恢复边界抛异常（持久化数据损坏等）时标志不能卡在 true，
+        // 否则 OnLocationOrSizeChanged 从此直接 return，窗口边界防抖保存永久失效。
         _isRestoringBounds = true;
-        var restoredPosition = _browser.RestoreControlWindowBounds(this);
-        _hasUserMovedWindow = restoredPosition;
-        _isRestoringBounds = false;
-
-        if (!restoredPosition)
+        try
         {
-            ShowNearBrowserWindow();
+            var restoredPosition = _browser.RestoreControlWindowBounds(this);
+            _hasUserMovedWindow = restoredPosition;
+
+            if (!restoredPosition)
+            {
+                ShowNearBrowserWindow();
+            }
+        }
+        finally
+        {
+            _isRestoringBounds = false;
         }
     }
 

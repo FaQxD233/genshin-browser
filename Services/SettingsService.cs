@@ -26,7 +26,10 @@ public sealed class SettingsService : IDisposable
     {
         if (!File.Exists(_settingsPath))
         {
-            return new AppSettings();
+            // 走 Sanitize 而非裸 new：让内存对象与「从磁盘加载并归一」路径语义一致，
+            // 尤其 HotkeyCorruptionRepairAttempted 必须在内存对象上置位；否则每次保存的
+            // 快照都会重跑一次性修复逻辑，用户日后故意设置的「损坏特征」组合会被静默重置。
+            return Sanitize(null);
         }
 
         try
@@ -37,7 +40,7 @@ public sealed class SettingsService : IDisposable
         catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             FileLogger.LogException(ex, "Load settings (sync)");
-            return new AppSettings();
+            return Sanitize(null);
         }
     }
 
@@ -81,7 +84,16 @@ public sealed class SettingsService : IDisposable
         snapshot = Sanitize(snapshot);
         var requestVersion = Interlocked.Increment(ref _saveRequestVersion);
 
-        await _saveGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await _saveGate.WaitAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose 与在途保存的关闭竞态：保存闸已释放，放弃本次写盘（不匹配下方过滤器的异常不能外泄）。
+            return;
+        }
+
         try
         {
             if (requestVersion != Volatile.Read(ref _saveRequestVersion))
@@ -177,6 +189,17 @@ public sealed class SettingsService : IDisposable
         settings.ZoomFactor = double.IsFinite(settings.ZoomFactor)
             ? Math.Clamp(settings.ZoomFactor, 0.25, 5.0)
             : defaults.ZoomFactor;
+        // 注意：不做 [ ]→; ' 的默认键迁移——迁移会在每次保存时改写用户故意设回的旧默认组合。
+        // 旧配置仍持 [ ] 的用户通过「恢复默认」或手动改键更新。
+        // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
+        // 仅在一次性迁移标志未置位时尝试，避免覆盖用户后来合法设置的相同组合。
+        // 必须先于下面的 IsValidHotkey 归一执行：归一会把修饰键主键重置成默认，
+        // 那样损坏特征（RightCtrl）就检测不到了。
+        if (!settings.HotkeyCorruptionRepairAttempted)
+        {
+            RepairKnownHotkeyCorruption(settings, defaults);
+            settings.HotkeyCorruptionRepairAttempted = true;
+        }
         settings.ToggleModeKey = IsValidHotkey(settings.ToggleModeKey) ? settings.ToggleModeKey : defaults.ToggleModeKey;
         settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
         settings.ToggleHideKey = IsValidHotkey(settings.ToggleHideKey) ? settings.ToggleHideKey : defaults.ToggleHideKey;
@@ -187,15 +210,6 @@ public sealed class SettingsService : IDisposable
         settings.ToggleHideModifiers = NormalizeModifiers(settings.ToggleHideModifiers);
         settings.SeekBackwardModifiers = NormalizeModifiers(settings.SeekBackwardModifiers);
         settings.SeekForwardModifiers = NormalizeModifiers(settings.SeekForwardModifiers);
-        // 注意：不做 [ ]→; ' 的默认键迁移——迁移会在每次保存时改写用户故意设回的旧默认组合。
-        // 旧配置仍持 [ ] 的用户通过「恢复默认」或手动改键更新。
-        // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
-        // 仅在一次性迁移标志未置位时尝试，避免覆盖用户后来合法设置的相同组合。
-        if (!settings.HotkeyCorruptionRepairAttempted)
-        {
-            RepairKnownHotkeyCorruption(settings, defaults);
-            settings.HotkeyCorruptionRepairAttempted = true;
-        }
         ResolveHotkeyConflicts(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
@@ -215,7 +229,18 @@ public sealed class SettingsService : IDisposable
         double.IsFinite(value) && value is >= 100 and <= 10_000 ? value : fallback;
 
     private static bool IsValidHotkey(System.Windows.Input.Key key) =>
-        key != System.Windows.Input.Key.None && Enum.IsDefined(key);
+        key != System.Windows.Input.Key.None && Enum.IsDefined(key) && !IsModifierKey(key);
+
+    /// <summary>
+    /// 修饰键不能作热键主键：其 KeyDown 到来时对应修饰状态必然为按下，
+    /// 与「无修饰键」期望矛盾（带修饰键期望则其它修饰判定也被破坏），永不触发。
+    /// </summary>
+    private static bool IsModifierKey(System.Windows.Input.Key key) =>
+        key is System.Windows.Input.Key.LeftShift or System.Windows.Input.Key.RightShift
+            or System.Windows.Input.Key.LeftCtrl or System.Windows.Input.Key.RightCtrl
+            or System.Windows.Input.Key.LeftAlt or System.Windows.Input.Key.RightAlt
+            or System.Windows.Input.Key.LWin or System.Windows.Input.Key.RWin
+            or System.Windows.Input.Key.System;
 
     private static System.Windows.Input.ModifierKeys NormalizeModifiers(System.Windows.Input.ModifierKeys modifiers)
     {

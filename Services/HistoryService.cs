@@ -295,7 +295,38 @@ public sealed class HistoryService : IDisposable
 
             lock (_entriesLock)
             {
-                _entries = sanitized;
+                // 加载窗口内已有写入（版本 > 0）时不能整体覆盖：异步初始化与早到写入竞态下，
+                // 整体替换会把加载期间的新增条目连同其 dirty 标记一起丢掉（内存与磁盘同时丢）。
+                // 把加载期间的新增条目合并到磁盘数据之前。
+                var pending = _version > 0 ? _entries : null;
+                var merged = sanitized;
+                if (pending is { Count: > 0 })
+                {
+                    var pendingUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    merged = new List<HistoryEntry>(pending.Count + sanitized.Count);
+                    foreach (var e in pending)
+                    {
+                        if (pendingUrls.Add(e.Url))
+                        {
+                            merged.Add(e);
+                        }
+                    }
+
+                    foreach (var e in sanitized)
+                    {
+                        if (!pendingUrls.Contains(e.Url))
+                        {
+                            merged.Add(e);
+                        }
+                    }
+
+                    if (merged.Count > AppConfig.Data.MaxHistoryEntries)
+                    {
+                        merged.RemoveRange(AppConfig.Data.MaxHistoryEntries, merged.Count - AppConfig.Data.MaxHistoryEntries);
+                    }
+                }
+
+                _entries = merged;
                 _urlSet.Clear();
                 foreach (var e in _entries)
                 {
@@ -317,6 +348,8 @@ public sealed class HistoryService : IDisposable
                 _urlSet.Clear();
                 _version = 0;
                 _savedVersion = 0;
+                // 与成功路径一致地失效快照：否则 GetEntries() 继续返回失败前数据的陈旧包装
+                _snapshotCache = null;
             }
             return false;
         }
@@ -327,7 +360,16 @@ public sealed class HistoryService : IDisposable
         int version,
         CancellationToken cancellationToken = default)
     {
-        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Dispose 与在途保存的关闭竞态：保存闸已释放，放弃本次写盘（不匹配下方过滤器的异常不能外泄）。
+            return;
+        }
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();

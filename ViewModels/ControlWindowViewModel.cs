@@ -9,10 +9,12 @@ using GenshinBrowser.Windows;
 
 namespace GenshinBrowser.ViewModels;
 
-public sealed class ControlWindowViewModel : ViewModelBase
+public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 {
     private readonly IControlBrowser _browser;
     private readonly DispatcherTimer _toastTimer;
+    private readonly DispatcherTimer _relativeTimeTimer;
+    private DateTime _lastRelativeRefreshDate = DateTime.Now.Date;
     private readonly List<ControlItemViewModel> _allHistoryItems = new();
     private readonly List<ControlItemViewModel> _allFavoriteItems = new();
     // Sync 方法复用的临时集合，避免每次刷新都 new List/Dictionary（UI 线程独占，无需加锁）
@@ -95,6 +97,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
         _toastTimer.Tick += ToastTimer_OnTick;
+        // 相对时间文案（今天/昨天）跨天后不会随时间戳变化自动刷新：
+        // 每分钟比对一次本地日期，跨天时全量重算两个列表的 TimeDisplay。
+        _relativeTimeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(60) };
+        _relativeTimeTimer.Tick += RelativeTimeTimer_OnTick;
+        _relativeTimeTimer.Start();
         _browser.BrowserStateChanged += Browser_OnBrowserStateChanged;
         _browser.ZoomChanged += Browser_OnZoomChanged;
         _browser.DownloadsChanged += Browser_OnDownloadsChanged;
@@ -585,7 +592,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
             ModeText = _browser.CurrentMode == WindowMode.Fixed
                 ? LocalizationService.Get("Mode.Fixed", "浮窗")
                 : LocalizationService.Get("Mode.Free", "浏览");
-            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
+            // 浮窗 E785(锁)，浏览 E718(解锁) — 与 MainWindow.UpdateModeToggleButton 一致
+            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
             OnPropertyChanged(nameof(IsBrowsingMode));
             OnPropertyChanged(nameof(IsFloatingMode));
             NotifyHotkeyDependentTexts();
@@ -655,12 +663,9 @@ public sealed class ControlWindowViewModel : ViewModelBase
             OnPropertyChanged(nameof(ZoomPercentageText));
             OnPropertyChanged(nameof(OpacityPercentageText));
             OnPropertyChanged(nameof(WindowOpacity));
-            // 仅在输入框为空时回填，避免刷新覆盖用户正在编辑的数字。
-            // 窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
-            if (string.IsNullOrWhiteSpace(_opacityPercentText) || string.IsNullOrWhiteSpace(_zoomPercentText))
-            {
-                SyncOpacityZoomTexts();
-            }
+            // 回填在 SyncOpacityZoomTexts 内部按焦点逐框跳过：正在编辑（含清空重输）的
+            // 输入框不被覆盖。窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
+            SyncOpacityZoomTexts();
         }
     }
 
@@ -678,12 +683,46 @@ public sealed class ControlWindowViewModel : ViewModelBase
         LocalizationService.LanguageChanged -= Localization_OnLanguageChanged;
         _toastTimer.Stop();
         _toastTimer.Tick -= ToastTimer_OnTick;
+        _relativeTimeTimer.Stop();
+        _relativeTimeTimer.Tick -= RelativeTimeTimer_OnTick;
 
         if (_searchDebounceTimer is not null)
         {
             _searchDebounceTimer.Stop();
             _searchDebounceTimer.Tick -= SearchDebounceTimer_OnTick;
             _searchDebounceTimer = null;
+        }
+    }
+
+    private void RelativeTimeTimer_OnTick(object? sender, EventArgs e)
+    {
+        var today = DateTime.Now.Date;
+        if (today == _lastRelativeRefreshDate)
+        {
+            return;
+        }
+
+        _lastRelativeRefreshDate = today;
+        // _all* 与可见集合中的同 URL 条目是不同 VM 对象（可见侧经 SyncObservableCollection
+        // 的 UpdateFrom 拷贝值），两侧都要刷新。
+        foreach (var item in _allHistoryItems)
+        {
+            item.RefreshRelativeTime();
+        }
+
+        foreach (var item in _allFavoriteItems)
+        {
+            item.RefreshRelativeTime();
+        }
+
+        foreach (var item in HistoryItems)
+        {
+            item.RefreshRelativeTime();
+        }
+
+        foreach (var item in FavoriteItems)
+        {
+            item.RefreshRelativeTime();
         }
     }
 
@@ -741,12 +780,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void Browser_OnZoomChanged(object? sender, EventArgs e)
     {
         OnPropertyChanged(nameof(ZoomPercentageText));
-        // 输入框有用户正在编辑的内容时跳过回填（提交/失焦时由 Apply 路径刷新），
-        // 与 RefreshFromBrowser(Appearance) 的守卫策略一致
-        if (string.IsNullOrWhiteSpace(_zoomPercentText) || string.IsNullOrWhiteSpace(_opacityPercentText))
-        {
-            SyncOpacityZoomTexts();
-        }
+        // 回填按焦点逐框跳过（提交/失焦时由 Apply 路径刷新），与 RefreshFromBrowser(Appearance) 策略一致
+        SyncOpacityZoomTexts();
     }
 
     private void Browser_OnDownloadsChanged(object? sender, EventArgs e)
@@ -1363,13 +1398,35 @@ public sealed class ControlWindowViewModel : ViewModelBase
 
     private string _opacityPercentText = string.Empty;
     private string _zoomPercentText = string.Empty;
+    // 由 View 层在 Got/LostKeyboardFocus 时同步：正在编辑的输入框不被回填覆盖
+    private bool _opacityInputFocused;
+    private bool _zoomInputFocused;
 
-    private void SyncOpacityZoomTexts()
+    /// <summary>
+    /// View 层焦点变化时同步百分比输入框的焦点状态。
+    /// 回填据此逐框跳过：用户清空输入框准备重输时，旧值不会被整体回填覆盖。
+    /// </summary>
+    public void UpdatePercentInputFocus(bool opacityFocused, bool zoomFocused)
     {
-        _opacityPercentText = Math.Round(_browser.WindowOpacity * 100).ToString();
-        _zoomPercentText = Math.Round(_browser.ZoomFactor * 100).ToString();
-        OnPropertyChanged(nameof(OpacityPercentText));
-        OnPropertyChanged(nameof(ZoomPercentText));
+        _opacityInputFocused = opacityFocused;
+        _zoomInputFocused = zoomFocused;
+    }
+
+    /// <param name="forceOpacity">为 true 时无视焦点守卫强制回填不透明度框（提交非法值后重置）。</param>
+    /// <param name="forceZoom">为 true 时无视焦点守卫强制回填缩放框（提交非法值后重置）。</param>
+    private void SyncOpacityZoomTexts(bool forceOpacity = false, bool forceZoom = false)
+    {
+        // 经属性赋值：值未变时 SetProperty 不触发通知；正在编辑的框跳过回填
+        if (forceOpacity || !_opacityInputFocused)
+        {
+            OpacityPercentText = Math.Round(_browser.WindowOpacity * 100).ToString();
+        }
+
+        if (forceZoom || !_zoomInputFocused)
+        {
+            ZoomPercentText = Math.Round(_browser.ZoomFactor * 100).ToString();
+        }
+
         OnPropertyChanged(nameof(OpacityPercentageText));
         OnPropertyChanged(nameof(ZoomPercentageText));
     }
@@ -1378,7 +1435,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         if (!TryParsePercent(_opacityPercentText, out var percent) || percent < 10 || percent > 100)
         {
-            SyncOpacityZoomTexts();
+            // 提交失败强制回填：焦点守卫只保护「编辑中」，不能把已提交的非法文本留在框内
+            SyncOpacityZoomTexts(forceOpacity: true);
             ShowToast(LocalizationService.Get("Toast.InvalidOpacity", "请输入 10–100 的不透明度"), StatusLevel.Warning);
             return;
         }
@@ -1391,7 +1449,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     {
         if (!TryParsePercent(_zoomPercentText, out var percent) || percent < 25 || percent > 500)
         {
-            SyncOpacityZoomTexts();
+            SyncOpacityZoomTexts(forceZoom: true);
             ShowToast(LocalizationService.Get("Toast.InvalidZoom", "请输入 25–500 的缩放百分比"), StatusLevel.Warning);
             return;
         }

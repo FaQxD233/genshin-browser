@@ -23,7 +23,20 @@ public static class EntryText
         }
 
         var trimmed = title.Trim();
-        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+        if (trimmed.Length <= maxLength)
+        {
+            return trimmed;
+        }
+
+        // 切点恰好落在高位代理上时后退一位：孤立代理项会显示为替换符、
+        // JSON 序列化时被替换为 U+FFFD（B 站标题常含 emoji）。
+        var cut = maxLength;
+        if (char.IsHighSurrogate(trimmed[cut - 1]))
+        {
+            cut--;
+        }
+
+        return trimmed[..cut];
     }
 
     public static bool TryNormalizeHttpUrl(string? url, out string normalizedUrl)

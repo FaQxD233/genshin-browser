@@ -235,6 +235,6 @@
   <sys:String x:Key="Status.ClearingBrowsingData">正在清理浏览数据...</sys:String>
   <sys:String x:Key="Status.BrowsingDataCleared">已清理浏览数据。</sys:String>
   <sys:String x:Key="Status.ClearBrowsingDataFailed">清理失败：{0}</sys:String>
-  <sys:String x:Key="Status.UnhandledException">发生未处理异常：\n{0}: {1}\n\n详情已写入日志。</sys:String>
+  <sys:String x:Key="Status.UnhandledException">发生未处理异常：&#x0a;{0}: {1}&#x0a;&#x0a;详情已写入日志。</sys:String>
   <sys:String x:Key="Status.ErrorTitle">Genshin Browser 错误</sys:String>
 </ResourceDictionary>
