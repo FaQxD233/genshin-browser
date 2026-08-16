@@ -111,18 +111,19 @@ public sealed class JsonAndEntryServiceTests
     {
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
+        // F6 是五组热键默认值之外的空闲键（F7 已是隐藏浮窗默认键，不能再用作「非默认」样本）
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
         {
-            ToggleModeKey = Key.F7,
+            ToggleModeKey = Key.F6,
             ToggleModeModifiers = ModifierKeys.None,
-            TogglePlaybackKey = Key.F7,
+            TogglePlaybackKey = Key.F6,
             TogglePlaybackModifiers = ModifierKeys.None,
         }));
 
         using var settingsService = new SettingsService(settingsPath);
         var settings = settingsService.Load();
 
-        Assert.Equal(Key.F7, settings.ToggleModeKey);
+        Assert.Equal(Key.F6, settings.ToggleModeKey);
         Assert.Equal(Key.K, settings.TogglePlaybackKey);
     }
 

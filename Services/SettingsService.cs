@@ -64,6 +64,12 @@ public sealed class SettingsService : IDisposable
             ToggleModeModifiers = settings.ToggleModeModifiers,
             TogglePlaybackKey = settings.TogglePlaybackKey,
             TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
+            ToggleHideKey = settings.ToggleHideKey,
+            ToggleHideModifiers = settings.ToggleHideModifiers,
+            SeekBackwardKey = settings.SeekBackwardKey,
+            SeekBackwardModifiers = settings.SeekBackwardModifiers,
+            SeekForwardKey = settings.SeekForwardKey,
+            SeekForwardModifiers = settings.SeekForwardModifiers,
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
@@ -172,8 +178,14 @@ public sealed class SettingsService : IDisposable
             : defaults.ZoomFactor;
         settings.ToggleModeKey = IsValidHotkey(settings.ToggleModeKey) ? settings.ToggleModeKey : defaults.ToggleModeKey;
         settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
+        settings.ToggleHideKey = IsValidHotkey(settings.ToggleHideKey) ? settings.ToggleHideKey : defaults.ToggleHideKey;
+        settings.SeekBackwardKey = IsValidHotkey(settings.SeekBackwardKey) ? settings.SeekBackwardKey : defaults.SeekBackwardKey;
+        settings.SeekForwardKey = IsValidHotkey(settings.SeekForwardKey) ? settings.SeekForwardKey : defaults.SeekForwardKey;
         settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);
         settings.TogglePlaybackModifiers = NormalizeModifiers(settings.TogglePlaybackModifiers);
+        settings.ToggleHideModifiers = NormalizeModifiers(settings.ToggleHideModifiers);
+        settings.SeekBackwardModifiers = NormalizeModifiers(settings.SeekBackwardModifiers);
+        settings.SeekForwardModifiers = NormalizeModifiers(settings.SeekForwardModifiers);
         // WinUI 写 VK 后被旧 WPF 当 Key 枚举再被误迁移时，常见损坏结果是 RightCtrl + NumPad1。
         // 仅在一次性迁移标志未置位时尝试，避免覆盖用户后来合法设置的相同组合。
         if (!settings.HotkeyCorruptionRepairAttempted)
@@ -181,7 +193,7 @@ public sealed class SettingsService : IDisposable
             RepairKnownHotkeyCorruption(settings, defaults);
             settings.HotkeyCorruptionRepairAttempted = true;
         }
-        ResolveHotkeyConflict(settings, defaults);
+        ResolveHotkeyConflicts(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
         settings.Language = LocalizationService.Normalize(settings.Language);
@@ -229,47 +241,151 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>
-    /// 消除模式键与播放键的冲突。优先把播放键恢复为默认；若仍冲突（例如模式键本身就是默认播放键），
-    /// 再把模式键恢复为默认；最后仍冲突时给播放键一个固定备用键，保证 Sanitize 后永不双触发。
+    /// 五组热键槽位（模式 / 播放 / 隐藏 / 倒退 / 快进）的统一冲突消解。
+    /// 前位保留、后位让位：让位者先恢复默认；默认位仍被占用时依次泊到
+    /// F9/F10/F11/F12/F6 空闲键。保证 Sanitize 后任意两组 (Key, Modifiers) 不重复。
     /// </summary>
-    private static void ResolveHotkeyConflict(AppSettings settings, AppSettings defaults)
+    private const int HotkeySlotCount = 5;
+
+    private static readonly System.Windows.Input.Key[] HotkeyFallbackKeys =
     {
-        if (!HotkeysConflict(settings))
-        {
-            return;
-        }
+        System.Windows.Input.Key.F9,
+        System.Windows.Input.Key.F10,
+        System.Windows.Input.Key.F11,
+        System.Windows.Input.Key.F12,
+        System.Windows.Input.Key.F6,
+    };
 
-        settings.TogglePlaybackKey = defaults.TogglePlaybackKey;
-        settings.TogglePlaybackModifiers = defaults.TogglePlaybackModifiers;
-        if (!HotkeysConflict(settings))
+    private static void ResolveHotkeyConflicts(AppSettings settings, AppSettings defaults)
+    {
+        for (var attempt = 0; attempt < HotkeySlotCount * HotkeySlotCount; attempt++)
         {
-            return;
-        }
+            var (first, second) = FindFirstHotkeyConflict(settings);
+            if (first < 0)
+            {
+                return;
+            }
 
-        settings.ToggleModeKey = defaults.ToggleModeKey;
-        settings.ToggleModeModifiers = defaults.ToggleModeModifiers;
-        if (!HotkeysConflict(settings))
-        {
-            return;
-        }
+            // 后位让位：先回默认；若默认位仍被前位占用（前位用户值恰为后位默认），
+            // 把前位也拉回其默认；仍冲突才把后位泊到空闲备用键。
+            SetHotkeySlot(settings, second,
+                GetHotkeySlotKey(defaults, second), GetHotkeySlotModifiers(defaults, second));
+            if (!SlotConflictsWithAny(settings, second))
+            {
+                continue;
+            }
 
-        // 默认值本身不应冲突；防御性兜底，避免损坏配置或测试篡改 defaults 时仍双注册。
-        settings.TogglePlaybackKey = System.Windows.Input.Key.F9;
-        settings.TogglePlaybackModifiers = System.Windows.Input.ModifierKeys.None;
-        if (!HotkeysConflict(settings))
-        {
-            return;
-        }
+            SetHotkeySlot(settings, first,
+                GetHotkeySlotKey(defaults, first), GetHotkeySlotModifiers(defaults, first));
+            if (!SlotConflictsWithAny(settings, first) && !SlotConflictsWithAny(settings, second))
+            {
+                continue;
+            }
 
-        settings.ToggleModeKey = System.Windows.Input.Key.F8;
-        settings.ToggleModeModifiers = System.Windows.Input.ModifierKeys.None;
-        settings.TogglePlaybackKey = System.Windows.Input.Key.F9;
-        settings.TogglePlaybackModifiers = System.Windows.Input.ModifierKeys.None;
+            ParkHotkeySlot(settings, second);
+        }
     }
 
-    private static bool HotkeysConflict(AppSettings settings) =>
-        settings.ToggleModeKey == settings.TogglePlaybackKey &&
-        settings.ToggleModeModifiers == settings.TogglePlaybackModifiers;
+    /// <summary>指定槽位当前组合是否与任一其它槽位冲突。</summary>
+    private static bool SlotConflictsWithAny(AppSettings settings, int slot)
+    {
+        for (var i = 0; i < HotkeySlotCount; i++)
+        {
+            if (i != slot &&
+                GetHotkeySlotKey(settings, i) == GetHotkeySlotKey(settings, slot) &&
+                GetHotkeySlotModifiers(settings, i) == GetHotkeySlotModifiers(settings, slot))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static (int First, int Second) FindFirstHotkeyConflict(AppSettings settings)
+    {
+        for (var i = 0; i < HotkeySlotCount; i++)
+        {
+            for (var j = i + 1; j < HotkeySlotCount; j++)
+            {
+                if (GetHotkeySlotKey(settings, i) == GetHotkeySlotKey(settings, j) &&
+                    GetHotkeySlotModifiers(settings, i) == GetHotkeySlotModifiers(settings, j))
+                {
+                    return (i, j);
+                }
+            }
+        }
+
+        return (-1, -1);
+    }
+
+    /// <summary>把槽位泊到第一个当前无人使用的备用键（无修饰键）。</summary>
+    private static void ParkHotkeySlot(AppSettings settings, int slot)
+    {
+        foreach (var fallback in HotkeyFallbackKeys)
+        {
+            var taken = false;
+            for (var i = 0; i < HotkeySlotCount; i++)
+            {
+                if (i != slot && GetHotkeySlotKey(settings, i) == fallback)
+                {
+                    taken = true;
+                    break;
+                }
+            }
+
+            if (!taken)
+            {
+                SetHotkeySlot(settings, slot, fallback, System.Windows.Input.ModifierKeys.None);
+                return;
+            }
+        }
+    }
+
+    private static System.Windows.Input.Key GetHotkeySlotKey(AppSettings settings, int slot) => slot switch
+    {
+        0 => settings.ToggleModeKey,
+        1 => settings.TogglePlaybackKey,
+        2 => settings.ToggleHideKey,
+        3 => settings.SeekBackwardKey,
+        _ => settings.SeekForwardKey,
+    };
+
+    private static System.Windows.Input.ModifierKeys GetHotkeySlotModifiers(AppSettings settings, int slot) => slot switch
+    {
+        0 => settings.ToggleModeModifiers,
+        1 => settings.TogglePlaybackModifiers,
+        2 => settings.ToggleHideModifiers,
+        3 => settings.SeekBackwardModifiers,
+        _ => settings.SeekForwardModifiers,
+    };
+
+    private static void SetHotkeySlot(AppSettings settings, int slot, System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers)
+    {
+        switch (slot)
+        {
+            case 0:
+                settings.ToggleModeKey = key;
+                settings.ToggleModeModifiers = modifiers;
+                break;
+            case 1:
+                settings.TogglePlaybackKey = key;
+                settings.TogglePlaybackModifiers = modifiers;
+                break;
+            case 2:
+                settings.ToggleHideKey = key;
+                settings.ToggleHideModifiers = modifiers;
+                break;
+            case 3:
+                settings.SeekBackwardKey = key;
+                settings.SeekBackwardModifiers = modifiers;
+                break;
+            default:
+                settings.SeekForwardKey = key;
+                settings.SeekForwardModifiers = modifiers;
+                break;
+        }
+    }
 
     private static DateTime NormalizeCacheCheckTime(DateTime value)
     {

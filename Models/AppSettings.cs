@@ -47,6 +47,21 @@ public sealed class AppSettings
 
     public ModifierKeys TogglePlaybackModifiers { get; set; } = ModifierKeys.None;
 
+    /// <summary>浮窗模式临时隐藏/恢复显示浮窗热键。默认 F7（与 F8 相邻，避开游戏快速读档常占的 F9）。</summary>
+    public Key ToggleHideKey { get; set; } = Key.F7;
+
+    public ModifierKeys ToggleHideModifiers { get; set; } = ModifierKeys.None;
+
+    /// <summary>视频倒退 5 秒热键。默认 [（US 布局 VK_OEM_4）。</summary>
+    public Key SeekBackwardKey { get; set; } = Key.OemOpenBrackets;
+
+    public ModifierKeys SeekBackwardModifiers { get; set; } = ModifierKeys.None;
+
+    /// <summary>视频快进 5 秒热键。默认 ]（US 布局 VK_OEM_6）。</summary>
+    public Key SeekForwardKey { get; set; } = Key.OemCloseBrackets;
+
+    public ModifierKeys SeekForwardModifiers { get; set; } = ModifierKeys.None;
+
     /// <summary>
     /// 主题：Dark / Light / System。默认 Dark。System 跟随 Windows 应用浅/深色。
     /// </summary>

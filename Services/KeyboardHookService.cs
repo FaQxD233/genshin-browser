@@ -8,6 +8,9 @@ public sealed class KeyboardHookService : IDisposable
 {
     private const string ToggleModeRegistrationId = "toggle-mode";
     private const string TogglePlaybackRegistrationId = "toggle-playback";
+    private const string ToggleHideRegistrationId = "toggle-hide";
+    private const string SeekBackwardRegistrationId = "seek-backward";
+    private const string SeekForwardRegistrationId = "seek-forward";
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
     private const int WmKeyUp = 0x0101;
@@ -18,8 +21,14 @@ public sealed class KeyboardHookService : IDisposable
 
     private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
     private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
+    private volatile int _toggleHideVk = 0x76; // Default F7 (VK_F7)
+    private volatile int _seekBackwardVk = 0xDB; // Default [ (VK_OEM_4)
+    private volatile int _seekForwardVk = 0xDD; // Default ] (VK_OEM_6)
     private volatile ModifierKeys _toggleModeModifiers = ModifierKeys.None;
     private volatile ModifierKeys _togglePlaybackModifiers = ModifierKeys.None;
+    private volatile ModifierKeys _toggleHideModifiers = ModifierKeys.None;
+    private volatile ModifierKeys _seekBackwardModifiers = ModifierKeys.None;
+    private volatile ModifierKeys _seekForwardModifiers = ModifierKeys.None;
 
     public int ToggleModeVk
     {
@@ -116,6 +125,111 @@ public sealed class KeyboardHookService : IDisposable
     }
 
     /// <summary>
+    /// 原子更新浮窗隐藏热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
+    /// </summary>
+    public bool TrySetToggleHideHotkey(int virtualKey, ModifierKeys modifiers)
+    {
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            return false;
+        }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            if (virtualKey == _toggleHideVk && modifiers == _toggleHideModifiers)
+            {
+                return true;
+            }
+
+            if (HasConflictingRegistrationLocked(ToggleHideRegistrationId, virtualKey, modifiers))
+            {
+                return false;
+            }
+
+            _toggleHideVk = virtualKey;
+            _toggleHideModifiers = modifiers;
+            _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 原子更新视频倒退热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
+    /// </summary>
+    public bool TrySetSeekBackwardHotkey(int virtualKey, ModifierKeys modifiers)
+    {
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            return false;
+        }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            if (virtualKey == _seekBackwardVk && modifiers == _seekBackwardModifiers)
+            {
+                return true;
+            }
+
+            if (HasConflictingRegistrationLocked(SeekBackwardRegistrationId, virtualKey, modifiers))
+            {
+                return false;
+            }
+
+            _seekBackwardVk = virtualKey;
+            _seekBackwardModifiers = modifiers;
+            _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// 原子更新视频快进热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
+    /// </summary>
+    public bool TrySetSeekForwardHotkey(int virtualKey, ModifierKeys modifiers)
+    {
+        if (virtualKey is <= 0 or > 0xFF)
+        {
+            return false;
+        }
+
+        lock (_registrationLock)
+        {
+            if (_isDisposed)
+            {
+                return false;
+            }
+
+            if (virtualKey == _seekForwardVk && modifiers == _seekForwardModifiers)
+            {
+                return true;
+            }
+
+            if (HasConflictingRegistrationLocked(SeekForwardRegistrationId, virtualKey, modifiers))
+            {
+                return false;
+            }
+
+            _seekForwardVk = virtualKey;
+            _seekForwardModifiers = modifiers;
+            _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
+            PublishSnapshotLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
     /// 为 true 时内置模式/播放热键不触发（录制快捷键期间使用），不影响已注册的其它热键。
     /// </summary>
     public bool SuspendBuiltInHotkeys
@@ -141,6 +255,9 @@ public sealed class KeyboardHookService : IDisposable
         {
             _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
             _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
+            _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
+            _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
+            _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
             PublishSnapshotLocked();
         }
     }
@@ -148,6 +265,12 @@ public sealed class KeyboardHookService : IDisposable
     public event EventHandler? KPressed;
 
     public event EventHandler? ModeTogglePressed;
+
+    public event EventHandler? HideTogglePressed;
+
+    public event EventHandler? SeekBackwardPressed;
+
+    public event EventHandler? SeekForwardPressed;
 
     // 由 UI 层维护：浮窗模式下用户在游戏中，K 必须全局生效；
     // 浏览模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
@@ -523,6 +646,23 @@ public sealed class KeyboardHookService : IDisposable
                 _togglePlaybackVk,
                 _togglePlaybackModifiers,
                 () => Raise(KPressed),
+                CanExecutePlaybackHotkey),
+            ToggleHideRegistrationId => new HotkeyRegistration(
+                _toggleHideVk,
+                _toggleHideModifiers,
+                () => Raise(HideTogglePressed),
+                // 模式门控（仅浮窗模式生效）在 MainWindow 侧做，钩子层只做录制期挂起
+                CanExecuteBuiltInHotkey),
+            SeekBackwardRegistrationId => new HotkeyRegistration(
+                _seekBackwardVk,
+                _seekBackwardModifiers,
+                () => Raise(SeekBackwardPressed),
+                // 快进/倒退与播放键同一门控：浮窗模式全局（黑名单除外），浏览模式仅应用前台
+                CanExecutePlaybackHotkey),
+            SeekForwardRegistrationId => new HotkeyRegistration(
+                _seekForwardVk,
+                _seekForwardModifiers,
+                () => Raise(SeekForwardPressed),
                 CanExecutePlaybackHotkey),
             _ => throw new ArgumentOutOfRangeException(nameof(id)),
         };

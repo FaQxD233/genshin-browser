@@ -176,6 +176,46 @@ public sealed class KeyboardHookServiceTests
         return Assert.IsType<HashSet<string>>(field!.GetValue(null));
     }
 
+    [Fact]
+    public void NewBuiltInHotkeys_AreRegisteredByDefaultAndConflictChecked()
+    {
+        using var service = new KeyboardHookService();
+        const int vkF7 = 0x76;
+        const int vkOpenBracket = 0xDB; // '['
+        const int vkCloseBracket = 0xDD; // ']'
+
+        // 默认注册占用三个键，各一条（与其余内置键互斥）
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF7));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkOpenBracket));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkCloseBracket));
+
+        // 与任一内置默认冲突的赋值被拒绝
+        Assert.False(service.TrySetTogglePlaybackHotkey(vkF7, ModifierKeys.None));
+        Assert.False(service.TrySetToggleModeHotkey(vkOpenBracket, ModifierKeys.None));
+        Assert.False(service.TrySetSeekBackwardHotkey(vkCloseBracket, ModifierKeys.None));
+
+        // 空闲键可正常更新并迁移注册
+        const int vkF6 = 0x75;
+        Assert.True(service.TrySetToggleHideHotkey(vkF6, ModifierKeys.None));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF6));
+        Assert.Equal(0, service.GetRegistrationCountForVirtualKey(vkF7));
+
+        // 同值重复写入幂等
+        Assert.True(service.TrySetToggleHideHotkey(vkF6, ModifierKeys.None));
+        Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF6));
+    }
+
+    [Fact]
+    public void Dispose_ReleasesAllBuiltInRegistrations()
+    {
+        var service = new KeyboardHookService();
+        service.Dispose();
+
+        Assert.False(service.TrySetToggleHideHotkey(0x75, ModifierKeys.None));
+        Assert.False(service.TrySetSeekBackwardHotkey(0x75, ModifierKeys.None));
+        Assert.False(service.TrySetSeekForwardHotkey(0x75, ModifierKeys.None));
+    }
+
     private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
     {
         var method = typeof(KeyboardHookService).GetMethod(

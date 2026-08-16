@@ -79,4 +79,43 @@ public sealed class HotkeySchemaCompatTests
         Assert.Equal(Key.RightCtrl, settings.ToggleModeKey);
         Assert.Equal(Key.NumPad1, settings.TogglePlaybackKey);
     }
+
+    [Fact]
+    public void Load_ResolvesConflictsAcrossAllFiveHotkeySlots()
+    {
+        // 五组热键全部写成同一组合：Sanitize 应保留前位（模式），后位依次让位，
+        // 最终五组 (Key, Modifiers) 互不重复。
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        File.WriteAllText(settingsPath, JsonSerializer.Serialize(new AppSettings
+        {
+            SchemaVersion = 1,
+            ToggleModeKey = Key.F8,
+            ToggleModeModifiers = ModifierKeys.None,
+            TogglePlaybackKey = Key.F8,
+            TogglePlaybackModifiers = ModifierKeys.None,
+            ToggleHideKey = Key.F8,
+            ToggleHideModifiers = ModifierKeys.None,
+            SeekBackwardKey = Key.F8,
+            SeekBackwardModifiers = ModifierKeys.None,
+            SeekForwardKey = Key.F8,
+            SeekForwardModifiers = ModifierKeys.None,
+            HotkeyCorruptionRepairAttempted = true,
+        }));
+
+        using var settingsService = new SettingsService(settingsPath);
+        var settings = settingsService.Load();
+
+        var combos = new[]
+        {
+            (settings.ToggleModeKey, settings.ToggleModeModifiers),
+            (settings.TogglePlaybackKey, settings.TogglePlaybackModifiers),
+            (settings.ToggleHideKey, settings.ToggleHideModifiers),
+            (settings.SeekBackwardKey, settings.SeekBackwardModifiers),
+            (settings.SeekForwardKey, settings.SeekForwardModifiers),
+        };
+        Assert.Equal(combos.Length, combos.Distinct().Count());
+        // 前位保留：模式键仍是 F8
+        Assert.Equal(Key.F8, settings.ToggleModeKey);
+    }
 }

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
@@ -61,6 +62,13 @@ public partial class MainWindow : Window, IControlBrowser
     private DispatcherTimer? _settingsSaveTimer;
     // SPA 连续切集时取消前序未完成的 RecordHistoryForCurrentSourceAsync 延迟任务
     private CancellationTokenSource? _recordHistoryCts;
+
+    // 浮窗模式下热键临时隐藏：再按一次恢复；切回浏览模式时自动恢复显示
+    private bool _hiddenByHotkey;
+
+    // 鼠标移出窗口检测：光标离开后向页面补发鼠标事件，避免播放器控件停在移出前的位置常驻
+    private DispatcherTimer? _mouseLeaveWatchTimer;
+    private bool _mouseOutsideNotified;
 
     // 最大化状态：透明无边框窗口不能用 WindowState.Maximized（会覆盖任务栏），
     // 这里用手工记录工作区矩形并保存还原前的边界。
@@ -195,6 +203,65 @@ public partial class MainWindow : Window, IControlBrowser
         set => TrySetTogglePlaybackHotkey(_settings.TogglePlaybackKey, value);
     }
 
+    public Key ToggleHideKey
+    {
+        get => _settings.ToggleHideKey;
+        set => TrySetToggleHideHotkey(value, _settings.ToggleHideModifiers);
+    }
+
+    public ModifierKeys ToggleHideModifiers
+    {
+        get => _settings.ToggleHideModifiers;
+        set => TrySetToggleHideHotkey(_settings.ToggleHideKey, value);
+    }
+
+    public Key SeekBackwardKey
+    {
+        get => _settings.SeekBackwardKey;
+        set => TrySetSeekBackwardHotkey(value, _settings.SeekBackwardModifiers);
+    }
+
+    public ModifierKeys SeekBackwardModifiers
+    {
+        get => _settings.SeekBackwardModifiers;
+        set => TrySetSeekBackwardHotkey(_settings.SeekBackwardKey, value);
+    }
+
+    public Key SeekForwardKey
+    {
+        get => _settings.SeekForwardKey;
+        set => TrySetSeekForwardHotkey(value, _settings.SeekForwardModifiers);
+    }
+
+    public ModifierKeys SeekForwardModifiers
+    {
+        get => _settings.SeekForwardModifiers;
+        set => TrySetSeekForwardHotkey(_settings.SeekForwardKey, value);
+    }
+
+    /// <summary>热键槽位标识，用于候选组合与其它槽位的冲突检查。</summary>
+    private enum HotkeySlot
+    {
+        Mode,
+        Playback,
+        Hide,
+        SeekBackward,
+        SeekForward,
+    }
+
+    /// <summary>候选 (Key, 修饰键) 是否已被其它热键槽位占用（仅 UI 线程读写 settings）。</summary>
+    private bool IsHotkeyOccupied(Key key, ModifierKeys modifiers, HotkeySlot self)
+    {
+        bool Occupied(HotkeySlot slot, Key slotKey, ModifierKeys slotMods) =>
+            slot != self && slotKey == key && slotMods == modifiers;
+
+        return Occupied(HotkeySlot.Mode, _settings.ToggleModeKey, _settings.ToggleModeModifiers)
+            || Occupied(HotkeySlot.Playback, _settings.TogglePlaybackKey, _settings.TogglePlaybackModifiers)
+            || Occupied(HotkeySlot.Hide, _settings.ToggleHideKey, _settings.ToggleHideModifiers)
+            || Occupied(HotkeySlot.SeekBackward, _settings.SeekBackwardKey, _settings.SeekBackwardModifiers)
+            || Occupied(HotkeySlot.SeekForward, _settings.SeekForwardKey, _settings.SeekForwardModifiers);
+    }
+
     public bool TrySetToggleModeHotkey(Key key, ModifierKeys modifiers)
     {
         if (key == _settings.ToggleModeKey && modifiers == _settings.ToggleModeModifiers)
@@ -202,12 +269,8 @@ public partial class MainWindow : Window, IControlBrowser
             return true;
         }
 
-        if (key == _settings.TogglePlaybackKey && modifiers == _settings.TogglePlaybackModifiers)
-        {
-            return false;
-        }
-
-        if (!_keyboardHookService.TrySetToggleModeHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Mode) ||
+            !_keyboardHookService.TrySetToggleModeHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
         {
             return false;
         }
@@ -226,12 +289,8 @@ public partial class MainWindow : Window, IControlBrowser
             return true;
         }
 
-        if (key == _settings.ToggleModeKey && modifiers == _settings.ToggleModeModifiers)
-        {
-            return false;
-        }
-
-        if (!_keyboardHookService.TrySetTogglePlaybackHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Playback) ||
+            !_keyboardHookService.TrySetTogglePlaybackHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
         {
             return false;
         }
@@ -243,11 +302,74 @@ public partial class MainWindow : Window, IControlBrowser
         return true;
     }
 
+    public bool TrySetToggleHideHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == _settings.ToggleHideKey && modifiers == _settings.ToggleHideModifiers)
+        {
+            return true;
+        }
+
+        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Hide) ||
+            !_keyboardHookService.TrySetToggleHideHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        {
+            return false;
+        }
+
+        _settings.ToggleHideKey = key;
+        _settings.ToggleHideModifiers = modifiers;
+        QueueSettingsSave();
+        OnHotkeysChanged();
+        return true;
+    }
+
+    public bool TrySetSeekBackwardHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == _settings.SeekBackwardKey && modifiers == _settings.SeekBackwardModifiers)
+        {
+            return true;
+        }
+
+        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.SeekBackward) ||
+            !_keyboardHookService.TrySetSeekBackwardHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        {
+            return false;
+        }
+
+        _settings.SeekBackwardKey = key;
+        _settings.SeekBackwardModifiers = modifiers;
+        QueueSettingsSave();
+        OnHotkeysChanged();
+        return true;
+    }
+
+    public bool TrySetSeekForwardHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (key == _settings.SeekForwardKey && modifiers == _settings.SeekForwardModifiers)
+        {
+            return true;
+        }
+
+        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.SeekForward) ||
+            !_keyboardHookService.TrySetSeekForwardHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        {
+            return false;
+        }
+
+        _settings.SeekForwardKey = key;
+        _settings.SeekForwardModifiers = modifiers;
+        QueueSettingsSave();
+        OnHotkeysChanged();
+        return true;
+    }
+
     private string FormatToggleModeHotkey() =>
         HotkeyFormatter.Format(_settings.ToggleModeKey, _settings.ToggleModeModifiers);
 
     private string FormatTogglePlaybackHotkey() =>
         HotkeyFormatter.Format(_settings.TogglePlaybackKey, _settings.TogglePlaybackModifiers);
+
+    private string FormatToggleHideHotkey() =>
+        HotkeyFormatter.Format(_settings.ToggleHideKey, _settings.ToggleHideModifiers);
 
     private void OnHotkeysChanged()
     {
@@ -342,6 +464,15 @@ public partial class MainWindow : Window, IControlBrowser
             _keyboardHookService.TrySetTogglePlaybackHotkey(
                 KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey),
                 _settings.TogglePlaybackModifiers);
+            _keyboardHookService.TrySetToggleHideHotkey(
+                KeyInterop.VirtualKeyFromKey(_settings.ToggleHideKey),
+                _settings.ToggleHideModifiers);
+            _keyboardHookService.TrySetSeekBackwardHotkey(
+                KeyInterop.VirtualKeyFromKey(_settings.SeekBackwardKey),
+                _settings.SeekBackwardModifiers);
+            _keyboardHookService.TrySetSeekForwardHotkey(
+                KeyInterop.VirtualKeyFromKey(_settings.SeekForwardKey),
+                _settings.SeekForwardModifiers);
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
             UpdateWindowTitle();
 
@@ -381,7 +512,11 @@ public partial class MainWindow : Window, IControlBrowser
 
             _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
             _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
+            _keyboardHookService.HideTogglePressed += KeyboardHookService_OnHideTogglePressed;
+            _keyboardHookService.SeekBackwardPressed += KeyboardHookService_OnSeekBackwardPressed;
+            _keyboardHookService.SeekForwardPressed += KeyboardHookService_OnSeekForwardPressed;
             StartKeyboardHook();
+            EnsureMouseLeaveWatchStarted();
 
             // 跟踪应用前台状态：浏览模式下离开前台时禁用全局 K，避免影响其它软件输入
             Application.Current.Activated += App_OnActivated;
@@ -1624,6 +1759,268 @@ public partial class MainWindow : Window, IControlBrowser
         _ = Dispatcher.InvokeAsync(ToggleWindowMode);
     }
 
+    private void KeyboardHookService_OnHideTogglePressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(ToggleFloatingHidden);
+    }
+
+    private void KeyboardHookService_OnSeekBackwardPressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(() => _ = SeekVideoAsync(-5));
+    }
+
+    private void KeyboardHookService_OnSeekForwardPressed(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(() => _ = SeekVideoAsync(5));
+    }
+
+    /// <summary>
+    /// 浮窗模式下临时隐藏/恢复显示浮窗（热键 F7 默认）。仅浮窗模式生效；
+    /// 恢复显示时用 ShowActivated=false 避免从游戏抢焦点。隐藏期间视频继续播放（保留声音）。
+    /// </summary>
+    public void ToggleFloatingHidden()
+    {
+        if (_isShuttingDown || _settings.WindowMode != WindowMode.Fixed)
+        {
+            return;
+        }
+
+        if (_hiddenByHotkey)
+        {
+            _hiddenByHotkey = false;
+            ShowActivated = false;
+            try
+            {
+                Show();
+            }
+            finally
+            {
+                ShowActivated = true;
+            }
+
+            SetStatusMessage(LocalizationService.Get("Status.WindowShown"), StatusLevel.Success);
+        }
+        else
+        {
+            _hiddenByHotkey = true;
+            Hide();
+            SetStatusMessage(
+                LocalizationService.Format("Status.WindowHidden", FormatToggleHideHotkey()),
+                StatusLevel.Info);
+        }
+    }
+
+    /// <summary>视频快进/倒退（秒）。找到当前可见的视频元素并钳制在 [0, duration] 内跳转。</summary>
+    public async Task SeekVideoAsync(double deltaSeconds)
+    {
+        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        {
+            SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
+            return;
+        }
+
+        var script = BuildSeekScript(deltaSeconds);
+        try
+        {
+            var result = await BrowserView.CoreWebView2.ExecuteScriptAsync(script);
+            var secondsText = Math.Abs(deltaSeconds).ToString("0");
+            switch (result)
+            {
+                case "\"ok\"":
+                    SetStatusMessage(
+                        LocalizationService.Format(
+                            deltaSeconds < 0 ? "Status.SeekBackward" : "Status.SeekForward",
+                            secondsText),
+                        StatusLevel.Success);
+                    break;
+                case "\"no-video\"":
+                    SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
+                    break;
+                case "\"at-edge\"":
+                    SetStatusMessage(LocalizationService.Get("Status.SeekAtEdge"), StatusLevel.Info);
+                    break;
+                default:
+                    // live 流（duration=Infinity）等无时长的视频：命令已发出但不跳转
+                    SetStatusMessage(LocalizationService.Get("Status.PlaybackCommandSent"), StatusLevel.Info);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Seek video");
+            SetStatusMessage(LocalizationService.Format("Status.PlaybackFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
+    private static string BuildSeekScript(double deltaSeconds)
+    {
+        const string template = """
+(() => {
+  const videos = Array.from(document.querySelectorAll('video'));
+  const video = videos.find(v => {
+    const rect = v.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }) || videos[0];
+  if (!video) return 'no-video';
+  const duration = video.duration;
+  if (!isFinite(duration)) return 'no-duration';
+  const target = Math.max(0, Math.min(duration, video.currentTime + DELTA));
+  if (Math.abs(target - video.currentTime) < 0.001) return 'at-edge';
+  video.currentTime = target;
+  return 'ok';
+})();
+""";
+        return template.Replace("DELTA", deltaSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// 低频轮询光标是否已离开窗口（WebView 捕获输入时 WPF 的 MouseLeave 不可靠，
+    /// 用 GetCursorPos + 窗口物理矩形判断）。离开后向页面补发一次鼠标事件，
+    /// 让播放器感知「鼠标已不在」并收起控制栏；回到窗口内后重置标志。
+    /// </summary>
+    private void EnsureMouseLeaveWatchStarted()
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _mouseLeaveWatchTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250),
+        };
+        _mouseLeaveWatchTimer.Tick -= MouseLeaveWatchTimer_OnTick;
+        _mouseLeaveWatchTimer.Tick += MouseLeaveWatchTimer_OnTick;
+        if (!_mouseLeaveWatchTimer.IsEnabled)
+        {
+            _mouseLeaveWatchTimer.Start();
+        }
+    }
+
+    private void MouseLeaveWatchTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (_isShuttingDown || !_browserReady || _hiddenByHotkey || WindowState == WindowState.Minimized)
+        {
+            _mouseOutsideNotified = false;
+            return;
+        }
+
+        if (IsCursorOverWindow())
+        {
+            _mouseOutsideNotified = false;
+            return;
+        }
+
+        if (!_mouseOutsideNotified)
+        {
+            _mouseOutsideNotified = true;
+            _ = DispatchMouseLeftPageAsync();
+        }
+    }
+
+    private bool IsCursorOverWindow()
+    {
+        try
+        {
+            if (!GetCursorPos(out var cursor))
+            {
+                return true;
+            }
+
+            var origin = PointToScreen(new Point(0, 0));
+            var source = PresentationSource.FromVisual(this);
+            if (source?.CompositionTarget is null)
+            {
+                return true;
+            }
+
+            var transform = source.CompositionTarget.TransformToDevice;
+            var width = ActualWidth * transform.M11;
+            var height = ActualHeight * transform.M22;
+            const double tolerance = 2;
+            return cursor.X >= origin.X - tolerance && cursor.X <= origin.X + width + tolerance &&
+                   cursor.Y >= origin.Y - tolerance && cursor.Y <= origin.Y + height + tolerance;
+        }
+        catch
+        {
+            // 句柄尚未创建/已销毁等：按「在窗口内」处理，避免误发事件
+            return true;
+        }
+    }
+
+    private async Task DispatchMouseLeftPageAsync()
+    {
+        CoreWebView2? core;
+        try
+        {
+            core = BrowserView.CoreWebView2;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (core is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await core.ExecuteScriptAsync(MouseLeftPageScript);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Notify mouse left page");
+        }
+    }
+
+    /// <summary>
+    /// 注入页面：把页面感知的鼠标位置挪到左上角（远离底部控制栏），并对常见
+    /// 播放器容器补发 mouseleave/mouseout，使其收起控制栏、恢复闲置自动隐藏。
+    /// </summary>
+    private const string MouseLeftPageScript = """
+(() => {
+  try {
+    document.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, cancelable: true, view: window, clientX: 2, clientY: 2
+    }));
+    const selectors = '.bpx-player-container,.bpx-player-video-wrap,.bilibili-player-video-wrap,' +
+                      '.bilibili-player-video-perch,.bilibili-player-area,video';
+    for (const el of document.querySelectorAll(selectors)) {
+      el.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false, cancelable: true, view: window }));
+      el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, cancelable: true, view: window }));
+    }
+  } catch (_) {}
+})();
+""";
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out Win32Point lpPoint);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Win32Point
+    {
+        public int X;
+        public int Y;
+    }
+
     public async Task ToggleVideoPlaybackAsync()
     {
         if (!_browserReady || BrowserView.CoreWebView2 is null)
@@ -1696,6 +2093,13 @@ public partial class MainWindow : Window, IControlBrowser
         if (_settings.WindowMode == mode)
         {
             return;
+        }
+
+        // 热键隐藏状态下切模式：先恢复显示（回浏览模式允许激活），避免窗口停留在隐藏态
+        if (_hiddenByHotkey)
+        {
+            _hiddenByHotkey = false;
+            Show();
         }
 
         // 切换前先记下当前位置/尺寸，浏览/浮窗共用同一组边界
@@ -1909,53 +2313,70 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 恢复默认热键 Mode=F8、Playback=K。
-    /// 先把播放键停到临时键（F9→F12），避免 Mode=K / Playback=F8 等交叉占用时原子 setter 互相卡住。
+    /// 恢复默认热键：模式=F8、播放=K、隐藏=F7、倒退=[、快进=]。
+    /// 先把非默认热键泊到 F9–F12 的空闲位（不能是任何默认值或其它热键当前值），
+    /// 避免槽位间交叉占用导致目标默认值写不进去。
     /// </summary>
     private void RestoreDefaultHotkeys()
     {
-        const Key defaultModeKey = Key.F8;
-        const Key defaultPlaybackKey = Key.K;
+        var slots = new (HotkeySlot Slot, Func<Key> GetKey, Func<ModifierKeys> GetMods, Func<Key, ModifierKeys, bool> Set)[]
+        {
+            (HotkeySlot.Mode, () => _settings.ToggleModeKey, () => _settings.ToggleModeModifiers,
+                (k, m) => TrySetToggleModeHotkey(k, m)),
+            (HotkeySlot.Playback, () => _settings.TogglePlaybackKey, () => _settings.TogglePlaybackModifiers,
+                (k, m) => TrySetTogglePlaybackHotkey(k, m)),
+            (HotkeySlot.Hide, () => _settings.ToggleHideKey, () => _settings.ToggleHideModifiers,
+                (k, m) => TrySetToggleHideHotkey(k, m)),
+            (HotkeySlot.SeekBackward, () => _settings.SeekBackwardKey, () => _settings.SeekBackwardModifiers,
+                (k, m) => TrySetSeekBackwardHotkey(k, m)),
+            (HotkeySlot.SeekForward, () => _settings.SeekForwardKey, () => _settings.SeekForwardModifiers,
+                (k, m) => TrySetSeekForwardHotkey(k, m)),
+        };
+        var defaults = new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
+        {
+            [HotkeySlot.Mode] = (Key.F8, ModifierKeys.None),
+            [HotkeySlot.Playback] = (Key.K, ModifierKeys.None),
+            [HotkeySlot.Hide] = (Key.F7, ModifierKeys.None),
+            [HotkeySlot.SeekBackward] = (Key.OemOpenBrackets, ModifierKeys.None),
+            [HotkeySlot.SeekForward] = (Key.OemCloseBrackets, ModifierKeys.None),
+        };
 
-        if (_settings.ToggleModeKey == defaultModeKey &&
-            _settings.ToggleModeModifiers == ModifierKeys.None &&
-            _settings.TogglePlaybackKey == defaultPlaybackKey &&
-            _settings.TogglePlaybackModifiers == ModifierKeys.None)
+        if (slots.All(slot => slot.GetKey() == defaults[slot.Slot].Key && slot.GetMods() == defaults[slot.Slot].Mods))
         {
             return;
         }
 
-        // 临时键不能是最终默认值；按优先级尝试，直到播放键离开 F8/K 占用区
         ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12];
-        var parked = false;
-        foreach (var park in parkingKeys)
+        var defaultKeys = defaults.Values.Select(pair => pair.Key).ToHashSet();
+        foreach (var slot in slots)
         {
-            if (TrySetTogglePlaybackHotkey(park, ModifierKeys.None))
+            var (defaultKey, defaultMods) = defaults[slot.Slot];
+            if (slot.GetKey() == defaultKey && slot.GetMods() == defaultMods)
             {
-                parked = true;
-                break;
+                continue;
             }
-        }
 
-        // 即便 park 失败（极端：模式键占满所有临时键），仍尝试写入默认；能恢复多少算多少
-        TrySetToggleModeHotkey(defaultModeKey, ModifierKeys.None);
-        if (!TrySetTogglePlaybackHotkey(defaultPlaybackKey, ModifierKeys.None) && parked)
-        {
-            // Mode 可能仍占着 K：再 park 一次 Mode 到 F9 再写
+            // 泊位须避开：默认值集合、以及其它槽位当前已占的键
             foreach (var park in parkingKeys)
             {
-                if (park == defaultModeKey || park == defaultPlaybackKey)
+                if (defaultKeys.Contains(park) ||
+                    slots.Any(other => other.Slot != slot.Slot && other.GetKey() == park))
                 {
                     continue;
                 }
 
-                if (TrySetToggleModeHotkey(park, ModifierKeys.None))
+                if (slot.Set(park, ModifierKeys.None))
                 {
-                    TrySetTogglePlaybackHotkey(defaultPlaybackKey, ModifierKeys.None);
-                    TrySetToggleModeHotkey(defaultModeKey, ModifierKeys.None);
                     break;
                 }
             }
+        }
+
+        // 逐个写默认：泊位已腾出目标组合，正常应全部成功
+        foreach (var slot in slots)
+        {
+            var (defaultKey, defaultMods) = defaults[slot.Slot];
+            slot.Set(defaultKey, defaultMods);
         }
     }
 
@@ -2699,6 +3120,19 @@ public partial class MainWindow : Window, IControlBrowser
         _recordHistoryCts?.Cancel();
         _recordHistoryCts?.Dispose();
         _recordHistoryCts = null;
+
+        if (_mouseLeaveWatchTimer is not null)
+        {
+            _mouseLeaveWatchTimer.Stop();
+            _mouseLeaveWatchTimer.Tick -= MouseLeaveWatchTimer_OnTick;
+            _mouseLeaveWatchTimer = null;
+        }
+
+        _keyboardHookService.KPressed -= KeyboardHookService_OnKPressed;
+        _keyboardHookService.ModeTogglePressed -= KeyboardHookService_OnModeTogglePressed;
+        _keyboardHookService.HideTogglePressed -= KeyboardHookService_OnHideTogglePressed;
+        _keyboardHookService.SeekBackwardPressed -= KeyboardHookService_OnSeekBackwardPressed;
+        _keyboardHookService.SeekForwardPressed -= KeyboardHookService_OnSeekForwardPressed;
 
         if (_windowBoundsUiDebounceTimer is not null)
         {

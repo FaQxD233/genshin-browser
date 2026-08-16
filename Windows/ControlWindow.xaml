@@ -547,6 +547,11 @@
 
               <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
               <Grid Margin="0,0,0,8">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="68"/>
                   <ColumnDefinition Width="*"/>
@@ -554,18 +559,36 @@
                   <ColumnDefinition Width="68"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" Content="{Binding ToggleModeKeyText}"
+                <Button Grid.Row="0" Grid.Column="1" Content="{Binding ToggleModeKeyText}"
                         Command="{Binding RecordToggleModeKeyCommand}"
                         Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
                         Height="26" Padding="6,2" FontSize="11"/>
-                <TextBlock Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
+                <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
+                <Button Grid.Row="0" Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
                         Command="{Binding RecordTogglePlaybackKeyCommand}"
                         Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
                         Height="26" Padding="6,2" FontSize="11"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Settings.HideOverlay}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                <Button Grid.Row="1" Grid.Column="1" Content="{Binding ToggleHideKeyText}"
+                        Command="{Binding RecordToggleHideKeyCommand}"
+                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="1" Grid.Column="3" Text="{DynamicResource Settings.SeekBackward}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                <Button Grid.Row="1" Grid.Column="4" Content="{Binding SeekBackwardKeyText}"
+                        Command="{Binding RecordSeekBackwardKeyCommand}"
+                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource Settings.SeekForward}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                <Button Grid.Row="2" Grid.Column="1" Content="{Binding SeekForwardKeyText}"
+                        Command="{Binding RecordSeekForwardKeyCommand}"
+                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
               </Grid>
             </StackPanel>
           </ScrollViewer>

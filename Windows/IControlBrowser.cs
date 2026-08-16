@@ -31,9 +31,36 @@ public interface IControlBrowser
     bool TrySetToggleModeHotkey(Key key, ModifierKeys modifiers);
 
     /// <summary>
-    /// 原子设置「视频播放」快捷键。与模式键最终组合冲突时返回 false，不写半份状态。
+    /// 原子设置「视频播放」快捷键。与其它热键最终组合冲突时返回 false，不写半份状态。
     /// </summary>
     bool TrySetTogglePlaybackHotkey(Key key, ModifierKeys modifiers);
+
+    Key ToggleHideKey { get; set; }
+
+    ModifierKeys ToggleHideModifiers { get; set; }
+
+    /// <summary>
+    /// 原子设置「隐藏浮窗」快捷键。与其它热键最终组合冲突时返回 false，不写半份状态。
+    /// </summary>
+    bool TrySetToggleHideHotkey(Key key, ModifierKeys modifiers);
+
+    Key SeekBackwardKey { get; set; }
+
+    ModifierKeys SeekBackwardModifiers { get; set; }
+
+    /// <summary>
+    /// 原子设置「倒退 5 秒」快捷键。与其它热键最终组合冲突时返回 false，不写半份状态。
+    /// </summary>
+    bool TrySetSeekBackwardHotkey(Key key, ModifierKeys modifiers);
+
+    Key SeekForwardKey { get; set; }
+
+    ModifierKeys SeekForwardModifiers { get; set; }
+
+    /// <summary>
+    /// 原子设置「快进 5 秒」快捷键。与其它热键最终组合冲突时返回 false，不写半份状态。
+    /// </summary>
+    bool TrySetSeekForwardHotkey(Key key, ModifierKeys modifiers);
 
     string CurrentAddress { get; }
 
