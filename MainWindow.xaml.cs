@@ -340,10 +340,25 @@ public partial class MainWindow : Window, IControlBrowser
 
             // 异步初始化历史/收藏/下载服务（构造函数不再同步读盘）。
             // 并行加载，不阻塞 UI 线程；完成后再构造控制窗（它会读取这些数据）。
-            await Task.WhenAll(
+            // 三个任务同时启动，但逐个独立兜底：单个服务读盘失败只按空数据继续，
+            // 不像 Task.WhenAll 那样任一异常拖垮整个启动流程。
+            var initTasks = new[]
+            {
                 _historyService.InitializeAsync(),
                 _favoritesService.InitializeAsync(),
-                _downloadsService.InitializeAsync()).ConfigureAwait(true);
+                _downloadsService.InitializeAsync(),
+            };
+            foreach (var initTask in initTasks)
+            {
+                try
+                {
+                    await initTask.ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    FileLogger.LogException(ex, "Initialize data service");
+                }
+            }
 
             _controlWindow = new ControlWindow(this);
             UpdateControlWindowVisibility();
@@ -2537,13 +2552,13 @@ public partial class MainWindow : Window, IControlBrowser
         var work = WindowBoundsHelper.GetWorkArea(this);
         var ratio = e.GetPosition(this).X / ActualWidth;
         ToggleMaximize();
-        // GetPosition(null) 返回相对「还原后窗口」客户区（root visual）的坐标，
-        // 而 Left/Top 是屏幕坐标。本窗口是无边框分层窗（WindowStyle=None），
-        // 客户区原点即窗口 Left/Top，因此屏幕坐标 = 还原后的 Left/Top + 客户区相对坐标，
-        // 必须补上窗口偏移，否则窗口会按客户区坐标直接落位导致错位。
+        // GetPosition(null) 返回的是事件触发时刻鼠标相对「最大化窗口」原点的客户区坐标：
+        // MouseDevice 缓存最后一次鼠标移动时的客户区坐标，窗口移动后仅按当前窗口位置
+        // 做 client→screen→client 往返，返回值不随窗口移动变化。而自定义最大化的原点
+        // 恰为 work.Left/work.Top（见 ToggleMaximize），故鼠标屏幕坐标 = work 原点 + pos。
         var pos = e.GetPosition(null);
-        Left = Left + pos.X - _savedBounds.Width * ratio;
-        Top = Top + pos.Y - SystemParameters.CaptionHeight / 2.0;
+        Left = work.Left + pos.X - _savedBounds.Width * ratio;
+        Top = work.Top + pos.Y - SystemParameters.CaptionHeight / 2.0;
         Left = Math.Max(work.Left, Math.Min(Left, work.Right - Width));
         Top = Math.Max(work.Top, Math.Min(Top, work.Bottom - Height));
         DragMove();

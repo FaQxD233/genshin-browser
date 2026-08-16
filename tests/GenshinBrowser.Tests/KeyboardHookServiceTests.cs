@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Windows.Input;
 using GenshinBrowser.Services;
 
@@ -119,5 +121,67 @@ public sealed class KeyboardHookServiceTests
 
         service.SuspendBuiltInHotkeys = false;
         Assert.False(service.SuspendBuiltInHotkeys);
+    }
+
+    [Fact]
+    public void NonGameProcessNames_UsesRealProcessNames()
+    {
+        var names = GetNonGameProcessNames();
+
+        // 必须是 Process.ProcessName 的真实取值，否则浮窗模式下热键会在这些软件中误触发
+        Assert.Contains("qbittorrent", names);
+        Assert.Contains("idman", names);
+        Assert.Contains("rider64", names);
+        Assert.Contains("windowsterminal", names);
+        Assert.Contains("potplayermini64", names);
+        Assert.Contains("ms-teams", names);
+
+        // 曾用/常见的错误别名不应存在（HashSet 精确匹配，别名永远命中不了真实进程名）
+        Assert.DoesNotContain("qbit", names);
+        Assert.DoesNotContain("idm", names);
+        Assert.DoesNotContain("wt", names);
+        Assert.DoesNotContain("rider", names);
+    }
+
+    [Fact]
+    public void GetCachedForegroundProcessName_LiveProcessReturnsActualName()
+    {
+        using var service = new KeyboardHookService();
+
+        var name = InvokeGetCachedForegroundProcessName(service, (uint)Environment.ProcessId);
+
+        Assert.Equal(Process.GetProcessById(Environment.ProcessId).ProcessName, name);
+    }
+
+    [Fact]
+    public void GetCachedForegroundProcessName_ExitedProcessReturnsNullWithoutThrowing()
+    {
+        // 前台窗口进程刚退出：无论退出发生在 GetProcessById 之前（ArgumentException）
+        // 还是读取 ProcessName 之前（InvalidOperationException），都应被吞掉并返回 null，
+        // 保持「无法确认进程名时视为游戏」的语义，而不是让异常漏进钩子回调。
+        using var service = new KeyboardHookService();
+        using var exited = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { UseShellExecute = false })!;
+        exited.WaitForExit(5000);
+
+        var name = InvokeGetCachedForegroundProcessName(service, (uint)exited.Id);
+
+        Assert.Null(name);
+    }
+
+    private static HashSet<string> GetNonGameProcessNames()
+    {
+        var field = typeof(KeyboardHookService).GetField(
+            "NonGameProcessNames", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        return Assert.IsType<HashSet<string>>(field!.GetValue(null));
+    }
+
+    private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
+    {
+        var method = typeof(KeyboardHookService).GetMethod(
+            "GetCachedForegroundProcessName", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        // TargetInvocationException 不会被吞：若内部 catch 漏了异常类型，这里会直接测试失败
+        return (string?)method!.Invoke(service, new object[] { pid });
     }
 }

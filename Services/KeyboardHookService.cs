@@ -375,22 +375,22 @@ public sealed class KeyboardHookService : IDisposable
 
     private static readonly HashSet<string> NonGameProcessNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        // 系统 / 桌面
-        "explorer", "taskmgr", "cmd", "powershell", "wt", "bash", "pwsh",
+        // 系统 / 桌面（Windows Terminal 的真实进程是 WindowsTerminal，wt.exe 只是启动别名）
+        "explorer", "taskmgr", "cmd", "powershell", "windowsterminal", "bash", "pwsh",
         "runtimebroker", "shellexperiencehost", "searchhost", "textinputhost", "startmenuexperiencehost",
         // 浏览器
         "chrome", "firefox", "msedge", "opera", "brave", "iexplore", "safari", "360se", "sogouexplorer",
         "vivaldi", "centbrowser", "qqbrowser", "maxthon", "ucbrowser", "yandex", "mychrome",
-        // 通讯 / 协作
-        "qq", "tim", "wechat", "discord", "feishu", "dingtalk", "slack", "teams", "telegram", "whatsapp", "line",
+        // 通讯 / 协作（新版 Teams 进程名为 ms-teams）
+        "qq", "tim", "wechat", "discord", "feishu", "dingtalk", "slack", "teams", "ms-teams", "telegram", "whatsapp", "line",
         "skype", "zoom", "outlook", "thunderbird", "mstsc",
-        // 编辑器 / IDE
-        "notepad", "notepad++", "code", "devenv", "rider", "sublime_text",
+        // 编辑器 / IDE（Rider 2020.1+ 进程名为 rider64）
+        "notepad", "notepad++", "code", "devenv", "rider64", "sublime_text",
         "idea64", "pycharm64", "goland64", "clion64", "webstorm64", "datagrip64", "androidstudio", "vim", "emacs",
         // 办公
         "wps", "winword", "excel", "powerpnt", "onenote", "acrobat", "foxitreader",
-        // 工具 / 下载 / 媒体
-        "baidunetdisk", "thunder", "idm", "qbit", "spotify", "vlc", "potplayer", "everything", "ditto",
+        // 工具 / 下载 / 媒体（IDM=IDMan，qBittorrent=qbittorrent，PotPlayer 64 位=PotPlayerMini64）
+        "baidunetdisk", "thunder", "idman", "qbittorrent", "spotify", "vlc", "potplayer", "potplayermini64", "everything", "ditto",
     };
 
     // 前台进程名惰性缓存：低级钩子回调必须毫秒级返回，禁止每次按键都做进程枚举。
@@ -453,6 +453,11 @@ public sealed class KeyboardHookService : IDisposable
         catch (ArgumentException)
         {
             // 进程已退出（前台窗口刚被关闭）：缓存为 null，下一次前台变化再查。
+            name = null;
+        }
+        catch (InvalidOperationException)
+        {
+            // 进程在 GetProcessById 与读取 ProcessName 之间退出，同上缓存 null。
             name = null;
         }
         catch (System.ComponentModel.Win32Exception)
