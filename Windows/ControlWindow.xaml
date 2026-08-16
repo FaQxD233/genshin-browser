@@ -92,6 +92,7 @@
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
     </Grid.RowDefinitions>
 
@@ -184,6 +185,22 @@
             </Style>
           </Button.Style>
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;" FontSize="13"/>
+        </Button>
+        <Button x:Name="KeyBindingsButton" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+                Command="{Binding ToggleKeyBindingsCommand}"
+                ToolTip="{DynamicResource Toolbar.KeysTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.KeysName}">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+              <Setter Property="Padding" Value="0"/>
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsKeyBindingsExpanded}" Value="True">
+                  <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                  <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Button.Style>
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE765;" FontSize="13"/>
         </Button>
         <Button x:Name="DownloadsButton" Width="34" Height="30" Padding="0"
                 Command="{Binding ToggleDownloadsCommand}"
@@ -544,118 +561,159 @@
                   </Button.Style>
                 </Button>
               </Grid>
-
-              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
-              <Grid Margin="0,0,0,8">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="68"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="8"/>
-                  <ColumnDefinition Width="68"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Row="0" Grid.Column="1" Content="{Binding ToggleModeKeyText}"
-                        Command="{Binding RecordToggleModeKeyCommand}"
-                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                        Height="26" Padding="6,2" FontSize="11"/>
-                <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Row="0" Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
-                        Command="{Binding RecordTogglePlaybackKeyCommand}"
-                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                        Height="26" Padding="6,2" FontSize="11"/>
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Settings.HideOverlay}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
-                <Button Grid.Row="1" Grid.Column="1" Content="{Binding ToggleHideKeyText}"
-                        Command="{Binding RecordToggleHideKeyCommand}"
-                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="1" Grid.Column="3" Text="{DynamicResource Settings.SeekBackward}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
-                <Button Grid.Row="1" Grid.Column="4" Content="{Binding SeekBackwardKeyText}"
-                        Command="{Binding RecordSeekBackwardKeyCommand}"
-                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource Settings.SeekForward}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
-                <Button Grid.Row="2" Grid.Column="1" Content="{Binding SeekForwardKeyText}"
-                        Command="{Binding RecordSeekForwardKeyCommand}"
-                        Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                        Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
-              </Grid>
-
-              <!-- 热键生效范围：黑名单外 / 全部应用 / 关闭 -->
-              <Grid Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="68"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.HotkeyScope}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"
-                           ToolTip="{DynamicResource Settings.HotkeyScopeTooltip}"/>
-                <Button Grid.Column="1" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeBlacklistCommand}"
-                        Content="{DynamicResource Settings.HotkeyScopeBlacklist}"
-                        ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsHotkeyScopeBlacklist}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Grid.Column="2" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeAllAppsCommand}"
-                        Content="{DynamicResource Settings.HotkeyScopeAllApps}"
-                        ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsHotkeyScopeAllApps}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Grid.Column="3" Command="{Binding SetHotkeyScopeOffCommand}"
-                        Content="{DynamicResource Settings.HotkeyScopeOff}"
-                        ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsHotkeyScopeOff}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-              </Grid>
             </StackPanel>
           </ScrollViewer>
         </Grid>
       </Border>
     </Border>
 
-    <!-- Row 2: 下载面板 — 与设置同一双层结构 -->
-    <Border Grid.Row="2" x:Name="DownloadsPanelBorder"
+    <!-- Row 2: 按键绑定面板 — 与设置面板同一双层结构 -->
+    <Border Grid.Row="2" x:Name="KeyBindingsPanelBorder"
+            Background="Transparent"
+            Margin="0" Padding="0"
+            ClipToBounds="True" MaxHeight="0" Opacity="0">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsKeyBindingsExpanded}" Value="True">
+              <DataTrigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="230" Duration="0:0:0.2"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.EnterActions>
+              <DataTrigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="0" Duration="0:0:0.16"
+                                     EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </DataTrigger.ExitActions>
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <Border Background="{DynamicResource BackgroundSecondary}"
+              CornerRadius="6"
+              Padding="10,8"
+              Margin="0,0,0,12">
+        <StackPanel>
+          <TextBlock Text="{DynamicResource Keys.Title}" FontSize="12" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,0,6"/>
+                <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
+                <Grid Margin="0,0,0,8">
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                  </Grid.RowDefinitions>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center"/>
+                  <Button Grid.Row="0" Grid.Column="1" Content="{Binding ToggleModeKeyText}"
+                          Command="{Binding RecordToggleModeKeyCommand}"
+                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                          Height="26" Padding="6,2" FontSize="11"/>
+                  <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center"/>
+                  <Button Grid.Row="0" Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
+                          Command="{Binding RecordTogglePlaybackKeyCommand}"
+                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                          Height="26" Padding="6,2" FontSize="11"/>
+                  <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Settings.HideOverlay}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                  <Button Grid.Row="1" Grid.Column="1" Content="{Binding ToggleHideKeyText}"
+                          Command="{Binding RecordToggleHideKeyCommand}"
+                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                  <TextBlock Grid.Row="1" Grid.Column="3" Text="{DynamicResource Settings.SeekBackward}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                  <Button Grid.Row="1" Grid.Column="4" Content="{Binding SeekBackwardKeyText}"
+                          Command="{Binding RecordSeekBackwardKeyCommand}"
+                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                  <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource Settings.SeekForward}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                  <Button Grid.Row="2" Grid.Column="1" Content="{Binding SeekForwardKeyText}"
+                          Command="{Binding RecordSeekForwardKeyCommand}"
+                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
+                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                </Grid>
+
+                <!-- 热键生效范围：黑名单外 / 全部应用 / 关闭 -->
+                <Grid Margin="0,0,0,8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{DynamicResource Settings.HotkeyScope}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center"
+                             ToolTip="{DynamicResource Settings.HotkeyScopeTooltip}"/>
+                  <Button Grid.Column="1" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeBlacklistCommand}"
+                          Content="{DynamicResource Settings.HotkeyScopeBlacklist}"
+                          ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}">
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsHotkeyScopeBlacklist}" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                  <Button Grid.Column="2" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeAllAppsCommand}"
+                          Content="{DynamicResource Settings.HotkeyScopeAllApps}"
+                          ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}">
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsHotkeyScopeAllApps}" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                  <Button Grid.Column="3" Command="{Binding SetHotkeyScopeOffCommand}"
+                          Content="{DynamicResource Settings.HotkeyScopeOff}"
+                          ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}">
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding IsHotkeyScopeOff}" Value="True">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
+                </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <!-- Row 3: 下载面板 — 与设置同一双层结构 -->
+    <Border Grid.Row="3" x:Name="DownloadsPanelBorder"
             Background="Transparent"
             Margin="0" Padding="0"
             ClipToBounds="True" MaxHeight="0" Opacity="0">
@@ -731,7 +789,7 @@
     </Border>
 
     <!-- Row 3: 地址栏 — 主次动作分层；进度条与地址框对齐 -->
-    <Grid Grid.Row="3" Margin="0,0,0,12">
+    <Grid Grid.Row="4" Margin="0,0,0,12">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="*"/>
@@ -811,7 +869,7 @@
     </Grid>
 
     <!-- 顶栏/地址栏 与 列表区 的分隔：一条细线，不用卡片 -->
-    <Grid Grid.Row="4">
+    <Grid Grid.Row="5">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -986,7 +1044,7 @@
       </Grid>
     </Grid>
 
-    <Border Grid.RowSpan="5"
+    <Border Grid.RowSpan="6"
             Tag="{Binding IsToastVisible}"
             Visibility="{Binding ToastVisibility}"
             Background="{DynamicResource BackgroundTertiary}"

@@ -64,6 +64,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
         RecordSeekForwardKeyCommand = new RelayCommand(StartRecordingSeekForwardKey);
         ToggleSettingsCommand = new RelayCommand(ToggleSettings);
         ToggleDownloadsCommand = new RelayCommand(ToggleDownloads);
+        ToggleKeyBindingsCommand = new RelayCommand(ToggleKeyBindings);
 
         ZoomInCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor + 0.1, 0.25, 5.0));
         ZoomOutCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor - 0.1, 0.25, 5.0));
@@ -136,6 +137,8 @@ public sealed class ControlWindowViewModel : ViewModelBase
     public RelayCommand ToggleSettingsCommand { get; }
 
     public RelayCommand ToggleDownloadsCommand { get; }
+
+    public RelayCommand ToggleKeyBindingsCommand { get; }
 
     public AsyncRelayCommand RemoveFavoriteCommand { get; }
 
@@ -420,7 +423,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private bool _isSettingsExpanded;
 
     /// <summary>
-    /// 浮窗设置面板展开状态。与下载面板互斥。
+    /// 浮窗设置面板展开状态。与下载/按键绑定面板互斥。
     /// </summary>
     public bool IsSettingsExpanded
     {
@@ -432,10 +435,19 @@ public sealed class ControlWindowViewModel : ViewModelBase
                 return;
             }
 
-            if (value && _isDownloadsExpanded)
+            if (value)
             {
-                _isDownloadsExpanded = false;
-                OnPropertyChanged(nameof(IsDownloadsExpanded));
+                if (_isDownloadsExpanded)
+                {
+                    _isDownloadsExpanded = false;
+                    OnPropertyChanged(nameof(IsDownloadsExpanded));
+                }
+
+                if (_isKeyBindingsExpanded)
+                {
+                    _isKeyBindingsExpanded = false;
+                    OnPropertyChanged(nameof(IsKeyBindingsExpanded));
+                }
             }
         }
     }
@@ -443,7 +455,7 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private bool _isDownloadsExpanded;
 
     /// <summary>
-    /// 下载管理面板展开状态。与设置面板互斥。
+    /// 下载管理面板展开状态。与设置/按键绑定面板互斥。
     /// </summary>
     public bool IsDownloadsExpanded
     {
@@ -455,10 +467,51 @@ public sealed class ControlWindowViewModel : ViewModelBase
                 return;
             }
 
-            if (value && _isSettingsExpanded)
+            if (value)
             {
-                _isSettingsExpanded = false;
-                OnPropertyChanged(nameof(IsSettingsExpanded));
+                if (_isSettingsExpanded)
+                {
+                    _isSettingsExpanded = false;
+                    OnPropertyChanged(nameof(IsSettingsExpanded));
+                }
+
+                if (_isKeyBindingsExpanded)
+                {
+                    _isKeyBindingsExpanded = false;
+                    OnPropertyChanged(nameof(IsKeyBindingsExpanded));
+                }
+            }
+        }
+    }
+
+    private bool _isKeyBindingsExpanded;
+
+    /// <summary>
+    /// 按键绑定面板展开状态（五组热键录制 + 热键生效范围）。与设置/下载面板互斥。
+    /// </summary>
+    public bool IsKeyBindingsExpanded
+    {
+        get => _isKeyBindingsExpanded;
+        set
+        {
+            if (!SetProperty(ref _isKeyBindingsExpanded, value))
+            {
+                return;
+            }
+
+            if (value)
+            {
+                if (_isSettingsExpanded)
+                {
+                    _isSettingsExpanded = false;
+                    OnPropertyChanged(nameof(IsSettingsExpanded));
+                }
+
+                if (_isDownloadsExpanded)
+                {
+                    _isDownloadsExpanded = false;
+                    OnPropertyChanged(nameof(IsDownloadsExpanded));
+                }
             }
         }
     }
@@ -722,6 +775,11 @@ public sealed class ControlWindowViewModel : ViewModelBase
     private void ToggleDownloads()
     {
         IsDownloadsExpanded = !IsDownloadsExpanded;
+    }
+
+    private void ToggleKeyBindings()
+    {
+        IsKeyBindingsExpanded = !IsKeyBindingsExpanded;
     }
 
     private void UpdateDownloadsBadge()

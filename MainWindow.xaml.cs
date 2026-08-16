@@ -545,7 +545,19 @@ public partial class MainWindow : Window, IControlBrowser
         UpdateWebViewMemoryTargetLevel();
     }
 
-    private void MainWindow_OnStateChanged(object? sender, EventArgs e) => UpdateWebViewMemoryTargetLevel();
+    private void MainWindow_OnStateChanged(object? sender, EventArgs e)
+    {
+        UpdateWebViewMemoryTargetLevel();
+
+        // 任务栏图标点击 / Alt-Tab 恢复：从热键隐藏（最小化）回到可见状态时结束隐藏态。
+        // 程序化恢复（RestoreFromHotkeyHide）先清标志，不会走到这里二次处理。
+        if (_hiddenByHotkey && WindowState != WindowState.Minimized)
+        {
+            _hiddenByHotkey = false;
+            _keyboardHookService.AlwaysAllowHideToggle = false;
+            UpdateControlWindowVisibility();
+        }
+    }
 
     /// <summary>
     /// 浮窗叠游戏、应用失焦或窗口最小化时请求 WebView2 使用低内存目标；
@@ -1792,8 +1804,9 @@ public partial class MainWindow : Window, IControlBrowser
 
     /// <summary>
     /// 临时隐藏/恢复显示窗口（热键 F7 默认），浏览与浮窗模式均可用。
-    /// 隐藏时连同控制窗一起收起（视频继续播放，保留声音）；恢复不抢前台焦点。
-    /// 隐藏期间隐藏键是唯一恢复入口：钩子层 AlwaysAllowHideToggle 使其不受生效范围限制。
+    /// 用最小化而非 Hide()：任务栏图标保留，点击图标即可恢复（与再按 F7 等效），
+    /// Alt-Tab 也能找回；隐藏时控制窗一并收起，视频继续播放（保留声音）。
+    /// 隐藏期间隐藏键是唯一热键恢复入口：钩子层 AlwaysAllowHideToggle 使其不受生效范围限制。
     /// </summary>
     public void ToggleFloatingHidden()
     {
@@ -1804,20 +1817,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         if (_hiddenByHotkey)
         {
-            _hiddenByHotkey = false;
-            _keyboardHookService.AlwaysAllowHideToggle = false;
-            ShowActivated = false;
-            try
-            {
-                Show();
-            }
-            finally
-            {
-                ShowActivated = true;
-            }
-
-            // 控制窗跟随主窗恢复：浏览模式显示在侧边，浮窗模式保持隐藏
-            UpdateControlWindowVisibility();
+            RestoreFromHotkeyHide();
             SetStatusMessage(LocalizationService.Get("Status.WindowShown"), StatusLevel.Success);
         }
         else
@@ -1833,11 +1833,29 @@ public partial class MainWindow : Window, IControlBrowser
                 FileLogger.LogException(ex, "Hide control window");
             }
 
-            Hide();
+            WindowState = WindowState.Minimized;
             SetStatusMessage(
                 LocalizationService.Format("Status.WindowHidden", FormatToggleHideHotkey()),
                 StatusLevel.Info);
         }
+    }
+
+    /// <summary>
+    /// 结束热键隐藏态并恢复窗口。SW_SHOWNOACTIVATE 从最小化恢复但不抢前台焦点
+    /// （游戏中按 F7 恢复浮窗不切走游戏焦点）；失败兜底走 WPF 恢复（会激活）。
+    /// </summary>
+    private void RestoreFromHotkeyHide()
+    {
+        _hiddenByHotkey = false;
+        _keyboardHookService.AlwaysAllowHideToggle = false;
+
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !ShowWindow(hwnd, SwShowNoActivate))
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        UpdateControlWindowVisibility();
     }
 
     /// <summary>视频快进/倒退（秒）。找到当前可见的视频元素并钳制在 [0, duration] 内跳转。</summary>
@@ -2029,6 +2047,12 @@ public partial class MainWindow : Window, IControlBrowser
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out Win32Point lpPoint);
 
+    private const int SwShowNoActivate = 4;
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Win32Point
     {
@@ -2110,12 +2134,12 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        // 热键隐藏状态下切模式：先恢复显示（回浏览模式允许激活），避免窗口停留在隐藏态
+        // 热键隐藏状态下切模式：先结束隐藏态恢复窗口（回浏览模式允许激活）
         if (_hiddenByHotkey)
         {
             _hiddenByHotkey = false;
             _keyboardHookService.AlwaysAllowHideToggle = false;
-            Show();
+            WindowState = WindowState.Normal;
         }
 
         // 切换前先记下当前位置/尺寸，浏览/浮窗共用同一组边界
