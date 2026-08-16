@@ -297,6 +297,20 @@ public sealed class KeyboardHookServiceTests
             0xDE, ModifierKeys.None));
     }
 
+
+    [Fact]
+    public void HotkeyFormatter_DisplaysPrintableOemKeysAsCharacters()
+    {
+        // OEM 键显示 US 布局主字符而非枚举名（OemSemicolon/OemQuotes 等）
+        Assert.Equal(";", HotkeyFormatter.GetKeyName(System.Windows.Input.Key.OemSemicolon));
+        Assert.Equal("'", HotkeyFormatter.GetKeyName(System.Windows.Input.Key.OemQuotes));
+        Assert.Equal("[", HotkeyFormatter.GetKeyName(System.Windows.Input.Key.OemOpenBrackets));
+        Assert.Equal("]", HotkeyFormatter.GetKeyName(System.Windows.Input.Key.OemCloseBrackets));
+        Assert.Equal("`", HotkeyFormatter.GetKeyName(System.Windows.Input.Key.OemTilde));
+        Assert.Equal("Ctrl + ;", HotkeyFormatter.Format(
+            System.Windows.Input.Key.OemSemicolon, System.Windows.Input.ModifierKeys.Control));
+    }
+
     private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
     {
         var method = typeof(KeyboardHookService).GetMethod(

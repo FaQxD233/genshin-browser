@@ -38,6 +38,15 @@ public static class HotkeyFormatter
             Key.OemQuestion => "/",
             Key.OemPlus => "+",
             Key.OemMinus => "-",
+            // 其余可打印 OEM 键按 US 布局主字符显示（与浏览器/游戏快捷键显示惯例一致；
+            // 其它物理布局下该 VK 对应的字符不同，此处为通用表示）
+            Key.OemSemicolon => ";",
+            Key.OemQuotes => "'",
+            Key.OemTilde => "`",
+            Key.OemOpenBrackets => "[",
+            Key.OemCloseBrackets => "]",
+            Key.OemPipe => "\\",
+            Key.OemBackslash => "\\",
             Key.D0 => "0",
             Key.D1 => "1",
             Key.D2 => "2",
