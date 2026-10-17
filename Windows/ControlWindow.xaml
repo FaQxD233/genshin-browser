@@ -48,23 +48,25 @@
                      Margin="10,0,0,0" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
           <!-- 操作按钮右对齐；不可用的重试/取消 Collapsed，完成后前两个键贴到最右 -->
           <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
-            <Button Style="{StaticResource IconButton}" Width="28" Height="24"
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Padding="0"
                     Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                     CommandParameter="{Binding}"
                     ToolTip="{DynamicResource Downloads.OpenFile}"
                     IsEnabled="{Binding CanOpen}"
                     AutomationProperties.Name="{DynamicResource Downloads.OpenFile}">
-              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7B3;" FontSize="12"/>
+              <!-- E8E5=打开文件、ED25=打开的文件夹（原 E7B3 是眼睛）。这几个 28×24 按钮须 Padding=0：
+                   IconButton 默认 Padding=8 只给图标留约 10×6，12px 字形会被布局裁成碎片 -->
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8E5;" FontSize="12"/>
             </Button>
-            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Padding="0" Margin="4,0,0,0"
                     Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                     CommandParameter="{Binding}"
                     ToolTip="{DynamicResource Downloads.OpenFolder}"
                     IsEnabled="{Binding CanOpenInFolder}"
                     AutomationProperties.Name="{DynamicResource Downloads.OpenFolder}">
-              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8DA;" FontSize="12"/>
+              <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xED25;" FontSize="12"/>
             </Button>
-            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Padding="0" Margin="4,0,0,0"
                     Command="{Binding DataContext.RetryDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                     CommandParameter="{Binding}"
                     ToolTip="{DynamicResource Downloads.Retry}"
@@ -72,7 +74,7 @@
                     AutomationProperties.Name="{DynamicResource Downloads.Retry}">
               <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" FontSize="12"/>
             </Button>
-            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Margin="4,0,0,0"
+            <Button Style="{StaticResource IconButton}" Width="28" Height="24" Padding="0" Margin="4,0,0,0"
                     Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                     CommandParameter="{Binding}"
                     ToolTip="{DynamicResource Downloads.Cancel}"
@@ -782,7 +784,8 @@
       </Grid>
 
       <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Top">
-        <Button Style="{StaticResource PrimaryButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
+        <!-- 普通样式：回车即可跳转，这个按钮使用频率低，不再用绿色主按钮抢走地址栏与列表的视觉重心 -->
+        <Button Style="{StaticResource ModernButton}" Height="32" MinWidth="56" Padding="12,5" Margin="0,0,6,0"
                 Command="{Binding NavigateFromAddressBarCommand}"
                 CommandParameter="{Binding Text, ElementName=AddressBarTextBox}"
                 Content="{DynamicResource Nav.Open}"

@@ -9,8 +9,6 @@
   <Color x:Key="ColorBorderStrong">#8B949E</Color>
   <Color x:Key="ColorAccentPrimary">#58A6FF</Color>
   <Color x:Key="ColorAccentSuccess">#3FB950</Color>
-  <Color x:Key="ColorAccentSuccessDark">#238636</Color>
-  <Color x:Key="ColorAccentSuccessBorder">#2EA043</Color>
   <Color x:Key="ColorAccentDanger">#F85149</Color>
   <Color x:Key="ColorAccentWarning">#FFC83D</Color>
   <Color x:Key="ColorCloseButtonPressed">#B62324</Color>
@@ -32,8 +30,6 @@
   <SolidColorBrush x:Key="BorderColorStrong" Color="{StaticResource ColorBorderStrong}"/>
   <SolidColorBrush x:Key="AccentPrimary" Color="{StaticResource ColorAccentPrimary}"/>
   <SolidColorBrush x:Key="AccentSuccess" Color="{StaticResource ColorAccentSuccess}"/>
-  <SolidColorBrush x:Key="AccentSuccessDark" Color="{StaticResource ColorAccentSuccessDark}"/>
-  <SolidColorBrush x:Key="AccentSuccessBorder" Color="{StaticResource ColorAccentSuccessBorder}"/>
   <SolidColorBrush x:Key="AccentDanger" Color="{StaticResource ColorAccentDanger}"/>
   <SolidColorBrush x:Key="AccentWarning" Color="{StaticResource ColorAccentWarning}"/>
   <SolidColorBrush x:Key="CloseButtonPressed" Color="{StaticResource ColorCloseButtonPressed}"/>

@@ -84,12 +84,6 @@
     </Setter>
   </Style>
 
-  <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-    <Setter Property="Background" Value="{DynamicResource AccentSuccessDark}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentSuccessBorder}"/>
-    <Setter Property="Foreground" Value="White"/>
-  </Style>
-
   <!-- 设置分区小标题：加大上边距，让分组之间更有呼吸感 -->
   <Style x:Key="SettingsSectionTitle" TargetType="TextBlock">
     <Setter Property="FontSize" Value="11"/>
