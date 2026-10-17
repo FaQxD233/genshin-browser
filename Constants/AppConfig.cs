@@ -49,8 +49,9 @@ public static class AppConfig
         public const int LogRetentionDays = 14;
 
         /// <summary>
-        /// WebView2 可回收数据大小阈值。启动时检查超过此值则静默自动清理
-        /// （缓存 / DOM / Service Worker；保留 Cookie、浏览历史、下载记录、自动填充和已保存密码）。
+        /// WebView2 可回收缓存大小阈值。首屏加载后检查，超过此值则静默自动清理
+        /// （磁盘缓存 / CacheStorage / Service Worker；不动 LocalStorage 等站点本地数据，
+        /// 保留 Cookie、浏览历史、下载记录、自动填充和已保存密码）。
         /// </summary>
         public const long WebView2CacheThresholdBytes = 500L * 1024 * 1024;
 

@@ -4,7 +4,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using GenshinBrowser.Constants;
-using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 using GenshinBrowser.ViewModels;
 
@@ -85,34 +84,6 @@ public partial class ControlWindow : Window
         NativeTitleBarService.Apply(
             this,
             string.Equals(ThemeService.Current, ThemeService.Dark, StringComparison.OrdinalIgnoreCase));
-    }
-
-    public void RefreshFromBrowser()
-    {
-        RefreshFromBrowser(BrowserStateChangeKind.All);
-    }
-
-    public void RefreshFromBrowser(BrowserStateChangeKind kind)
-    {
-        if (!Dispatcher.CheckAccess())
-        {
-            _ = Dispatcher.InvokeAsync(() => RefreshFromBrowser(kind));
-            return;
-        }
-
-        _viewModel.RefreshFromBrowser(kind);
-
-        // CurrentAddress 变更也会经 PropertyChanged → SyncAddressBarFromViewModel；
-        // 这里在 Navigation 时再兜底一次，覆盖「同 URL 仅加载态变化」等未触发属性变更的情况。
-        if (kind.HasFlag(BrowserStateChangeKind.Navigation))
-        {
-            SyncAddressBarFromViewModel();
-        }
-
-        if (kind.HasFlag(BrowserStateChangeKind.Appearance))
-        {
-            RefreshWindowSizeDisplay();
-        }
     }
 
     /// <summary>
@@ -613,6 +584,15 @@ public partial class ControlWindow : Window
         {
             e.Handled = true;
             AddressBarTextBox.Focus();
+            AddressBarTextBox.SelectAll();
+            return;
+        }
+
+        // 地址栏按 Esc：放弃编辑，恢复当前页网址（浏览器惯例）
+        if (e.Key == Key.Escape && AddressBarTextBox.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            SyncAddressBarFromViewModel(force: true);
             AddressBarTextBox.SelectAll();
             return;
         }

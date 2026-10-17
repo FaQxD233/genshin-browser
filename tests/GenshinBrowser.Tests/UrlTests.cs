@@ -24,6 +24,20 @@ public sealed class UrlTests
     }
 
     [Fact]
+    public void ToDisplayUrl_StripsSchemeWwwAndTrailingSlashAndDecodesQuery()
+    {
+        Assert.Equal(
+            "bilibili.com/video/BV19h4y1K7yM?p=2",
+            EntryText.ToDisplayUrl("https://www.bilibili.com/video/BV19h4y1K7yM/?p=2"));
+        Assert.Equal(
+            "search.bilibili.com/all?keyword=原神 攻略",
+            EntryText.ToDisplayUrl("https://search.bilibili.com/all?keyword=%E5%8E%9F%E7%A5%9E%20%E6%94%BB%E7%95%A5"));
+        Assert.Equal("example.com", EntryText.ToDisplayUrl("http://example.com/"));
+        Assert.Equal("localhost:8080/a", EntryText.ToDisplayUrl("http://localhost:8080/a"));
+        Assert.Equal("not a url", EntryText.ToDisplayUrl("not a url"));
+    }
+
+    [Fact]
     public void ValidateHttpUrl_PreservesSignedDownloadQuery()
     {
         const string source = "https://cdn.example.com/a.zip?token=AbC&utm_source=required";

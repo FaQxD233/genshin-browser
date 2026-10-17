@@ -82,6 +82,26 @@ public sealed class JsonAndEntryServiceTests
     }
 
     [Fact]
+    public async Task SettingsSave_PersistsFloatingClickThrough()
+    {
+        // SaveAsync 按字段手工拷贝快照：新增设置漏拷会静默丢失，这里覆盖鼠标穿透开关
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+
+        using (var settingsService = new SettingsService(settingsPath))
+        {
+            var settings = settingsService.Load();
+            Assert.False(settings.FloatingClickThrough);
+
+            settings.FloatingClickThrough = true;
+            await settingsService.SaveAsync(settings);
+        }
+
+        using var reloadedSettingsService = new SettingsService(settingsPath);
+        Assert.True(reloadedSettingsService.Load().FloatingClickThrough);
+    }
+
+    [Fact]
     public void SettingsSanitize_ResolvesHotkeyConflictWhenModeIsDefaultPlayback()
     {
         using var directory = new TestDirectory();

@@ -78,6 +78,11 @@ public sealed class AppSettings
     public HotkeyScope HotkeyScope { get; set; } = HotkeyScope.Blacklist;
 
     /// <summary>
+    /// 浮窗模式鼠标穿透：开启后浮窗不接收鼠标，点击落到下层窗口（如游戏）；浏览模式不受影响。默认关闭。
+    /// </summary>
+    public bool FloatingClickThrough { get; set; }
+
+    /// <summary>
     /// 是否已展示过「首次进入浮窗」引导 toast。
     /// </summary>
     public bool HasSeenFloatingModeHint { get; set; }

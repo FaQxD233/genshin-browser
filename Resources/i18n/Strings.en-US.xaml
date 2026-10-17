@@ -8,7 +8,6 @@
   <!-- Mode: UI labels Browsing / Floating; internal enum remains Free / Fixed -->
   <sys:String x:Key="Mode.Free">Browsing</sys:String>
   <sys:String x:Key="Mode.Fixed">Floating</sys:String>
-  <sys:String x:Key="Mode.ToggleTooltip">Switch Browsing / Floating ({0})</sys:String>
   <sys:String x:Key="Mode.ToggleName">Switch Browsing and Floating</sys:String>
   <!-- Action-style tooltip: describe the destination, not just “toggle”; {0}=current mode hotkey -->
   <sys:String x:Key="Mode.SwitchToFloatingTooltip">Switch to Floating (always on top, hide control panel) ({0})</sys:String>
@@ -18,6 +17,8 @@
   <sys:String x:Key="Mode.ToastFloating">Floating</sys:String>
   <sys:String x:Key="Mode.ToastBrowsing">Browsing</sys:String>
   <sys:String x:Key="Mode.FirstFloatingHint">Floating on: always on top, control panel hidden. Press {0} to return to Browsing; move to the top edge to show the title bar.</sys:String>
+  <sys:String x:Key="Mode.ToastFloatingClickThrough">Floating · click-through</sys:String>
+  <sys:String x:Key="Mode.FirstFloatingHintClickThrough">Floating on: always on top with click-through; clicks go to the window below. Press {0} to return to Browsing and adjust.</sys:String>
 
   <!-- Top toolbar; {0}=current playback hotkey -->
   <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video ({0})</sys:String>
@@ -57,7 +58,7 @@
   <sys:String x:Key="Settings.HotkeyScopeOff">Off</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeOffTooltip">Disable all global hotkeys; a window hidden by hotkey can still be restored with the hide key</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
-  <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, and hotkeys to defaults</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, hotkeys, and click-through to defaults</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, and service workers (login cookies, browsing history, downloads, favorites, autofill, and saved passwords are preserved)</sys:String>
   <sys:String x:Key="Settings.Theme">Theme</sys:String>
@@ -91,6 +92,11 @@
   <sys:String x:Key="Settings.MoveTopLeftTooltip">Snap to top-left (no gap)</sys:String>
   <sys:String x:Key="Settings.MoveBottomLeftTooltip">Snap to bottom-left (no gap)</sys:String>
   <sys:String x:Key="Settings.MoveBottomRightTooltip">Snap to bottom-right (no gap)</sys:String>
+  <!-- Floating click-through; {0}=current mode hotkey -->
+  <sys:String x:Key="Settings.ClickThrough">Click-through</sys:String>
+  <sys:String x:Key="Settings.ClickThroughOff">Off</sys:String>
+  <sys:String x:Key="Settings.ClickThroughOn">On</sys:String>
+  <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged; press {0} to return to Browsing and adjust.</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">Moved to top-left</sys:String>
   <sys:String x:Key="Toast.MovedBottomLeft">Moved to bottom-left</sys:String>
   <sys:String x:Key="Toast.MovedBottomRight">Moved to bottom-right</sys:String>
@@ -145,13 +151,8 @@
   <sys:String x:Key="TitleBar.MaximizeName">Maximize or restore</sys:String>
   <sys:String x:Key="TitleBar.Close">Close</sys:String>
 
-  <!-- MessageBox -->
-  <sys:String x:Key="MsgBox.Yes">Yes</sys:String>
-  <sys:String x:Key="MsgBox.No">No</sys:String>
-
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
-  <sys:String x:Key="Toast.BrowsingDataCleared">Browsing data cleared</sys:String>
   <sys:String x:Key="Toast.RecordToggleMode">Press a hotkey for “Browsing ⇄ Floating” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordPlayback">Press a hotkey for “video playback” (Esc to cancel)</sys:String>
   <sys:String x:Key="Toast.RecordHide">Press a hotkey for “hide overlay” (Esc to cancel)</sys:String>
@@ -167,6 +168,8 @@
   <sys:String x:Key="Toast.HotkeyScopeBlacklist">Hotkey scope: not blacklist</sys:String>
   <sys:String x:Key="Toast.HotkeyScopeAllApps">Hotkey scope: all apps</sys:String>
   <sys:String x:Key="Toast.HotkeyScopeOff">Hotkey scope: off</sys:String>
+  <sys:String x:Key="Toast.ClickThroughOn">Floating click-through: on (press {0} to return to Browsing and adjust)</sys:String>
+  <sys:String x:Key="Toast.ClickThroughOff">Floating click-through: off</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
   <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
   <sys:String x:Key="Toast.ThemeSystem">Switched to system theme</sys:String>
@@ -231,7 +234,6 @@
   <sys:String x:Key="Status.WebView2MissingInstaller">WebView2 Runtime was not detected and the automatic installer is missing.&#x0a;&#x0a;{0}</sys:String>
   <sys:String x:Key="Status.WebView2InstallerStartFailed">Unable to start the WebView2 installer.</sys:String>
   <sys:String x:Key="Status.WebView2CoreUnavailable">The WebView2 browser core could not be created.</sys:String>
-  <sys:String x:Key="Status.WebView2CacheLarge">WebView2 cache reached {0} MB, auto-cleaning...</sys:String>
   <sys:String x:Key="Status.ClearingBrowsingData">Clearing browsing data...</sys:String>
   <sys:String x:Key="Status.BrowsingDataCleared">Browsing data cleared.</sys:String>
   <sys:String x:Key="Status.ClearBrowsingDataFailed">Failed to clear browsing data: {0}</sys:String>

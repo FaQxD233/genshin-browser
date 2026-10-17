@@ -25,12 +25,9 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     // 搜索过滤复用缓冲：FilterItems 返回的 IReadOnlyList 在 SyncObservableCollection 内同步期间被消费，
     // 同步返回后即可复用。避免每次搜索 Where(...).ToList() 分配新 List。
     private readonly List<ControlItemViewModel> _filterBuffer = new();
-    private string _modeText = LocalizationService.Get("Mode.Free", "浏览");
-    private string _modeToggleIcon = "\uE718";
     private string _statusMessage = LocalizationService.Get("Status.InitBrowser", "正在初始化浏览器...");
     private string _currentAddress = string.Empty;
     private string _favoriteToggleText = LocalizationService.Get("Fav.Add", "收藏当前页");
-    private string _favoriteToggleIcon = "\uE735";
     private bool _isCurrentFavorite;
     private string _searchText = string.Empty;
     private DispatcherTimer? _searchDebounceTimer;
@@ -88,6 +85,8 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         SetHotkeyScopeBlacklistCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Blacklist));
         SetHotkeyScopeAllAppsCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.AllApps));
         SetHotkeyScopeOffCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Off));
+        SetClickThroughOffCommand = new RelayCommand(() => SetFloatingClickThrough(false));
+        SetClickThroughOnCommand = new RelayCommand(() => SetFloatingClickThrough(true));
         SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
         SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
         MoveBrowserToCornerCommand = new RelayCommand(MoveBrowserToCorner);
@@ -199,6 +198,10 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public RelayCommand SetHotkeyScopeOffCommand { get; }
 
+    public RelayCommand SetClickThroughOffCommand { get; }
+
+    public RelayCommand SetClickThroughOnCommand { get; }
+
     public RelayCommand SetLanguageZhCommand { get; }
 
     public RelayCommand SetLanguageEnCommand { get; }
@@ -210,18 +213,6 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     public RelayCommand ApplyOpacityCommand { get; }
 
     public RelayCommand ApplyZoomCommand { get; }
-
-    public string ModeText
-    {
-        get => _modeText;
-        private set => SetProperty(ref _modeText, value);
-    }
-
-    public string ModeToggleIcon
-    {
-        get => _modeToggleIcon;
-        private set => SetProperty(ref _modeToggleIcon, value);
-    }
 
     /// <summary>当前是否为浏览模式（分段控件高亮）。</summary>
     public bool IsBrowsingMode => _browser.CurrentMode == WindowMode.Free;
@@ -241,6 +232,10 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     public string PlaybackTooltip =>
         LocalizationService.Format("Toolbar.PlaybackTooltip", FormatTogglePlaybackHotkey());
 
+    /// <summary>鼠标穿透说明 tooltip（含模式快捷键：穿透时只能按它回浏览模式调整）。</summary>
+    public string ClickThroughTooltip =>
+        LocalizationService.Format("Settings.ClickThroughTooltip", FormatToggleModeHotkey());
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -257,12 +252,6 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     {
         get => _favoriteToggleText;
         private set => SetProperty(ref _favoriteToggleText, value);
-    }
-
-    public string FavoriteToggleIcon
-    {
-        get => _favoriteToggleIcon;
-        private set => SetProperty(ref _favoriteToggleIcon, value);
     }
 
     public bool IsCurrentFavorite
@@ -589,15 +578,11 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
         if (kind.HasFlag(BrowserStateChangeKind.Mode))
         {
-            ModeText = _browser.CurrentMode == WindowMode.Fixed
-                ? LocalizationService.Get("Mode.Fixed", "浮窗")
-                : LocalizationService.Get("Mode.Free", "浏览");
-            // 浮窗 E785(锁)，浏览 E718(解锁) — 与 MainWindow.UpdateModeToggleButton 一致
-            ModeToggleIcon = _browser.CurrentMode == WindowMode.Fixed ? "" : "";
             OnPropertyChanged(nameof(IsBrowsingMode));
             OnPropertyChanged(nameof(IsFloatingMode));
             NotifyHotkeyDependentTexts();
             RefreshHotkeyScopeFlags();
+            RefreshClickThroughFlags();
         }
 
         if (kind.HasFlag(BrowserStateChangeKind.Status))
@@ -612,11 +597,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
             CanGoForward = _browser.CanGoForward;
             IsNavigating = _browser.IsNavigating;
 
-            IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
-            FavoriteToggleText = IsCurrentFavorite
-                ? LocalizationService.Get("Fav.Added", "已收藏")
-                : LocalizationService.Get("Fav.Add", "收藏当前页");
-            FavoriteToggleIcon = IsCurrentFavorite ? "" : "";
+            RefreshCurrentFavorite();
 
             GoBackCommand.RaiseCanExecuteChanged();
             GoForwardCommand.RaiseCanExecuteChanged();
@@ -634,11 +615,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
             // 收藏列表变更时同步当前页星标（即使未带 Navigation）
             if (!kind.HasFlag(BrowserStateChangeKind.Navigation))
             {
-                IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
-                FavoriteToggleText = IsCurrentFavorite
-                    ? LocalizationService.Get("Fav.Added", "已收藏")
-                    : LocalizationService.Get("Fav.Add", "收藏当前页");
-                FavoriteToggleIcon = IsCurrentFavorite ? "" : "";
+                RefreshCurrentFavorite();
             }
         }
 
@@ -667,6 +644,15 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
             // 输入框不被覆盖。窗口尺寸由 ControlWindow.RefreshWindowSizeDisplay 在焦点安全时同步。
             SyncOpacityZoomTexts();
         }
+    }
+
+    /// <summary>同步当前页收藏态与收藏按钮文案（导航、收藏列表变更、语言切换时调用）。</summary>
+    private void RefreshCurrentFavorite()
+    {
+        IsCurrentFavorite = _browser.IsFavorite(_browser.CurrentAddress);
+        FavoriteToggleText = IsCurrentFavorite
+            ? LocalizationService.Get("Fav.Added", "已收藏")
+            : LocalizationService.Get("Fav.Add", "收藏当前页");
     }
 
     public void Dispose()
@@ -703,8 +689,16 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         }
 
         _lastRelativeRefreshDate = today;
-        // _all* 与可见集合中的同 URL 条目是不同 VM 对象（可见侧经 SyncObservableCollection
-        // 的 UpdateFrom 拷贝值），两侧都要刷新。
+        RefreshAllRelativeTimes();
+    }
+
+    /// <summary>
+    /// 重算收藏/历史全部条目的相对时间文案（跨天、切换语言时调用）。
+    /// _all* 与可见集合中的同 URL 条目是不同 VM 对象（可见侧经 SyncObservableCollection
+    /// 的 UpdateFrom 拷贝值），两侧都要刷新。
+    /// </summary>
+    private void RefreshAllRelativeTimes()
+    {
         foreach (var item in _allHistoryItems)
         {
             item.RefreshRelativeTime();
@@ -1106,6 +1100,17 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         : RecordingSlot.None;
 
     public bool IsRecordingAnyKey => CurrentRecordingSlot != RecordingSlot.None;
+
+    // 各槽位是否正在录制：按键绑定面板经 Tag 高亮对应按钮
+    public bool IsRecordingToggleModeKey => _isRecordingToggleModeKey;
+
+    public bool IsRecordingTogglePlaybackKey => _isRecordingTogglePlaybackKey;
+
+    public bool IsRecordingToggleHideKey => _isRecordingToggleHideKey;
+
+    public bool IsRecordingSeekBackwardKey => _isRecordingSeekBackwardKey;
+
+    public bool IsRecordingSeekForwardKey => _isRecordingSeekForwardKey;
 
     public string ToggleModeKeyText
     {
@@ -1513,6 +1518,10 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsHotkeyScopeOff => _browser.HotkeyScope == HotkeyScope.Off;
 
+    public bool IsClickThroughOn => _browser.FloatingClickThrough;
+
+    public bool IsClickThroughOff => !_browser.FloatingClickThrough;
+
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
 
     public bool IsLanguageEn => string.Equals(_browser.UiLanguage, LocalizationService.EnUs, StringComparison.OrdinalIgnoreCase);
@@ -1555,6 +1564,28 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsHotkeyScopeOff));
     }
 
+    private void SetFloatingClickThrough(bool enabled)
+    {
+        if (_browser.FloatingClickThrough == enabled)
+        {
+            return;
+        }
+
+        _browser.FloatingClickThrough = enabled;
+        RefreshClickThroughFlags();
+        ShowToast(
+            enabled
+                ? LocalizationService.Format("Toast.ClickThroughOn", FormatToggleModeHotkey())
+                : LocalizationService.Get("Toast.ClickThroughOff", "浮窗鼠标穿透：已关闭"),
+            StatusLevel.Success);
+    }
+
+    private void RefreshClickThroughFlags()
+    {
+        OnPropertyChanged(nameof(IsClickThroughOn));
+        OnPropertyChanged(nameof(IsClickThroughOff));
+    }
+
     private void SetLanguage(string language)
     {
         _browser.UiLanguage = language;
@@ -1569,6 +1600,8 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     {
         RefreshLocalizedTexts();
         RefreshThemeLanguageFlags();
+        // 「今天/昨天」只在时间戳或日期变化时才重新格式化，语言切换须显式重算
+        RefreshAllRelativeTimes();
         // 下载状态文案依赖语言资源
         foreach (var item in Downloads)
         {
@@ -1587,14 +1620,9 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     private void RefreshLocalizedTexts()
     {
-        ModeText = _browser.CurrentMode == WindowMode.Fixed
-            ? LocalizationService.Get("Mode.Fixed", "浮窗")
-            : LocalizationService.Get("Mode.Free", "浏览");
         OnPropertyChanged(nameof(IsBrowsingMode));
         OnPropertyChanged(nameof(IsFloatingMode));
-        FavoriteToggleText = IsCurrentFavorite
-            ? LocalizationService.Get("Fav.Added", "已收藏")
-            : LocalizationService.Get("Fav.Add", "收藏当前页");
+        RefreshCurrentFavorite();
         // 刷新缓存的本地化 EmptyText 字符串
         _favoritesEmptyNoData = LocalizationService.Get("Empty.Favorites", "暂无收藏\n打开视频后点 ☆ 即可添加");
         _favoritesEmptyNoMatch = LocalizationService.Get("Empty.NoMatch", "未找到匹配项\n试试其它关键词");
@@ -1610,6 +1638,12 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     private void NotifyHotkeyDependentTexts()
     {
+        // 录制态与按键文案在同一时机变化（开始/结束/取消录制），一并通知录制按钮高亮
+        OnPropertyChanged(nameof(IsRecordingToggleModeKey));
+        OnPropertyChanged(nameof(IsRecordingTogglePlaybackKey));
+        OnPropertyChanged(nameof(IsRecordingToggleHideKey));
+        OnPropertyChanged(nameof(IsRecordingSeekBackwardKey));
+        OnPropertyChanged(nameof(IsRecordingSeekForwardKey));
         OnPropertyChanged(nameof(ToggleModeKeyText));
         OnPropertyChanged(nameof(TogglePlaybackKeyText));
         OnPropertyChanged(nameof(ToggleHideKeyText));
@@ -1618,6 +1652,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SwitchToBrowsingTooltip));
         OnPropertyChanged(nameof(SwitchToFloatingTooltip));
         OnPropertyChanged(nameof(PlaybackTooltip));
+        OnPropertyChanged(nameof(ClickThroughTooltip));
     }
 
     private string FormatToggleModeHotkey() =>

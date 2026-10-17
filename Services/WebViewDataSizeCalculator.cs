@@ -4,6 +4,10 @@ namespace GenshinBrowser.Services;
 
 internal static class WebViewDataSizeCalculator
 {
+    /// <summary>
+    /// 自动清理会回收的目录，与 MainWindow.ClearBrowsingDataAsync 自动模式（DiskCache | CacheStorage | ServiceWorkers）对应。
+    /// 不计 Local Storage / IndexedDB 等站点本地数据：自动清理不动它们，计入会让阈值长期超标、每 24 小时空清一次。
+    /// </summary>
     private static readonly HashSet<string> ReclaimableDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "Cache",
@@ -17,13 +21,8 @@ internal static class WebViewDataSizeCalculator
         "Media Cache",
         "ShaderCache",
         "Service Worker",
-        "blob_storage",
-        "databases",
-        "File System",
-        "IndexedDB",
-        "Local Storage",
-        "Session Storage",
-        "WebStorage",
+        // 新版 Chromium 按存储桶落在 WebStorage/<bucket>/CacheStorage，遍历会下钻到这里
+        "CacheStorage",
     };
 
     public static Task<long?> CalculateAsync(string userDataFolder, CancellationToken cancellationToken) =>

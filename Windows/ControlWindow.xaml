@@ -168,7 +168,8 @@
         <Button Style="{StaticResource IconButton}" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
                 Command="{Binding TogglePlaybackCommand}" ToolTip="{Binding PlaybackTooltip}"
                 AutomationProperties.Name="{DynamicResource Toolbar.PlaybackName}">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE769;" FontSize="13"/>
+          <!-- E768=播放（E769 是暂停图标，暂停状态下显示它会让人误以为正在播放） -->
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE768;" FontSize="13"/>
         </Button>
         <Button x:Name="SettingsButton" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
                 Command="{Binding ToggleSettingsCommand}"
@@ -316,12 +317,13 @@
                         HorizontalScrollBarVisibility="Disabled"
                         MaxHeight="280"
                         Padding="0,0,2,0">
-            <StackPanel>
+            <!-- 标签列按最长标签自适应并跨行对齐（SettingsLabel），最小 68：英文长标签不被截断 -->
+            <StackPanel Grid.IsSharedSizeScope="True">
               <!-- 分组：窗口 -->
               <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Window}" Margin="0,0,0,8"/>
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="68"/>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
                   <ColumnDefinition Width="58"/>
                   <ColumnDefinition Width="Auto"/>
                   <ColumnDefinition Width="58"/>
@@ -329,7 +331,7 @@
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.WindowSize}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <TextBox x:Name="BrowserWindowWidthBox" Grid.Column="1" Style="{StaticResource ModernTextBox}"
                          Height="26" Padding="6,2" FontSize="11"
                          VerticalContentAlignment="Center"
@@ -357,16 +359,16 @@
                         ToolTip="{DynamicResource Settings.ApplySizeTooltip}"/>
               </Grid>
 
-              <Grid Margin="0,0,0,10">
+              <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="68"/>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.MoveCorner}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                 <!-- ↖↗↙↘ 方向一目了然，避免 MDL2 图标语义错位 -->
                 <Button Grid.Column="1" Style="{StaticResource ModernButton}" Height="26" Margin="0,0,4,0"
                         Padding="0" FontSize="14" FontWeight="SemiBold"
@@ -392,6 +394,28 @@
                         Content="↘"
                         ToolTip="{DynamicResource Settings.MoveBottomRightTooltip}"
                         AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
+              </Grid>
+
+              <!-- 浮窗鼠标穿透：关闭 / 开启；按钮列与上方贴边按钮对齐 -->
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ClickThrough}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                           ToolTip="{Binding ClickThroughTooltip}"/>
+                <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetClickThroughOffCommand}" Tag="{Binding IsClickThroughOff}"
+                        Content="{DynamicResource Settings.ClickThroughOff}"
+                        ToolTip="{Binding ClickThroughTooltip}"/>
+                <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetClickThroughOnCommand}" Tag="{Binding IsClickThroughOn}"
+                        Content="{DynamicResource Settings.ClickThroughOn}"
+                        ToolTip="{Binding ClickThroughTooltip}"/>
               </Grid>
 
               <!-- 分组：显示 — 不透明度 / 页面缩放同一行：− 数值 % + 重置 -->
@@ -453,7 +477,8 @@
                   <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Zoom}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
                   <Button Grid.Column="1" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0"
-                          Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}">
+                          Command="{Binding ZoomOutCommand}" ToolTip="{DynamicResource Settings.ZoomOutTooltip}"
+                          AutomationProperties.Name="{DynamicResource Settings.ZoomOutName}">
                     <TextBlock Text="−" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
                   </Button>
                   <TextBox x:Name="ZoomPercentBox" Grid.Column="2" Style="{StaticResource ModernTextBox}"
@@ -470,7 +495,8 @@
                              FontSize="11" Foreground="{DynamicResource TextTertiary}"
                              VerticalAlignment="Center"/>
                   <Button Grid.Column="4" Style="{StaticResource ModernButton}" Width="28" Height="26" MinWidth="0" Padding="0" Margin="4,0,0,0"
-                          Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}">
+                          Command="{Binding ZoomInCommand}" ToolTip="{DynamicResource Settings.ZoomInTooltip}"
+                          AutomationProperties.Name="{DynamicResource Settings.ZoomInName}">
                     <TextBlock Text="+" FontSize="14" Foreground="{DynamicResource TextPrimary}"/>
                   </Button>
                   <Button Grid.Column="5" Style="{StaticResource ModernButton}" Padding="8,3" Margin="4,0,0,0"
@@ -484,84 +510,34 @@
               <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Appearance}"/>
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="68"/>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="12"/>
-                  <ColumnDefinition Width="68"/>
+                  <ColumnDefinition Width="Auto" MinWidth="68"/>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Theme}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" Margin="0,0,4,0" Command="{Binding SetThemeDarkCommand}" Content="{DynamicResource Settings.ThemeDark}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsThemeDark}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Grid.Column="2" Margin="0,0,4,0" Command="{Binding SetThemeLightCommand}" Content="{DynamicResource Settings.ThemeLight}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsThemeLight}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Grid.Column="3" Command="{Binding SetThemeSystemCommand}" Content="{DynamicResource Settings.ThemeSystem}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsThemeSystem}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetThemeDarkCommand}" Tag="{Binding IsThemeDark}"
+                        Content="{DynamicResource Settings.ThemeDark}"/>
+                <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetThemeLightCommand}" Tag="{Binding IsThemeLight}"
+                        Content="{DynamicResource Settings.ThemeLight}"/>
+                <Button Grid.Column="3" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetThemeSystemCommand}" Tag="{Binding IsThemeSystem}"
+                        Content="{DynamicResource Settings.ThemeSystem}"/>
                 <TextBlock Grid.Column="5" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
-                           FontSize="11" VerticalAlignment="Center"/>
-                <Button Grid.Column="6" Margin="0,0,4,0" Command="{Binding SetLanguageZhCommand}" Content="{DynamicResource Settings.LanguageZh}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsLanguageZh}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
-                <Button Grid.Column="7" Command="{Binding SetLanguageEnCommand}" Content="{DynamicResource Settings.LanguageEn}">
-                  <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsLanguageEn}" Value="True">
-                          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                          <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                          <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </Button.Style>
-                </Button>
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <Button Grid.Column="6" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetLanguageZhCommand}" Tag="{Binding IsLanguageZh}"
+                        Content="{DynamicResource Settings.LanguageZh}"/>
+                <Button Grid.Column="7" Style="{StaticResource SegmentButton}"
+                        Command="{Binding SetLanguageEnCommand}" Tag="{Binding IsLanguageEn}"
+                        Content="{DynamicResource Settings.LanguageEn}"/>
               </Grid>
             </StackPanel>
           </ScrollViewer>
@@ -607,10 +583,12 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       MaxHeight="236">
-        <StackPanel>
+        <!-- 标签列按最长标签自适应（KeyLabel 跨热键表与生效范围行对齐），最小 68 -->
+        <StackPanel Grid.IsSharedSizeScope="True">
           <TextBlock Text="{DynamicResource Keys.Title}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,0,6"/>
                 <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
+                <!-- 录制中的按钮经 Tag 高亮（SegmentButton 选中态），一眼看出正在录哪一组 -->
                 <Grid Margin="0,0,0,8">
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -618,100 +596,62 @@
                     <RowDefinition Height="Auto"/>
                   </Grid.RowDefinitions>
                   <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="KeyLabel"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="8"/>
-                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="Auto" MinWidth="68"/>
                     <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
                   <TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource Settings.ToggleMode}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center"/>
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                   <Button Grid.Row="0" Grid.Column="1" Content="{Binding ToggleModeKeyText}"
-                          Command="{Binding RecordToggleModeKeyCommand}"
-                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                          Height="26" Padding="6,2" FontSize="11"/>
+                          Command="{Binding RecordToggleModeKeyCommand}" Tag="{Binding IsRecordingToggleModeKey}"
+                          Style="{StaticResource SegmentButton}" Padding="6,2"/>
                   <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center"/>
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                   <Button Grid.Row="0" Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
-                          Command="{Binding RecordTogglePlaybackKeyCommand}"
-                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                          Height="26" Padding="6,2" FontSize="11"/>
+                          Command="{Binding RecordTogglePlaybackKeyCommand}" Tag="{Binding IsRecordingTogglePlaybackKey}"
+                          Style="{StaticResource SegmentButton}" Padding="6,2"/>
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Settings.HideOverlay}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="1" Grid.Column="1" Content="{Binding ToggleHideKeyText}"
-                          Command="{Binding RecordToggleHideKeyCommand}"
-                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                          Command="{Binding RecordToggleHideKeyCommand}" Tag="{Binding IsRecordingToggleHideKey}"
+                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="{DynamicResource Settings.SeekBackward}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="1" Grid.Column="4" Content="{Binding SeekBackwardKeyText}"
-                          Command="{Binding RecordSeekBackwardKeyCommand}"
-                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                          Command="{Binding RecordSeekBackwardKeyCommand}" Tag="{Binding IsRecordingSeekBackwardKey}"
+                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource Settings.SeekForward}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center" Margin="0,6,0,0"/>
+                             FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="2" Grid.Column="1" Content="{Binding SeekForwardKeyText}"
-                          Command="{Binding RecordSeekForwardKeyCommand}"
-                          Style="{StaticResource ModernButton}" HorizontalContentAlignment="Center"
-                          Height="26" Padding="6,2" FontSize="11" Margin="0,6,0,0"/>
+                          Command="{Binding RecordSeekForwardKeyCommand}" Tag="{Binding IsRecordingSeekForwardKey}"
+                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
                 </Grid>
 
                 <!-- 热键生效范围：黑名单外 / 全部应用 / 关闭 -->
                 <Grid Margin="0,0,0,8">
                   <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="68"/>
+                    <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="KeyLabel"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
                   <TextBlock Grid.Column="0" Text="{DynamicResource Settings.HotkeyScope}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
                              ToolTip="{DynamicResource Settings.HotkeyScopeTooltip}"/>
-                  <Button Grid.Column="1" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeBlacklistCommand}"
+                  <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                          Command="{Binding SetHotkeyScopeBlacklistCommand}" Tag="{Binding IsHotkeyScopeBlacklist}"
                           Content="{DynamicResource Settings.HotkeyScopeBlacklist}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}">
-                    <Button.Style>
-                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding IsHotkeyScopeBlacklist}" Value="True">
-                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </Button.Style>
-                  </Button>
-                  <Button Grid.Column="2" Margin="0,0,4,0" Command="{Binding SetHotkeyScopeAllAppsCommand}"
+                          ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}"/>
+                  <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
+                          Command="{Binding SetHotkeyScopeAllAppsCommand}" Tag="{Binding IsHotkeyScopeAllApps}"
                           Content="{DynamicResource Settings.HotkeyScopeAllApps}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}">
-                    <Button.Style>
-                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding IsHotkeyScopeAllApps}" Value="True">
-                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </Button.Style>
-                  </Button>
-                  <Button Grid.Column="3" Command="{Binding SetHotkeyScopeOffCommand}"
+                          ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}"/>
+                  <Button Grid.Column="3" Style="{StaticResource SegmentButton}"
+                          Command="{Binding SetHotkeyScopeOffCommand}" Tag="{Binding IsHotkeyScopeOff}"
                           Content="{DynamicResource Settings.HotkeyScopeOff}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}">
-                    <Button.Style>
-                      <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                        <Style.Triggers>
-                          <DataTrigger Binding="{Binding IsHotkeyScopeOff}" Value="True">
-                            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                            <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                          </DataTrigger>
-                        </Style.Triggers>
-                      </Style>
-                    </Button.Style>
-                  </Button>
+                          ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}"/>
                 </Grid>
         </StackPanel>
         </ScrollViewer>
@@ -1050,84 +990,88 @@
       </Grid>
     </Grid>
 
+    <!-- 外层只负责淡入淡出，必须直接使用 ToastBorderStyle：BasedOn 派生样式中，基样式里
+         Tag DataTrigger 的 Enter/ExitActions 不执行（实测 Opacity 恒为 0，所有 Toast 不可见）。
+         严重度描边放在内层 Border 自己的样式里 -->
     <Border Grid.RowSpan="6"
+            Style="{StaticResource ToastBorderStyle}"
             Tag="{Binding IsToastVisible}"
             Visibility="{Binding ToastVisibility}"
-            Background="{DynamicResource BackgroundTertiary}"
-            CornerRadius="8"
-            Padding="0"
             HorizontalAlignment="Right"
             VerticalAlignment="Bottom"
             MaxWidth="360"
             Margin="0,0,8,8">
-      <Border.Style>
-        <Style TargetType="Border" BasedOn="{StaticResource ToastBorderStyle}">
-          <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-          <Setter Property="BorderThickness" Value="1"/>
-          <Style.Triggers>
-            <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
-              <Setter Property="BorderBrush" Value="{DynamicResource AccentSuccess}"/>
-            </DataTrigger>
-            <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
-              <Setter Property="BorderBrush" Value="{DynamicResource AccentWarning}"/>
-            </DataTrigger>
-            <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
-              <Setter Property="BorderBrush" Value="{DynamicResource AccentDanger}"/>
-            </DataTrigger>
-          </Style.Triggers>
-        </Style>
-      </Border.Style>
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <!-- 左侧 4px 严重度色条：与 BorderBrush 联动，让 Toast 类型一眼可辨 -->
-          <ColumnDefinition Width="4"/>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Border Grid.Column="0" CornerRadius="2,0,0,2" Margin="0,6">
-          <Border.Style>
-            <Style TargetType="Border">
-              <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
-                  <Setter Property="Background" Value="{DynamicResource AccentSuccess}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
-                  <Setter Property="Background" Value="{DynamicResource AccentWarning}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
-                  <Setter Property="Background" Value="{DynamicResource AccentDanger}"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Border.Style>
-        </Border>
-        <TextBlock Grid.Column="1" FontSize="14"
-                   VerticalAlignment="Center" Margin="12,12,8,12">
-          <TextBlock.Style>
-            <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
-              <Setter Property="Text" Value="&#xE946;"/>
-              <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
-                  <Setter Property="Text" Value="&#xE73E;"/>
-                  <Setter Property="Foreground" Value="{DynamicResource AccentSuccess}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
-                  <Setter Property="Text" Value="&#xE7BA;"/>
-                  <Setter Property="Foreground" Value="{DynamicResource AccentWarning}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
-                  <Setter Property="Text" Value="&#xE783;"/>
-                  <Setter Property="Foreground" Value="{DynamicResource AccentDanger}"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </TextBlock.Style>
-        </TextBlock>
-        <TextBlock Grid.Column="2" Text="{Binding ToastMessage}" Foreground="{DynamicResource TextPrimary}"
-                   TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" Margin="0,12,14,12"/>
-      </Grid>
+      <Border Background="{DynamicResource BackgroundTertiary}"
+              CornerRadius="8"
+              BorderThickness="1">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentSuccess}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentWarning}"/>
+              </DataTrigger>
+              <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentDanger}"/>
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <!-- 左侧 4px 严重度色条：与 BorderBrush 联动，让 Toast 类型一眼可辨 -->
+            <ColumnDefinition Width="4"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+          </Grid.ColumnDefinitions>
+          <Border Grid.Column="0" CornerRadius="2,0,0,2" Margin="0,6">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+                    <Setter Property="Background" Value="{DynamicResource AccentSuccess}"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+                    <Setter Property="Background" Value="{DynamicResource AccentWarning}"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+                    <Setter Property="Background" Value="{DynamicResource AccentDanger}"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
+          </Border>
+          <TextBlock Grid.Column="1" FontSize="14"
+                     VerticalAlignment="Center" Margin="12,12,8,12">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource Mdl2IconText}">
+                <Setter Property="Text" Value="&#xE946;"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Success">
+                    <Setter Property="Text" Value="&#xE73E;"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentSuccess}"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Warning">
+                    <Setter Property="Text" Value="&#xE7BA;"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentWarning}"/>
+                  </DataTrigger>
+                  <DataTrigger Binding="{Binding ToastSeverity}" Value="Error">
+                    <Setter Property="Text" Value="&#xE783;"/>
+                    <Setter Property="Foreground" Value="{DynamicResource AccentDanger}"/>
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <TextBlock Grid.Column="2" Text="{Binding ToastMessage}" Foreground="{DynamicResource TextPrimary}"
+                     TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" Margin="0,12,14,12"/>
+        </Grid>
+      </Border>
     </Border>
   </Grid>
 </Window>

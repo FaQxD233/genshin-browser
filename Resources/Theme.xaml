@@ -74,6 +74,10 @@
             <Trigger Property="IsPressed" Value="True">
               <Setter TargetName="ButtonChrome" Property="Background" Value="{DynamicResource BorderColor}"/>
             </Trigger>
+            <!-- 禁用态整体减淡（前进/后退无历史、下载未完成时的打开文件等），否则与可点击按钮无法区分 -->
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.4"/>
+            </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
       </Setter.Value>
@@ -94,11 +98,19 @@
     <Setter Property="Margin" Value="0,10,0,8"/>
   </Style>
 
-  <!-- 主题/语言/模式分段选中按钮 -->
+  <!-- 主题/语言/模式分段选中按钮；Tag 绑定选中态（bool），选中时强调色描边与文字 -->
   <Style x:Key="SegmentButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
     <Setter Property="Padding" Value="4,2"/>
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Height" Value="26"/>
+    <Style.Triggers>
+      <!-- 与 ToastBorderStyle 同理：Tag 声明类型是 object，属性触发器不做 "True"→bool 转换，须走 DataTrigger -->
+      <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+        <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+        <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+      </DataTrigger>
+    </Style.Triggers>
   </Style>
 
   <!-- 下载角标：小胶囊，无任务时由 Visibility 隐藏 -->
@@ -387,7 +399,7 @@
                    Margin="12,0,0,0" Foreground="{DynamicResource TextTertiary}"
                    VerticalAlignment="Center"/>
       </Grid>
-      <TextBlock Grid.Row="1" Text="{Binding Url}" FontSize="11" Margin="0,4,0,0"
+      <TextBlock Grid.Row="1" Text="{Binding DisplayUrl}" ToolTip="{Binding Url}" FontSize="11" Margin="0,4,0,0"
                  TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextTertiary}"/>
     </Grid>
   </DataTemplate>
@@ -441,6 +453,8 @@
     <Setter Property="IsIndeterminate" Value="True"/>
   </Style>
 
+  <!-- 必须直接作为 Style 使用，不要 BasedOn 派生：派生样式中下面 Tag DataTrigger 的
+       Enter/ExitActions 不执行（实测 Opacity 恒为 0），Toast 会完全不可见 -->
   <Style x:Key="ToastBorderStyle" TargetType="Border">
     <Setter Property="Opacity" Value="0"/>
     <Setter Property="RenderTransform">

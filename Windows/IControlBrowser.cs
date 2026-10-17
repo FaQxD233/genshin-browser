@@ -134,7 +134,7 @@ public interface IControlBrowser
     bool RestoreControlWindowBounds(Window controlWindow);
 
     /// <summary>
-    /// 恢复浮窗设置（不透明度、快捷键、缩放）为默认值。
+    /// 恢复浮窗设置（不透明度、快捷键、缩放、鼠标穿透）为默认值。
     /// </summary>
     void RestoreDefaultSettings();
 
@@ -152,6 +152,11 @@ public interface IControlBrowser
     /// 全局热键生效范围（黑名单外 / 全部应用 / 关闭）。
     /// </summary>
     HotkeyScope HotkeyScope { get; set; }
+
+    /// <summary>
+    /// 浮窗模式鼠标穿透（默认关）：开启后浮窗不接收鼠标，点击落到下层窗口；浏览模式不受影响。
+    /// </summary>
+    bool FloatingClickThrough { get; set; }
 
     /// <summary>
     /// 浏览器主窗当前宽度（逻辑像素）。
@@ -185,9 +190,9 @@ public interface IControlBrowser
     void SetHotkeyRecordingActive(bool active);
 
     /// <summary>
-    /// 清理 WebView2 浏览数据（磁盘缓存、DOM 存储、Service Worker）。
+    /// 清理 WebView2 浏览数据（磁盘缓存、CacheStorage、Service Worker；手动清理额外清 DOM 存储）。
     /// 保留 Cookie、浏览历史、下载记录、自动填充和已保存密码；应用内收藏夹/历史不受影响。
     /// </summary>
-    /// <param name="silent">为 true 时不写状态栏、不刷新控制窗（启动自动清理用）。</param>
-    Task<bool> ClearBrowsingDataAsync(bool silent = false);
+    /// <param name="automatic">为 true 时是超阈值自动清理：静默，且不清 DOM 存储（站点本地设置）。</param>
+    Task<bool> ClearBrowsingDataAsync(bool automatic = false);
 }

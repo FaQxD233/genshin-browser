@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 using System.Windows;
 using System.Windows.Input;
@@ -136,7 +137,7 @@ public partial class MainWindow : Window, IControlBrowser
         ThemeService.Apply(_settings.ThemeMode);
         LocalizationService.Apply(_settings.Language);
         ApplyWindowOpacity(_settings.WindowOpacity);
-        _windowModeService.ApplyMode(_settings.WindowMode);
+        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
         UpdateModeToggleButton();
 
         Loaded += MainWindow_OnLoaded;
@@ -434,6 +435,8 @@ public partial class MainWindow : Window, IControlBrowser
     {
         // HWND / DPI 已就绪：再 clamp 一次，确保高分屏上位置不偏移
         RestoreWindowBounds();
+        // 鼠标穿透是 Win32 扩展样式，构造函数里句柄未创建时应用不上，这里补一次
+        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
     }
 
     private void MainWindow_OnContentRendered(object? sender, EventArgs e)
@@ -696,7 +699,8 @@ public partial class MainWindow : Window, IControlBrowser
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = bootstrapperPath,
-            Arguments = "/silent",
+            // 官方文档的静默安装命令：MicrosoftEdgeWebview2Setup.exe /silent /install
+            Arguments = "/silent /install",
             UseShellExecute = true
         }) ?? throw new InvalidOperationException(LocalizationService.Get("Status.WebView2InstallerStartFailed"));
 
@@ -1033,7 +1037,7 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 异步检查 WebView2 可回收数据目录大小，超过阈值时静默自动清理浏览数据。
+    /// 异步检查 WebView2 可回收缓存目录大小，超过阈值时静默自动清理（只清可再生缓存，不动站点本地数据）。
     /// 在后台线程计算，避免阻塞 UI。
     /// 24 小时内已检查过则跳过，避免每次启动都递归枚举 WebViewProfile 目录造成 IO 压力。
     /// 自动清理不弹状态提示，避免打扰正在浏览的用户。
@@ -1065,8 +1069,8 @@ public partial class MainWindow : Window, IControlBrowser
 
         if (sizeBytes.Value > AppConfig.Data.WebView2CacheThresholdBytes)
         {
-            // 超阈值静默自动清理：不写状态栏，不 Toast
-            await ClearBrowsingDataAsync(silent: true);
+            // 超阈值自动清理：只清可再生缓存，不写状态栏，不 Toast
+            await ClearBrowsingDataAsync(automatic: true);
             return;
         }
 
@@ -1076,12 +1080,15 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 清理 WebView2 浏览数据：磁盘缓存、DOM 存储与 Service Worker。
+    /// 清理 WebView2 浏览数据：磁盘缓存、CacheStorage 与 Service Worker；手动清理额外清站点本地数据（DOM 存储）。
     /// 自动填充和已保存密码始终保留。
     /// 保留 Cookie（登录态）、浏览历史、下载记录；应用内收藏夹/历史不在 WebView2 数据内，不受影响。
     /// </summary>
-    /// <param name="silent">为 true 时不写状态栏、不刷新控制窗（用于启动自动清理）。</param>
-    public async Task<bool> ClearBrowsingDataAsync(bool silent = false)
+    /// <param name="automatic">
+    /// 为 true 时是超阈值自动清理：不写状态栏、不刷新控制窗，且不清 DOM 存储——B 站播放器的音量、
+    /// 弹幕设置、屏蔽词等存在 localStorage（bpx_player_profile），静默清掉会让这些设置无提示地被重置。
+    /// </param>
+    public async Task<bool> ClearBrowsingDataAsync(bool automatic = false)
     {
         CoreWebView2? core;
         try
@@ -1095,7 +1102,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         if (core is null)
         {
-            if (!silent)
+            if (!automatic)
             {
                 SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             }
@@ -1104,18 +1111,23 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            if (!silent)
+            if (!automatic)
             {
                 SetStatusMessage(LocalizationService.Get("Status.ClearingBrowsingData"), StatusLevel.Info);
             }
 
             // 清「可再生」数据；保留 Cookie / 浏览历史 / 下载记录 / 自动填充 / 已保存密码
             // 注意：1.0.4022.49 版本枚举不含 NetworkCache，DiskCache 已覆盖磁盘缓存
-            // AllDomStorage 覆盖 LocalStorage / IndexedDB / CacheStorage 等站点本地数据
+            // 自动清理的范围须与 WebViewDataSizeCalculator 统计的目录一致，否则阈值长期超标会每 24 小时空清一次
             var kinds =
                 CoreWebView2BrowsingDataKinds.DiskCache |
-                CoreWebView2BrowsingDataKinds.AllDomStorage |
+                CoreWebView2BrowsingDataKinds.CacheStorage |
                 CoreWebView2BrowsingDataKinds.ServiceWorkers;
+            if (!automatic)
+            {
+                // 手动清理（设置面板 tooltip 已写明）：AllDomStorage 覆盖 LocalStorage / IndexedDB 等站点本地数据
+                kinds |= CoreWebView2BrowsingDataKinds.AllDomStorage;
+            }
 
             await core.Profile.ClearBrowsingDataAsync(kinds);
 
@@ -1125,7 +1137,7 @@ public partial class MainWindow : Window, IControlBrowser
                 QueueSettingsSave();
             }
 
-            if (!silent)
+            if (!automatic)
             {
                 SetStatusMessage(LocalizationService.Get("Status.BrowsingDataCleared"), StatusLevel.Success);
             }
@@ -1134,8 +1146,8 @@ public partial class MainWindow : Window, IControlBrowser
         }
         catch (Exception ex)
         {
-            FileLogger.LogException(ex, silent ? "Clear browsing data (auto)" : "Clear browsing data");
-            if (!silent)
+            FileLogger.LogException(ex, automatic ? "Clear browsing data (auto)" : "Clear browsing data");
+            if (!automatic)
             {
                 SetStatusMessage(LocalizationService.Format("Status.ClearBrowsingDataFailed", ex.Message), StatusLevel.Error);
             }
@@ -1448,6 +1460,10 @@ public partial class MainWindow : Window, IControlBrowser
         {
             return;
         }
+
+        // 隐藏 WebView2 默认下载弹窗：下载统一由控制窗下载面板展示，避免两套 UI 同时出现。
+        // 必须在事件回调内同步设置，下方异步投递分支返回后再设无效。
+        e.Handled = true;
 
         // WebView2 事件可能从后台线程触发（与 BytesReceivedChanged/StateChanged 一致）。
         // 这里只捕获 COM operation 引用与结果路径字符串，避免在非 UI 线程改 UI 绑定状态；
@@ -1835,7 +1851,7 @@ public partial class MainWindow : Window, IControlBrowser
     /// <summary>
     /// 键盘焦点是否在本应用的文本输入控件上（控制窗地址栏/搜索框/数值输入框等）。
     /// 热键触发时静默忽略，避免打字误触播放/快进；页面内输入框由脚本侧
-    /// document.activeElement 检测（见 BuildSeekScript / ToggleVideoPlaybackAsync）。
+    /// 焦点检测（见 VideoHotkeyScriptPrelude）。
     /// </summary>
     private static bool IsKeyboardFocusInTextInput() =>
         System.Windows.Input.Keyboard.FocusedElement switch
@@ -1911,33 +1927,33 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        var core = BrowserView.CoreWebView2;
+        if (!_browserReady || core is null)
         {
             SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             return;
         }
 
-        var script = BuildSeekScript(deltaSeconds);
         try
         {
-            var result = await BrowserView.CoreWebView2.ExecuteScriptAsync(script);
+            var result = await EvaluateVideoHotkeyScriptAsync(core, BuildSeekScript(deltaSeconds));
             var secondsText = Math.Abs(deltaSeconds).ToString("0");
             switch (result)
             {
-                case "\"typing\"":
+                case "typing":
                     // 正在页面输入框中打字，静默忽略
                     break;
-                case "\"ok\"":
+                case "ok":
                     SetStatusMessage(
                         LocalizationService.Format(
                             deltaSeconds < 0 ? "Status.SeekBackward" : "Status.SeekForward",
                             secondsText),
                         StatusLevel.Success);
                     break;
-                case "\"no-video\"":
+                case "no-video":
                     SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
                     break;
-                case "\"at-edge\"":
+                case "at-edge":
                     SetStatusMessage(LocalizationService.Get("Status.SeekAtEdge"), StatusLevel.Info);
                     break;
                 default:
@@ -1953,14 +1969,24 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    private static string BuildSeekScript(double deltaSeconds)
-    {
-        const string template = """
-(() => {
-  // 页面聚焦且焦点在输入框时视为正在打字，静默忽略（浮窗叠游戏时页面无焦点，不影响热键）
+    private static string BuildSeekScript(double deltaSeconds) =>
+        SeekVideoScriptTemplate.Replace("DELTA", deltaSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>
+    /// 视频热键脚本的公共前段：正在页面里打字时返回 'typing'，否则把目标视频放进 video（找不到返回 'no-video'）。
+    /// 焦点沿 shadowRoot 下钻：B 站新版评论区等 Web Components 里的输入框，document.activeElement 只返回最外层宿主；
+    /// 只有文本类输入算打字：点过弹幕开关等复选框后焦点会停在 INPUT 上，不能因此吞掉热键。
+    /// </summary>
+    private const string VideoHotkeyScriptPrelude = """
+  // 页面聚焦且焦点在文本输入上时视为正在打字（浮窗叠游戏时页面无焦点，不影响热键）
   if (document.hasFocus()) {
-    const active = document.activeElement;
-    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+    let active = document.activeElement;
+    while (active && active.shadowRoot && active.shadowRoot.activeElement) {
+      active = active.shadowRoot.activeElement;
+    }
+    const nonTextInputTypes = ['checkbox', 'radio', 'range', 'button', 'submit', 'reset', 'file', 'color', 'image'];
+    if (active && (active.tagName === 'TEXTAREA' || active.isContentEditable ||
+        (active.tagName === 'INPUT' && !nonTextInputTypes.includes(active.type)))) {
       return 'typing';
     }
   }
@@ -1971,15 +1997,60 @@ public partial class MainWindow : Window, IControlBrowser
     return rect.width > 0 && rect.height > 0;
   }) || videos[0];
   if (!video) return 'no-video';
+""";
+
+    /// <summary>快进/倒退脚本，DELTA 由 <see cref="BuildSeekScript"/> 替换为秒数。</summary>
+    private const string SeekVideoScriptTemplate = "(() => {\n" + VideoHotkeyScriptPrelude + "\n" + """
   const duration = video.duration;
   if (!isFinite(duration)) return 'no-duration';
   const target = Math.max(0, Math.min(duration, video.currentTime + DELTA));
   if (Math.abs(target - video.currentTime) < 0.001) return 'at-edge';
   video.currentTime = target;
   return 'ok';
-})();
+})()
 """;
-        return template.Replace("DELTA", deltaSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>
+    /// 播放/暂停脚本。play() 返回 Promise，由 <see cref="EvaluateVideoHotkeyScriptAsync"/> 等待其结算：
+    /// 被自动播放策略拦截（NotAllowedError）时返回 'play-blocked'，不误报为已播放；
+    /// 缓冲中又被暂停等操作打断（AbortError 等）返回 'play-interrupted'，以后一次操作的结果为准。
+    /// </summary>
+    private const string TogglePlaybackScript = "(() => {\n" + VideoHotkeyScriptPrelude + "\n" + """
+  if (video.paused) {
+    const p = video.play();
+    return p && typeof p.then === 'function'
+      ? p.then(() => 'play', e => e && e.name === 'NotAllowedError' ? 'play-blocked' : 'play-interrupted')
+      : 'play';
+  }
+
+  video.pause();
+  return 'pause';
+})()
+""";
+
+    /// <summary>
+    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频热键脚本，返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
+    /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"。awaitPromise 取结算值；
+    /// userGesture 让本次执行视为用户操作（热键本就是用户按键），play() 不被自动播放策略拦截。
+    /// </summary>
+    private static async Task<string?> EvaluateVideoHotkeyScriptAsync(CoreWebView2 core, string script)
+    {
+        var parameters = JsonSerializer.Serialize(new
+        {
+            expression = script,
+            awaitPromise = true,
+            returnByValue = true,
+            userGesture = true,
+        });
+        var response = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", parameters);
+        using var document = JsonDocument.Parse(response);
+        var root = document.RootElement;
+        return !root.TryGetProperty("exceptionDetails", out _) &&
+               root.TryGetProperty("result", out var result) &&
+               result.TryGetProperty("value", out var value) &&
+               value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
     }
 
     /// <summary>
@@ -2015,7 +2086,7 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        if (IsCursorOverWindow())
+        if (IsCursorInteractingWithWindow())
         {
             if (_mouseOutsideNotified)
             {
@@ -2044,6 +2115,12 @@ public partial class MainWindow : Window, IControlBrowser
         _mouseOutForcedOnPage = false;
         _ = DispatchMouseReenteredPageAsync();
     }
+
+    /// <summary>
+    /// 光标在窗口上且窗口能收到鼠标。鼠标穿透时光标经过浮窗也到不了页面，按「在窗口外」处理：
+    /// 保持播放器控制栏强制隐藏，也不把真实光标位置同步给页面（否则光标经过浮窗会唤出控制栏）。
+    /// </summary>
+    private bool IsCursorInteractingWithWindow() => !IsClickThroughActive && IsCursorOverWindow();
 
     private bool IsCursorOverWindow()
     {
@@ -2108,8 +2185,8 @@ public partial class MainWindow : Window, IControlBrowser
         // 到左上角，与真实鼠标移动等效地修正内部 :hover 与播放器闲置计时。
         // 派发前再确认光标仍在窗外：离开后一个轮询周期内快速返回时，晚到的 (2,2) 会
         // 覆盖真实位置，使停在窗内的光标按 (2,2) 处元素的光标渲染（自定义光标站点
-        // 常为 none）→ 光标「概率性消失」的来源
-        if (!IsCursorOverWindow())
+        // 常为 none）→ 光标「概率性消失」的来源（鼠标穿透时光标不属于本窗口，照常派发）
+        if (!IsCursorInteractingWithWindow())
         {
             try
             {
@@ -2265,63 +2342,34 @@ public partial class MainWindow : Window, IControlBrowser
 
     public async Task ToggleVideoPlaybackAsync()
     {
-        if (!_browserReady || BrowserView.CoreWebView2 is null)
+        var core = BrowserView.CoreWebView2;
+        if (!_browserReady || core is null)
         {
             SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
             return;
         }
 
-        const string script = @"(() => {
-  // 页面聚焦且焦点在输入框时视为正在打字，静默忽略（浮窗叠游戏时页面无焦点，不影响热键）
-  if (document.hasFocus()) {
-    const active = document.activeElement;
-    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
-      return 'typing';
-    }
-  }
-
-  const videos = Array.from(document.querySelectorAll('video'));
-  const video = videos.find(v => {
-    const rect = v.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }) || videos[0];
-
-  if (!video) {
-    return 'no-video';
-  }
-
-  if (video.paused) {
-    const p = video.play();
-    // play() 返回 Promise：等待其结算，自动播放被拦截时返回 play-blocked，
-    // 避免未处理的 Promise rejection 污染页面控制台，也避免误报为已播放。
-    if (p && typeof p.then === 'function') {
-      return p.then(() => 'play').catch(() => 'play-blocked');
-    }
-    return 'play';
-  }
-
-  video.pause();
-  return 'pause';
-})();";
-
         try
         {
-            var result = await BrowserView.CoreWebView2.ExecuteScriptAsync(script);
+            var result = await EvaluateVideoHotkeyScriptAsync(core, TogglePlaybackScript);
             switch (result)
             {
-                case "\"typing\"":
+                case "typing":
                     // 正在页面输入框中打字，静默忽略
                     break;
-                case "\"play\"":
+                case "play":
                     SetStatusMessage(LocalizationService.Get("Status.Played"), StatusLevel.Success);
                     break;
-                case "\"play-blocked\"":
+                case "play-blocked":
                     SetStatusMessage(LocalizationService.Get("Status.PlaybackBlocked"), StatusLevel.Warning);
                     break;
-                case "\"pause\"":
+                case "play-interrupted":
+                    // 缓冲中被随后的暂停等操作打断：后一次操作已更新状态，这里不覆盖
+                    break;
+                case "pause":
                     SetStatusMessage(LocalizationService.Get("Status.Paused"), StatusLevel.Success);
                     break;
-                case "\"no-video\"":
+                case "no-video":
                     SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
                     break;
                 default:
@@ -2361,7 +2409,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         _settings.WindowMode = mode;
 
-        _windowModeService.ApplyMode(_settings.WindowMode);
+        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateBrowserAcceleratorKeys();
         // 浮窗叠游戏 / 失焦 / 最小化时降低 WebView 内存目标，前台浏览再恢复
@@ -2371,13 +2419,15 @@ public partial class MainWindow : Window, IControlBrowser
         UpdateModeToggleButton();
 
         var enteringFloating = _settings.WindowMode == WindowMode.Fixed;
+        // 鼠标穿透时浮窗点不到、标题栏也唤不出，提示里写明只能按模式快捷键回浏览调整
+        var clickThrough = IsClickThroughActive;
         // 首次进入浮窗：较长引导；之后仅短 toast + 描边闪
         if (enteringFloating && !_settings.HasSeenFloatingModeHint)
         {
             _settings.HasSeenFloatingModeHint = true;
             ShowMainModeToast(
                 LocalizationService.Format(
-                    "Mode.FirstFloatingHint",
+                    clickThrough ? "Mode.FirstFloatingHintClickThrough" : "Mode.FirstFloatingHint",
                     FormatToggleModeHotkey()),
                 TimeSpan.FromSeconds(3.2));
             SetStatusMessage(
@@ -2388,7 +2438,9 @@ public partial class MainWindow : Window, IControlBrowser
         {
             ShowMainModeToast(
                 enteringFloating
-                    ? LocalizationService.Get("Mode.ToastFloating", "浮窗")
+                    ? clickThrough
+                        ? LocalizationService.Get("Mode.ToastFloatingClickThrough", "浮窗 · 鼠标穿透")
+                        : LocalizationService.Get("Mode.ToastFloating", "浮窗")
                     : LocalizationService.Get("Mode.ToastBrowsing", "浏览"),
                 TimeSpan.FromSeconds(1.1));
             SetStatusMessage(
@@ -2561,6 +2613,7 @@ public partial class MainWindow : Window, IControlBrowser
     {
         WindowOpacity = 1.0;
         ApplyWindowOpacity(1.0);
+        FloatingClickThrough = false;
         // 生效范围与热键同属「快捷键」设置，一并恢复默认
         HotkeyScope = HotkeyScope.Blacklist;
         RestoreDefaultHotkeys();
@@ -2656,9 +2709,32 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    /// <summary>浮窗模式鼠标穿透（默认关）。开启后浮窗不接收鼠标，点击落到下层窗口；浏览模式不受影响。</summary>
+    public bool FloatingClickThrough
+    {
+        get => _settings.FloatingClickThrough;
+        set
+        {
+            if (_settings.FloatingClickThrough == value)
+            {
+                return;
+            }
+
+            _settings.FloatingClickThrough = value;
+            _windowModeService.ApplyMode(_settings.WindowMode, value);
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
+    /// <summary>当前是否鼠标穿透中（浮窗模式且开启穿透）：窗口收不到鼠标，悬停相关逻辑一律按「光标不在窗口上」处理。</summary>
+    private bool IsClickThroughActive =>
+        _settings.WindowMode == WindowMode.Fixed && _settings.FloatingClickThrough;
+
     public string ThemeMode
     {
-        get => ThemeService.Normalize(_settings.ThemeMode);        set
+        get => ThemeService.Normalize(_settings.ThemeMode);
+        set
         {
             var mode = ThemeService.Normalize(value);
             if (string.Equals(_settings.ThemeMode, mode, StringComparison.OrdinalIgnoreCase))
@@ -2771,8 +2847,9 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         var workArea = WindowBoundsHelper.GetWorkArea(this);
-        var minWidth = MinWidth > 0 ? MinWidth : 640;
-        var minHeight = MinHeight > 0 ? MinHeight : 360;
+        // 最小尺寸以 MainWindow.xaml 的 MinWidth/MinHeight 为唯一来源
+        var minWidth = MinWidth;
+        var minHeight = MinHeight;
         var maxWidth = Math.Max(minWidth, workArea.Width);
         // height 参数是内容区高度；标题栏显示时窗口再 +30
         var contentHeight = Math.Clamp(height, minHeight, Math.Max(minHeight, workArea.Height));
@@ -2950,7 +3027,7 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             // 优先 iframe：不挤掉当前页。用 JSON 字符串嵌入避免手工转义漏洞。
-            var uriLiteral = System.Text.Json.JsonSerializer.Serialize(retryUri);
+            var uriLiteral = JsonSerializer.Serialize(retryUri);
             var script =
                 "(function(){" +
                 "try{" +
@@ -3576,7 +3653,7 @@ public partial class MainWindow : Window, IControlBrowser
         var width = _settings.WindowWidth > 0 ? _settings.WindowWidth : Width;
         // settings 存的是内容区高度；标题栏显示时窗口额外 +30
         var contentHeight = _settings.WindowHeight > 0 ? _settings.WindowHeight : GetContentAreaHeight();
-        contentHeight = Math.Max(MinHeight > 0 ? MinHeight : 360, contentHeight);
+        contentHeight = Math.Max(MinHeight, contentHeight);
         _contentAreaHeight = contentHeight;
         var showTitleBar = _settings.WindowMode == WindowMode.Free;
         var height = contentHeight + (showTitleBar ? TitleBarExpandedHeight : 0);
@@ -3859,14 +3936,14 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 浮窗模式：默认隐藏；若鼠标已在顶部带内则保持显示
-        if (forceHideInFixed && !DragBar.IsMouseOver && !IsMouseInTitleBarBand())
+        if (forceHideInFixed && !IsMouseOnTitleBar())
         {
             _titleBarHideTimer?.Stop();
             SetTitleBarVisible(false);
             return;
         }
 
-        if (!DragBar.IsMouseOver && !IsMouseInTitleBarBand())
+        if (!IsMouseOnTitleBar())
         {
             ScheduleTitleBarAutoHide();
         }
@@ -3930,13 +4007,19 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 仍在标题栏，或仍停在顶部感应高度内，则保持显示
-        if (DragBar.IsMouseOver || IsMouseInTitleBarBand())
+        if (IsMouseOnTitleBar())
         {
             return;
         }
 
         SetTitleBarVisible(false);
     }
+
+    /// <summary>
+    /// 鼠标是否停在标题栏或顶部感应带内。鼠标穿透时窗口收不到鼠标、标题栏也点不到，一律视为不在。
+    /// </summary>
+    private bool IsMouseOnTitleBar() =>
+        !IsClickThroughActive && (DragBar.IsMouseOver || IsMouseInTitleBarBand());
 
     /// <summary>
     /// 鼠标是否仍在窗口顶部标题栏高度带内（与感应区同高）。
@@ -3991,7 +4074,7 @@ public partial class MainWindow : Window, IControlBrowser
             CaptureContentAreaHeightFromWindow();
         }
 
-        var contentHeight = Math.Max(MinHeight > 0 ? MinHeight : 360, _contentAreaHeight);
+        var contentHeight = Math.Max(MinHeight, _contentAreaHeight);
         _contentAreaHeight = contentHeight;
         var targetHeight = contentHeight + (nowVisible ? TitleBarExpandedHeight : 0);
 

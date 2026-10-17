@@ -80,6 +80,22 @@ public static class EntryText
         return true;
     }
 
+    /// <summary>
+    /// 列表展示用的简短网址：去掉协议、www. 与末尾斜杠，解码百分号编码（搜索词等变得可读）。
+    /// 完整网址仍用于打开与悬停提示；无法解析为绝对地址时原样返回。
+    /// </summary>
+    public static string ToDisplayUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return url ?? string.Empty;
+        }
+
+        var host = uri.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? uri.Host[4..] : uri.Host;
+        var port = uri.IsDefaultPort ? string.Empty : ":" + uri.Port;
+        return Uri.UnescapeDataString(host + port + uri.AbsolutePath.TrimEnd('/') + uri.Query);
+    }
+
     public static DateTime NormalizeUtcTimestamp(DateTime value, DateTime fallbackUtc)
     {
         if (value == default)

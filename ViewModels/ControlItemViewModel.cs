@@ -6,6 +6,7 @@ namespace GenshinBrowser.ViewModels;
 public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItemViewModel>
 {
     private string _url = string.Empty;
+    private string _displayUrl = string.Empty;
     private string _title = string.Empty;
     private string _timeDisplay = string.Empty;
     // 缓存上次格式化时间，避免未变化时重复 FormatRelativeTime（资源查找 + 字符串分配）
@@ -26,7 +27,20 @@ public sealed class ControlItemViewModel : ViewModelBase, IEquatable<ControlItem
     public string Url
     {
         get => _url;
-        private set => SetProperty(ref _url, value);
+        private set
+        {
+            if (SetProperty(ref _url, value))
+            {
+                DisplayUrl = EntryText.ToDisplayUrl(value);
+            }
+        }
+    }
+
+    /// <summary>列表第二行的简短网址；完整网址（<see cref="Url"/>）用于打开与悬停提示。</summary>
+    public string DisplayUrl
+    {
+        get => _displayUrl;
+        private set => SetProperty(ref _displayUrl, value);
     }
 
     public string Title

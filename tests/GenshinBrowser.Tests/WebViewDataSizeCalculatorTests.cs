@@ -9,14 +9,18 @@ public sealed class WebViewDataSizeCalculatorTests
     {
         using var directory = new TestDirectory();
         WriteBytes(directory.GetPath("EBWebView/Default/Cache/cache.bin"), 11);
-        WriteBytes(directory.GetPath("EBWebView/Default/IndexedDB/data.bin"), 13);
         WriteBytes(directory.GetPath("EBWebView/Default/Service Worker/cache.bin"), 17);
+        WriteBytes(directory.GetPath("EBWebView/Default/WebStorage/1/CacheStorage/cache.bin"), 5);
+        // 站点本地数据：自动清理不动，不计入
+        WriteBytes(directory.GetPath("EBWebView/Default/IndexedDB/data.bin"), 13);
+        WriteBytes(directory.GetPath("EBWebView/Default/Local Storage/leveldb/data.ldb"), 3);
+        WriteBytes(directory.GetPath("EBWebView/Default/WebStorage/1/IndexedDB/data.bin"), 7);
         WriteBytes(directory.GetPath("EBWebView/Default/AutofillAiModelCache/model.bin"), 19);
         WriteBytes(directory.GetPath("EBWebView/Default/Login Data"), 23);
 
         var result = WebViewDataSizeCalculator.Calculate(directory.Path, CancellationToken.None);
 
-        Assert.Equal(41, result);
+        Assert.Equal(33, result);
     }
 
     [Fact]

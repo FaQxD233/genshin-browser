@@ -9,8 +9,8 @@
         Title="{DynamicResource App.Title}"
         Width="658"
         Height="370"
-        MinWidth="640"
-        MinHeight="360"
+        MinWidth="480"
+        MinHeight="270"
         Background="#01000000"
         Cursor="Arrow"
         Foreground="{DynamicResource TextPrimary}"
@@ -52,16 +52,23 @@
             Panel.ZIndex="3"
             MouseEnter="TitleBarArea_OnMouseEnter"
             MouseLeave="TitleBarArea_OnMouseLeave">
+      <!-- 标题与按钮分两列：窗口很窄时标题在按钮前省略，不压到按钮下面 -->
       <Grid>
-        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0" IsHitTestVisible="False">
-          <TextBlock x:Name="TitleBarTitleText"
-                     Text="{DynamicResource App.Title}"
-                     Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="SemiBold"
-                     VerticalAlignment="Center"
-                     TextTrimming="CharacterEllipsis"
-                     MaxWidth="360"/>
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock x:Name="TitleBarTitleText"
+                   Grid.Column="0"
+                   Margin="10,0,8,0"
+                   IsHitTestVisible="False"
+                   HorizontalAlignment="Left"
+                   Text="{DynamicResource App.Title}"
+                   Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="SemiBold"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   MaxWidth="360"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button x:Name="ModeToggleButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="ModeToggleButton_OnClick"
                   AutomationProperties.Name="{DynamicResource Mode.ToggleName}">

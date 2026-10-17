@@ -76,6 +76,7 @@ public sealed class SettingsService : IDisposable
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
             HotkeyScope = settings.HotkeyScope,
+            FloatingClickThrough = settings.FloatingClickThrough,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
             HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
