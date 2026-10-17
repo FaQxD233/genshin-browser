@@ -1197,6 +1197,12 @@ public partial class MainWindow : Window, IControlBrowser
                     StatusLevel.Success,
                     BrowserStateChangeKind.History);
             }
+            else if (e.WebErrorStatus is CoreWebView2WebErrorStatus.ConnectionAborted or CoreWebView2WebErrorStatus.OperationCanceled)
+            {
+                // 不是加载失败：点下载链接（导航转为下载）、被新导航顶掉、页面 window.stop() 都以 ConnectionAborted 收尾，
+                // 取消导航为 OperationCanceled。只收起加载态，不弹「加载失败」。
+                SetNavigating(false);
+            }
             else
             {
                 CompleteNavigation(
