@@ -16,6 +16,8 @@ public partial class ControlWindow : Window
     private readonly ControlWindowViewModel _viewModel;
     private bool _hasUserMovedWindow;
     private bool _isRestoringBounds;
+    // 程序回填地址栏（打开联想候选后写入其网址）时不重新触发联想
+    private bool _suppressAddressSuggestions;
     private System.Windows.Threading.DispatcherTimer? _boundsDebounceTimer;
     // 滚轮平滑滚动的缓动函数可复用（无状态）；DoubleAnimation 必须每次实例化：
     // WPF 动画时钟会跟随未冻结 Timeline 的属性变更，共享实例会让一个列表仍在
@@ -405,6 +407,9 @@ public partial class ControlWindow : Window
 
     private void ControlWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
     {
+        // Popup 不跟随窗口移动，避免候选悬空在原位置
+        _viewModel.CloseAddressSuggestions();
+
         if (!IsLoaded || WindowState != WindowState.Normal || _isRestoringBounds)
         {
             return;
@@ -447,6 +452,12 @@ public partial class ControlWindow : Window
 
         // 点在当前输入控件内部：保持焦点
         if (IsDescendantOf(clicked, focused))
+        {
+            return;
+        }
+
+        // 点在地址栏联想下拉里：Popup 内容的路由事件也会经过窗口，这里清焦点会先关掉下拉、吞掉这次点击
+        if (AddressSuggestionsPopup.IsOpen && IsDescendantOf(clicked, AddressSuggestionsPopup.Child))
         {
             return;
         }
@@ -557,6 +568,83 @@ public partial class ControlWindow : Window
         AddressBarTextBox.Text = text;
     }
 
+    private void AddressBarTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        // 只响应用户输入：无焦点时的导航同步、打开候选后的程序回填都跳过
+        if (_suppressAddressSuggestions || !AddressBarTextBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        _viewModel.UpdateAddressSuggestions(AddressBarTextBox.Text);
+    }
+
+    private void AddressBarTextBox_OnLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        _viewModel.CloseAddressSuggestions();
+    }
+
+    private void AddressSuggestionsList_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        var dataContext = (e.OriginalSource as FrameworkElement)?.DataContext
+                          ?? (e.OriginalSource as FrameworkContentElement)?.DataContext;
+        if (dataContext is AddressSuggestion suggestion)
+        {
+            e.Handled = true;
+            OpenAddressSuggestion(suggestion);
+        }
+    }
+
+    /// <summary>联想下拉打开时的按键；返回 true 表示已处理。输入法组字（ImeProcessed）不会走到这些分支。</summary>
+    private bool HandleAddressSuggestionKey(Key key)
+    {
+        var count = AddressSuggestionsList.Items.Count;
+        switch (key)
+        {
+            case Key.Down when count > 0:
+                AddressSuggestionsList.SelectedIndex = AddressSuggestionsList.SelectedIndex + 1 >= count
+                    ? 0
+                    : AddressSuggestionsList.SelectedIndex + 1;
+                return true;
+            case Key.Up when count > 0:
+                // 从输入框向上进入末项；在首项再按 ↑ 回到「未选中」，Enter 即按输入内容跳转
+                AddressSuggestionsList.SelectedIndex = AddressSuggestionsList.SelectedIndex < 0
+                    ? count - 1
+                    : AddressSuggestionsList.SelectedIndex - 1;
+                return true;
+            case Key.Enter when AddressSuggestionsList.SelectedItem is AddressSuggestion suggestion:
+                OpenAddressSuggestion(suggestion);
+                return true;
+            case Key.Enter:
+            case Key.Tab:
+                // 未选候选：交给地址栏原有的回车跳转 / Tab 导航
+                _viewModel.CloseAddressSuggestions();
+                return false;
+            case Key.Escape:
+                _viewModel.CloseAddressSuggestions();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void OpenAddressSuggestion(AddressSuggestion suggestion)
+    {
+        // 回填所选网址并全选（与浏览器地址栏一致），回填本身不触发联想
+        _suppressAddressSuggestions = true;
+        try
+        {
+            SetAddressText(suggestion.Url);
+        }
+        finally
+        {
+            _suppressAddressSuggestions = false;
+        }
+
+        AddressBarTextBox.SelectAll();
+        _viewModel.OpenAddressSuggestion(suggestion);
+    }
+
     protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
     {
         if (_viewModel.IsRecordingAnyKey)
@@ -585,6 +673,15 @@ public partial class ControlWindow : Window
             e.Handled = true;
             AddressBarTextBox.Focus();
             AddressBarTextBox.SelectAll();
+            return;
+        }
+
+        // 联想下拉打开时：↑↓ 选择、Enter 打开所选、Esc 先关下拉（再按一次才恢复地址）
+        if (_viewModel.IsAddressSuggestionsOpen &&
+            AddressBarTextBox.IsKeyboardFocusWithin &&
+            HandleAddressSuggestionKey(e.Key))
+        {
+            e.Handled = true;
             return;
         }
 

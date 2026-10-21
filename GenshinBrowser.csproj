@@ -9,6 +9,8 @@
     <AssemblyName>GenshinBrowser</AssemblyName>
     <RootNamespace>GenshinBrowser</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- exe / 任务栏 / Alt+Tab / 窗口图标；由 release/build-app-icon.ps1 从 Resources/AppIcon 下的 PNG 生成 -->
+    <ApplicationIcon>Resources\AppIcon\app.ico</ApplicationIcon>
     <!-- 自包含发布只保留 en / 简中卫星资源，去掉 de/fr/ja 等约 8MB 本地化 DLL。应用 UI 自有 i18n 不受影响。 -->
     <SatelliteResourceLanguages>en;zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
@@ -20,6 +22,11 @@
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
     <InternalsVisibleTo Include="GenshinBrowser.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 主窗自绘标题栏左侧的小图标（WPF SDK 不会默认把图片收进 Resource） -->
+    <Resource Include="Resources\AppIcon\keqing-head.png" />
   </ItemGroup>
 
   <!-- Keep .NET/WPF self-contained while removing unused WinForms and dump assets. -->

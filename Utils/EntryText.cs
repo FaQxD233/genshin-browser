@@ -96,6 +96,16 @@ public static class EntryText
         return Uri.UnescapeDataString(host + port + uri.AbsolutePath.TrimEnd('/') + uri.Query);
     }
 
+    /// <summary>
+    /// 收藏 / 历史的统一匹配规则：标题或网址包含查询串（忽略大小写）。
+    /// 列表搜索与地址栏联想共用，保证两处搜到的结果一致。
+    /// </summary>
+    public static bool MatchesQuery(string title, string url, string query)
+    {
+        return title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+               url.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static DateTime NormalizeUtcTimestamp(DateTime value, DateTime fallbackUtc)
     {
         if (value == default)

@@ -110,6 +110,11 @@ public static class AppConfig
         public const int SearchDebounceMs = 150;
 
         /// <summary>
+        /// 地址栏联想最多显示的候选条数（收藏在前、历史在后）。
+        /// </summary>
+        public const int MaxAddressSuggestions = 8;
+
+        /// <summary>
         /// 搜索框占位符文本
         /// </summary>
         public const string SearchPlaceholder = "搜索...";

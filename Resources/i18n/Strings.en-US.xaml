@@ -94,8 +94,9 @@
   <sys:String x:Key="Settings.MoveBottomRightTooltip">Snap to bottom-right (no gap)</sys:String>
   <!-- Floating click-through; {0}=current mode hotkey -->
   <sys:String x:Key="Settings.ClickThrough">Click-through</sys:String>
-  <sys:String x:Key="Settings.ClickThroughOff">Off</sys:String>
-  <sys:String x:Key="Settings.ClickThroughOn">On</sys:String>
+  <!-- Generic switch state text (right of ToggleSwitch) -->
+  <sys:String x:Key="Toggle.Off">Off</sys:String>
+  <sys:String x:Key="Toggle.On">On</sys:String>
   <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged; press {0} to return to Browsing and adjust.</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">Moved to top-left</sys:String>
   <sys:String x:Key="Toast.MovedBottomLeft">Moved to bottom-left</sys:String>
@@ -202,6 +203,11 @@
   <sys:String x:Key="Status.SeekBackward">Rewound {0}s.</sys:String>
   <sys:String x:Key="Status.SeekForward">Forwarded {0}s.</sys:String>
   <sys:String x:Key="Status.SeekAtEdge">Reached the start or end of the video.</sys:String>
+  <!-- Floating OSD (short hotkey feedback); {0}=seconds -->
+  <sys:String x:Key="Osd.Play">Playing</sys:String>
+  <sys:String x:Key="Osd.Pause">Paused</sys:String>
+  <sys:String x:Key="Osd.SeekBackward">−{0}s</sys:String>
+  <sys:String x:Key="Osd.SeekForward">+{0}s</sys:String>
   <sys:String x:Key="Status.WindowHidden">Window hidden. Press {0} to show it again (video keeps playing).</sys:String>
   <sys:String x:Key="Status.WindowShown">Window shown.</sys:String>
   <sys:String x:Key="Status.PlaybackBlocked">The browser blocked autoplay. Please click the in-page play button first.</sys:String>

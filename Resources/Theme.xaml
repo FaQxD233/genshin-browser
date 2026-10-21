@@ -5,8 +5,9 @@
 
   <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut"/>
 
+  <!-- Win11 自带 Fluent 图标；Win10 默认没有，逐字回退到 MDL2（项目所用码位两套字体含义一致） -->
   <Style x:Key="Mdl2IconText" TargetType="TextBlock">
-    <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+    <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
     <Setter Property="FontSize" Value="14"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -20,12 +21,6 @@
     <Setter Property="Padding" Value="12,6"/>
     <Setter Property="FontSize" Value="12"/>
     <Setter Property="Cursor" Value="Hand"/>
-    <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
-    <Setter Property="RenderTransform">
-      <Setter.Value>
-        <ScaleTransform ScaleX="1" ScaleY="1"/>
-      </Setter.Value>
-    </Setter>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
@@ -33,47 +28,42 @@
                   Background="{TemplateBinding Background}"
                   BorderBrush="{TemplateBinding BorderBrush}"
                   BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="{StaticResource CornerRadiusSm}"
-                  RenderTransformOrigin="0.5,0.5"
-                  Padding="{TemplateBinding Padding}">
-            <Border.RenderTransform>
-              <ScaleTransform ScaleX="1" ScaleY="1"/>
-            </Border.RenderTransform>
+                  CornerRadius="{StaticResource CornerRadiusSm}">
+            <!-- 悬停/按下只渐变遮罩不透明度（不缩放：缩放会让密集布局里的文字发虚）；
+                 状态里用 0 时长目标值，过渡时长交给 VisualTransition 生成 -->
             <VisualStateManager.VisualStateGroups>
               <VisualStateGroup x:Name="CommonStates">
+                <VisualStateGroup.Transitions>
+                  <VisualTransition To="MouseOver" GeneratedDuration="0:0:0.12"/>
+                  <VisualTransition To="Pressed" GeneratedDuration="0:0:0.06"/>
+                  <VisualTransition To="Normal" GeneratedDuration="0:0:0.15"/>
+                </VisualStateGroup.Transitions>
                 <VisualState x:Name="Normal"/>
                 <VisualState x:Name="MouseOver">
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="ButtonChrome"
-                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                     To="1.03" Duration="0:0:0.12" EasingFunction="{StaticResource EaseOutCubic}"/>
-                    <DoubleAnimation Storyboard.TargetName="ButtonChrome"
-                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                     To="1.03" Duration="0:0:0.12" EasingFunction="{StaticResource EaseOutCubic}"/>
+                    <DoubleAnimation Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity" To="0.08" Duration="0"/>
                   </Storyboard>
                 </VisualState>
                 <VisualState x:Name="Pressed">
                   <Storyboard>
-                    <DoubleAnimation Storyboard.TargetName="ButtonChrome"
-                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                     To="0.98" Duration="0:0:0.08"/>
-                    <DoubleAnimation Storyboard.TargetName="ButtonChrome"
-                                     Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                     To="0.98" Duration="0:0:0.08"/>
+                    <DoubleAnimation Storyboard.TargetName="StateOverlay" Storyboard.TargetProperty="Opacity" To="0.14" Duration="0"/>
                   </Storyboard>
                 </VisualState>
+                <VisualState x:Name="Disabled"/>
               </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
-            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Grid>
+              <!-- 遮罩夹在底色与内容之间：前景色低不透明度叠加，亮暗主题通用，文字不被染色。
+                   圆角 5 = 外圆角 6 − 1px 边框（Border 不按圆角裁剪子元素） -->
+              <Border x:Name="StateOverlay"
+                      Background="{DynamicResource TextPrimary}"
+                      CornerRadius="5"
+                      Opacity="0"
+                      IsHitTestVisible="False"/>
+              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
           </Border>
           <ControlTemplate.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="ButtonChrome" Property="Background" Value="{DynamicResource BackgroundHover}"/>
-              <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="{DynamicResource BorderColorStrong}"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-              <Setter TargetName="ButtonChrome" Property="Background" Value="{DynamicResource BorderColor}"/>
-            </Trigger>
             <!-- 禁用态整体减淡（前进/后退无历史、下载未完成时的打开文件等），否则与可点击按钮无法区分 -->
             <Trigger Property="IsEnabled" Value="False">
               <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.4"/>
@@ -92,19 +82,142 @@
     <Setter Property="Margin" Value="0,10,0,8"/>
   </Style>
 
-  <!-- 主题/语言/模式分段选中按钮；Tag 绑定选中态（bool），选中时强调色描边与文字 -->
-  <Style x:Key="SegmentButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-    <Setter Property="Padding" Value="4,2"/>
+  <!-- 分段控件轨道：一组互斥选项共用一个圆角矩形外框（外圆角 8 = 分段项圆角 6 + 内边距 2），
+       内放横向 StackPanel + SegmentedItem -->
+  <Style x:Key="SegmentedTrack" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource SegmentTrackBackground}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="8"/>
+    <Setter Property="Padding" Value="2"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+  </Style>
+
+  <!-- 分段项：Tag 绑定选中态（bool）。未选中透明底、次要文字；选中为凸起底色 + 底边 2px 强调色线
+       （只给底边厚度，配合 6px 圆角画出跟随圆角的弧线）。未选中也保留 2px 透明底边、字重不变，切换时不跳动 -->
+  <Style x:Key="SegmentedItem" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="BorderThickness" Value="0,0,0,2"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="Margin" Value="1,0"/>
+    <Setter Property="MinWidth" Value="48"/>
+    <Setter Property="Height" Value="24"/>
     <Setter Property="FontSize" Value="11"/>
-    <Setter Property="Height" Value="26"/>
     <Style.Triggers>
       <!-- 与 ToastBorderStyle 同理：Tag 声明类型是 object，属性触发器不做 "True"→bool 转换，须走 DataTrigger -->
       <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+        <Setter Property="Background" Value="{DynamicResource SegmentThumbBackground}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-        <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+      </DataTrigger>
+    </Style.Triggers>
+  </Style>
+
+  <!-- 键帽：快捷键录制按钮，底边加厚 1px 模拟按键；Tag=录制中（bool）时强调色描边 + 选中底色 -->
+  <Style x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+    <Setter Property="BorderThickness" Value="1,1,1,2"/>
+    <Setter Property="Padding" Value="10,0"/>
+    <Setter Property="MinWidth" Value="44"/>
+    <Setter Property="Height" Value="26"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+    <Setter Property="HorizontalAlignment" Value="Left"/>
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+        <Setter Property="Background" Value="{DynamicResource SelectionBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
       </DataTrigger>
     </Style.Triggers>
+  </Style>
+
+  <!-- 开关：布尔设置项（CheckBox）。轨道 34×18、圆钮 10px；开启时强调色填充、圆钮 120ms 右滑 16px，
+       悬停圆钮略放大；右侧显示开启 / 关闭 -->
+  <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+    <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+    <Setter Property="FontSize" Value="11"/>
+    <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="CheckBox">
+          <StackPanel Orientation="Horizontal" Background="Transparent">
+            <Border x:Name="Track"
+                    Width="34" Height="18"
+                    CornerRadius="9"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource BorderColorStrong}"
+                    BorderThickness="1">
+              <Ellipse x:Name="Knob"
+                       Width="10" Height="10"
+                       Margin="3,0,0,0"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center"
+                       Fill="{DynamicResource TextSecondary}"
+                       RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform>
+                  <TransformGroup>
+                    <ScaleTransform x:Name="KnobScale"/>
+                    <TranslateTransform x:Name="KnobOffset"/>
+                  </TransformGroup>
+                </Ellipse.RenderTransform>
+              </Ellipse>
+            </Border>
+            <TextBlock x:Name="StateText"
+                       Margin="8,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="{DynamicResource Toggle.Off}"
+                       Foreground="{TemplateBinding Foreground}"/>
+          </StackPanel>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentPrimary}"/>
+              <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+              <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource BackgroundPrimary}"/>
+              <Setter TargetName="StateText" Property="Text" Value="{DynamicResource Toggle.On}"/>
+              <Setter TargetName="StateText" Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+              <Trigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="KnobOffset" Storyboard.TargetProperty="X"
+                                     To="16" Duration="0:0:0.12" EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.EnterActions>
+              <Trigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="KnobOffset" Storyboard.TargetProperty="X"
+                                     To="0" Duration="0:0:0.12" EasingFunction="{StaticResource EaseOutCubic}"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.ExitActions>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Trigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="KnobScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.12"/>
+                    <DoubleAnimation Storyboard.TargetName="KnobScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.12"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.EnterActions>
+              <Trigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="KnobScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.15"/>
+                    <DoubleAnimation Storyboard.TargetName="KnobScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.15"/>
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.ExitActions>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
   <!-- 下载角标：小胶囊，无任务时由 Visibility 隐藏 -->

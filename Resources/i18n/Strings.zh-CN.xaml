@@ -94,8 +94,9 @@
   <sys:String x:Key="Settings.MoveBottomRightTooltip">贴到工作区右下角（无空隙）</sys:String>
   <!-- 浮窗鼠标穿透；{0}=当前模式快捷键 -->
   <sys:String x:Key="Settings.ClickThrough">鼠标穿透</sys:String>
-  <sys:String x:Key="Settings.ClickThroughOff">关闭</sys:String>
-  <sys:String x:Key="Settings.ClickThroughOn">开启</sys:String>
+  <!-- 通用开关状态文字（ToggleSwitch 右侧） -->
+  <sys:String x:Key="Toggle.Off">关闭</sys:String>
+  <sys:String x:Key="Toggle.On">开启</sys:String>
   <sys:String x:Key="Settings.ClickThroughTooltip">浮窗模式下点击直接落到下层窗口（如游戏）。开启后浮窗内无法点击和拖动，按 {0} 回到浏览模式调整。</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">已移动到左上角</sys:String>
   <sys:String x:Key="Toast.MovedBottomLeft">已移动到左下角</sys:String>
@@ -202,6 +203,11 @@
   <sys:String x:Key="Status.SeekBackward">已倒退 {0} 秒。</sys:String>
   <sys:String x:Key="Status.SeekForward">已快进 {0} 秒。</sys:String>
   <sys:String x:Key="Status.SeekAtEdge">已到视频开头或末尾。</sys:String>
+  <!-- 浮窗 OSD（热键短反馈）；{0}=秒数 -->
+  <sys:String x:Key="Osd.Play">播放中</sys:String>
+  <sys:String x:Key="Osd.Pause">已暂停</sys:String>
+  <sys:String x:Key="Osd.SeekBackward">−{0} 秒</sys:String>
+  <sys:String x:Key="Osd.SeekForward">+{0} 秒</sys:String>
   <sys:String x:Key="Status.WindowHidden">窗口已隐藏，按 {0} 恢复显示（视频继续播放）。</sys:String>
   <sys:String x:Key="Status.WindowShown">窗口已恢复显示。</sys:String>
   <sys:String x:Key="Status.PlaybackBlocked">浏览器拦截了自动播放，请点击页面内的播放按钮后再试。</sys:String>

@@ -12,11 +12,12 @@
   <Color x:Key="ColorAccentDanger">#CF222E</Color>
   <Color x:Key="ColorAccentWarning">#BF8700</Color>
   <Color x:Key="ColorCloseButtonPressed">#B62324</Color>
-  <!-- 模式强调色：浏览=蓝，浮窗=橙（分段高亮 / 主窗描边闪） -->
+  <!-- 模式强调色：浏览=蓝，浮窗=橙（主窗描边闪） -->
   <Color x:Key="ColorModeBrowsingAccent">#0969DA</Color>
   <Color x:Key="ColorModeFloatingAccent">#BF8700</Color>
-  <!-- 浮窗软色 = 同主题浮窗强调色 + 0x33 透明度（与 Dark 的 #F0A020/#33F0A020 配对方式一致） -->
-  <Color x:Key="ColorModeFloatingAccentSoft">#33BF8700</Color>
+  <!-- 分段控件：轨道比面板底深一级、选中项为白色凸起 -->
+  <Color x:Key="ColorSegmentTrack">#EAEFF3</Color>
+  <Color x:Key="ColorSegmentThumb">#FFFFFF</Color>
   <Color x:Key="ColorListDivider">#D8DEE4</Color>
   <Color x:Key="ColorTextPrimary">#1F2328</Color>
   <Color x:Key="ColorTextSecondary">#656D76</Color>
@@ -36,7 +37,8 @@
   <SolidColorBrush x:Key="CloseButtonPressed" Color="{StaticResource ColorCloseButtonPressed}"/>
   <SolidColorBrush x:Key="ModeBrowsingAccent" Color="{StaticResource ColorModeBrowsingAccent}"/>
   <SolidColorBrush x:Key="ModeFloatingAccent" Color="{StaticResource ColorModeFloatingAccent}"/>
-  <SolidColorBrush x:Key="ModeFloatingAccentSoft" Color="{StaticResource ColorModeFloatingAccentSoft}"/>
+  <SolidColorBrush x:Key="SegmentTrackBackground" Color="{StaticResource ColorSegmentTrack}"/>
+  <SolidColorBrush x:Key="SegmentThumbBackground" Color="{StaticResource ColorSegmentThumb}"/>
   <SolidColorBrush x:Key="ListDivider" Color="{StaticResource ColorListDivider}"/>
   <SolidColorBrush x:Key="TextPrimary" Color="{StaticResource ColorTextPrimary}"/>
   <SolidColorBrush x:Key="TextSecondary" Color="{StaticResource ColorTextSecondary}"/>

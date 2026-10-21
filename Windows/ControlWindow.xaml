@@ -115,54 +115,20 @@
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
 
-      <Border HorizontalAlignment="Left"
-              Background="{DynamicResource BackgroundSecondary}"
-              BorderBrush="{DynamicResource BorderColor}"
-              BorderThickness="1"
-              CornerRadius="14"
-              Padding="3"
-              VerticalAlignment="Center">
+      <Border Style="{StaticResource SegmentedTrack}">
         <StackPanel Orientation="Horizontal">
-          <Button Command="{Binding SetBrowsingModeCommand}"
+          <Button Style="{StaticResource SegmentedItem}"
+                  Command="{Binding SetBrowsingModeCommand}" Tag="{Binding IsBrowsingMode}"
                   Content="{DynamicResource Mode.Free}"
                   ToolTip="{Binding SwitchToBrowsingTooltip}"
                   AutomationProperties.Name="{DynamicResource Mode.Free}"
-                  MinWidth="56" Height="26" Padding="10,0" FontSize="12" FontWeight="SemiBold"
-                  Cursor="Hand">
-            <Button.Style>
-              <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding IsBrowsingMode}" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </Button.Style>
-          </Button>
-          <Button Command="{Binding SetFloatingModeCommand}"
+                  MinWidth="56" Height="26" FontSize="12" FontWeight="SemiBold"/>
+          <Button Style="{StaticResource SegmentedItem}"
+                  Command="{Binding SetFloatingModeCommand}" Tag="{Binding IsFloatingMode}"
                   Content="{DynamicResource Mode.Fixed}"
                   ToolTip="{Binding SwitchToFloatingTooltip}"
                   AutomationProperties.Name="{DynamicResource Mode.Fixed}"
-                  MinWidth="56" Height="26" Padding="10,0" FontSize="12" FontWeight="SemiBold"
-                  Cursor="Hand" Margin="2,0,0,0">
-            <Button.Style>
-              <Style TargetType="Button" BasedOn="{StaticResource SegmentButton}">
-                <Setter Property="Background" Value="Transparent"/>
-                <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
-                <Style.Triggers>
-                  <DataTrigger Binding="{Binding IsFloatingMode}" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource ModeFloatingAccentSoft}"/>
-                    <Setter Property="Foreground" Value="{DynamicResource ModeFloatingAccent}"/>
-                  </DataTrigger>
-                </Style.Triggers>
-              </Style>
-            </Button.Style>
-          </Button>
+                  MinWidth="56" Height="26" FontSize="12" FontWeight="SemiBold"/>
         </StackPanel>
       </Border>
 
@@ -257,7 +223,7 @@
                 <BeginStoryboard>
                   <Storyboard>
                     <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
-                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="340" Duration="0:0:0.2"
+                    <DoubleAnimation Storyboard.TargetProperty="MaxHeight" To="372" Duration="0:0:0.2"
                                      EasingFunction="{StaticResource EaseOutCubic}"/>
                   </Storyboard>
                 </BeginStoryboard>
@@ -317,7 +283,7 @@
           <ScrollViewer Grid.Row="1"
                         VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled"
-                        MaxHeight="280"
+                        MaxHeight="312"
                         Padding="0,0,2,0">
             <!-- 标签列按最长标签自适应并跨行对齐（SettingsLabel），最小 68：英文长标签不被截断 -->
             <StackPanel Grid.IsSharedSizeScope="True">
@@ -398,26 +364,20 @@
                         AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
               </Grid>
 
-              <!-- 浮窗鼠标穿透：关闭 / 开启；按钮列与上方贴边按钮对齐 -->
+              <!-- 浮窗鼠标穿透：布尔项用开关 -->
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ClickThrough}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
                            ToolTip="{Binding ClickThroughTooltip}"/>
-                <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetClickThroughOffCommand}" Tag="{Binding IsClickThroughOff}"
-                        Content="{DynamicResource Settings.ClickThroughOff}"
-                        ToolTip="{Binding ClickThroughTooltip}"/>
-                <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetClickThroughOnCommand}" Tag="{Binding IsClickThroughOn}"
-                        Content="{DynamicResource Settings.ClickThroughOn}"
-                        ToolTip="{Binding ClickThroughTooltip}"/>
+                <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                          HorizontalAlignment="Left"
+                          IsChecked="{Binding IsClickThroughOn}"
+                          ToolTip="{Binding ClickThroughTooltip}"
+                          AutomationProperties.Name="{DynamicResource Settings.ClickThrough}"/>
               </Grid>
 
               <!-- 分组：显示 — 不透明度 / 页面缩放同一行：− 数值 % + 重置 -->
@@ -508,38 +468,46 @@
                 </Grid>
               </Grid>
 
-              <!-- 分组：外观 + 快捷键 -->
+              <!-- 分组：外观 — 主题、语言各占一行（分段控件按内容宽度，同一行放两组在窄窗口会溢出） -->
               <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Appearance}"/>
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
                   <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="12"/>
-                  <ColumnDefinition Width="Auto" MinWidth="68"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Theme}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetThemeDarkCommand}" Tag="{Binding IsThemeDark}"
-                        Content="{DynamicResource Settings.ThemeDark}"/>
-                <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetThemeLightCommand}" Tag="{Binding IsThemeLight}"
-                        Content="{DynamicResource Settings.ThemeLight}"/>
-                <Button Grid.Column="3" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetThemeSystemCommand}" Tag="{Binding IsThemeSystem}"
-                        Content="{DynamicResource Settings.ThemeSystem}"/>
-                <TextBlock Grid.Column="5" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
+                <Border Grid.Column="1" Style="{StaticResource SegmentedTrack}">
+                  <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SegmentedItem}"
+                            Command="{Binding SetThemeDarkCommand}" Tag="{Binding IsThemeDark}"
+                            Content="{DynamicResource Settings.ThemeDark}"/>
+                    <Button Style="{StaticResource SegmentedItem}"
+                            Command="{Binding SetThemeLightCommand}" Tag="{Binding IsThemeLight}"
+                            Content="{DynamicResource Settings.ThemeLight}"/>
+                    <Button Style="{StaticResource SegmentedItem}"
+                            Command="{Binding SetThemeSystemCommand}" Tag="{Binding IsThemeSystem}"
+                            Content="{DynamicResource Settings.ThemeSystem}"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.Language}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                <Button Grid.Column="6" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetLanguageZhCommand}" Tag="{Binding IsLanguageZh}"
-                        Content="{DynamicResource Settings.LanguageZh}"/>
-                <Button Grid.Column="7" Style="{StaticResource SegmentButton}"
-                        Command="{Binding SetLanguageEnCommand}" Tag="{Binding IsLanguageEn}"
-                        Content="{DynamicResource Settings.LanguageEn}"/>
+                <Border Grid.Column="1" Style="{StaticResource SegmentedTrack}">
+                  <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource SegmentedItem}"
+                            Command="{Binding SetLanguageZhCommand}" Tag="{Binding IsLanguageZh}"
+                            Content="{DynamicResource Settings.LanguageZh}"/>
+                    <Button Style="{StaticResource SegmentedItem}"
+                            Command="{Binding SetLanguageEnCommand}" Tag="{Binding IsLanguageEn}"
+                            Content="{DynamicResource Settings.LanguageEn}"/>
+                  </StackPanel>
+                </Border>
               </Grid>
             </StackPanel>
           </ScrollViewer>
@@ -590,7 +558,7 @@
           <TextBlock Text="{DynamicResource Keys.Title}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,0,6"/>
                 <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
-                <!-- 录制中的按钮经 Tag 高亮（SegmentButton 选中态），一眼看出正在录哪一组 -->
+                <!-- 快捷键用键帽样式；录制中的键帽经 Tag 高亮，一眼看出正在录哪一组 -->
                 <Grid Margin="0,0,0,8">
                   <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -608,27 +576,27 @@
                              FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                   <Button Grid.Row="0" Grid.Column="1" Content="{Binding ToggleModeKeyText}"
                           Command="{Binding RecordToggleModeKeyCommand}" Tag="{Binding IsRecordingToggleModeKey}"
-                          Style="{StaticResource SegmentButton}" Padding="6,2"/>
+                          Style="{StaticResource KeyCapButton}"/>
                   <TextBlock Grid.Row="0" Grid.Column="3" Text="{DynamicResource Settings.Playback}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
                   <Button Grid.Row="0" Grid.Column="4" Content="{Binding TogglePlaybackKeyText}"
                           Command="{Binding RecordTogglePlaybackKeyCommand}" Tag="{Binding IsRecordingTogglePlaybackKey}"
-                          Style="{StaticResource SegmentButton}" Padding="6,2"/>
+                          Style="{StaticResource KeyCapButton}"/>
                   <TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource Settings.HideOverlay}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="1" Grid.Column="1" Content="{Binding ToggleHideKeyText}"
                           Command="{Binding RecordToggleHideKeyCommand}" Tag="{Binding IsRecordingToggleHideKey}"
-                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
+                          Style="{StaticResource KeyCapButton}" Margin="0,6,0,0"/>
                   <TextBlock Grid.Row="1" Grid.Column="3" Text="{DynamicResource Settings.SeekBackward}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="1" Grid.Column="4" Content="{Binding SeekBackwardKeyText}"
                           Command="{Binding RecordSeekBackwardKeyCommand}" Tag="{Binding IsRecordingSeekBackwardKey}"
-                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
+                          Style="{StaticResource KeyCapButton}" Margin="0,6,0,0"/>
                   <TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource Settings.SeekForward}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,6,8,0"/>
                   <Button Grid.Row="2" Grid.Column="1" Content="{Binding SeekForwardKeyText}"
                           Command="{Binding RecordSeekForwardKeyCommand}" Tag="{Binding IsRecordingSeekForwardKey}"
-                          Style="{StaticResource SegmentButton}" Padding="6,2" Margin="0,6,0,0"/>
+                          Style="{StaticResource KeyCapButton}" Margin="0,6,0,0"/>
                 </Grid>
 
                 <!-- 热键生效范围：黑名单外 / 全部应用 / 关闭 -->
@@ -636,24 +604,26 @@
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="KeyLabel"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
                   </Grid.ColumnDefinitions>
                   <TextBlock Grid.Column="0" Text="{DynamicResource Settings.HotkeyScope}" Foreground="{DynamicResource TextSecondary}"
                              FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
                              ToolTip="{DynamicResource Settings.HotkeyScopeTooltip}"/>
-                  <Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                          Command="{Binding SetHotkeyScopeBlacklistCommand}" Tag="{Binding IsHotkeyScopeBlacklist}"
-                          Content="{DynamicResource Settings.HotkeyScopeBlacklist}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}"/>
-                  <Button Grid.Column="2" Margin="0,0,4,0" Style="{StaticResource SegmentButton}"
-                          Command="{Binding SetHotkeyScopeAllAppsCommand}" Tag="{Binding IsHotkeyScopeAllApps}"
-                          Content="{DynamicResource Settings.HotkeyScopeAllApps}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}"/>
-                  <Button Grid.Column="3" Style="{StaticResource SegmentButton}"
-                          Command="{Binding SetHotkeyScopeOffCommand}" Tag="{Binding IsHotkeyScopeOff}"
-                          Content="{DynamicResource Settings.HotkeyScopeOff}"
-                          ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}"/>
+                  <Border Grid.Column="1" Style="{StaticResource SegmentedTrack}">
+                    <StackPanel Orientation="Horizontal">
+                      <Button Style="{StaticResource SegmentedItem}"
+                              Command="{Binding SetHotkeyScopeBlacklistCommand}" Tag="{Binding IsHotkeyScopeBlacklist}"
+                              Content="{DynamicResource Settings.HotkeyScopeBlacklist}"
+                              ToolTip="{DynamicResource Settings.HotkeyScopeBlacklistTooltip}"/>
+                      <Button Style="{StaticResource SegmentedItem}"
+                              Command="{Binding SetHotkeyScopeAllAppsCommand}" Tag="{Binding IsHotkeyScopeAllApps}"
+                              Content="{DynamicResource Settings.HotkeyScopeAllApps}"
+                              ToolTip="{DynamicResource Settings.HotkeyScopeAllAppsTooltip}"/>
+                      <Button Style="{StaticResource SegmentedItem}"
+                              Command="{Binding SetHotkeyScopeOffCommand}" Tag="{Binding IsHotkeyScopeOff}"
+                              Content="{DynamicResource Settings.HotkeyScopeOff}"
+                              ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}"/>
+                    </StackPanel>
+                  </Border>
                 </Grid>
         </StackPanel>
         </ScrollViewer>
@@ -771,7 +741,9 @@
                  Style="{StaticResource ModernTextBox}"
                  services:Placeholder.Text="{DynamicResource Nav.AddressPlaceholder}"
                  services:Placeholder.Foreground="{DynamicResource TextTertiary}"
-                 ToolTip="{DynamicResource Nav.AddressTooltip}">
+                 ToolTip="{DynamicResource Nav.AddressTooltip}"
+                 TextChanged="AddressBarTextBox_OnTextChanged"
+                 LostKeyboardFocus="AddressBarTextBox_OnLostKeyboardFocus">
           <TextBox.InputBindings>
             <KeyBinding Key="Enter"
                         Command="{Binding NavigateFromAddressBarCommand}"
@@ -781,6 +753,65 @@
         <ProgressBar Grid.Row="1" Margin="0,4,0,0" Height="2"
                      Style="{StaticResource AddressBarProgressBar}"
                      Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
+
+        <!-- 地址栏联想：收藏 / 历史候选。列表与项都不可聚焦，键盘焦点始终留在地址栏；
+             开关由 VM 控制，失焦 / 窗口移动 / 打开候选时关闭 -->
+        <Popup x:Name="AddressSuggestionsPopup"
+               PlacementTarget="{Binding ElementName=AddressBarTextBox}"
+               Placement="Bottom"
+               VerticalOffset="4"
+               AllowsTransparency="True"
+               Focusable="False"
+               IsOpen="{Binding IsAddressSuggestionsOpen, Mode=OneWay}">
+          <Border Width="{Binding ActualWidth, ElementName=AddressBarTextBox}"
+                  Background="{DynamicResource BackgroundTertiary}"
+                  BorderBrush="{DynamicResource BorderColor}"
+                  BorderThickness="1"
+                  CornerRadius="{StaticResource CornerRadiusSm}"
+                  Padding="2">
+            <ListBox x:Name="AddressSuggestionsList"
+                     Style="{StaticResource ModernListBox}"
+                     ItemsSource="{Binding AddressSuggestions}"
+                     Background="Transparent"
+                     Focusable="False"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                     PreviewMouseLeftButtonUp="AddressSuggestionsList_OnPreviewMouseLeftButtonUp">
+              <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource ModernListBoxItem}">
+                  <Setter Property="Focusable" Value="False"/>
+                  <Setter Property="Padding" Value="8,6"/>
+                  <Setter Property="Cursor" Value="Hand"/>
+                </Style>
+              </ListBox.ItemContainerStyle>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="Auto"/>
+                      <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <!-- 历史 = 时钟 E121，收藏 = 星标 E735 -->
+                    <TextBlock x:Name="KindIcon" Style="{StaticResource Mdl2IconText}"
+                               Text="&#xE121;" FontSize="12" Margin="0,2,8,0" VerticalAlignment="Top"
+                               Foreground="{DynamicResource TextTertiary}"/>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="{Binding Title}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                 Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                      <TextBlock Text="{Binding DisplayUrl}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                 Foreground="{DynamicResource TextTertiary}"/>
+                    </StackPanel>
+                  </Grid>
+                  <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                      <Setter TargetName="KindIcon" Property="Text" Value="&#xE735;"/>
+                      <Setter TargetName="KindIcon" Property="Foreground" Value="{DynamicResource AccentWarning}"/>
+                    </DataTrigger>
+                  </DataTemplate.Triggers>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+        </Popup>
       </Grid>
 
       <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Top">

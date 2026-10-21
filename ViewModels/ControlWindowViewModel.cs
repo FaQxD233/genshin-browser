@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
+using GenshinBrowser.Utils;
 using GenshinBrowser.Windows;
 
 namespace GenshinBrowser.ViewModels;
@@ -39,6 +40,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private bool _canGoBack;
     private bool _canGoForward;
     private bool _isNavigating;
+    private bool _isAddressSuggestionsOpen;
 
     public ControlWindowViewModel(IControlBrowser browser)
     {
@@ -85,8 +87,6 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         SetHotkeyScopeBlacklistCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Blacklist));
         SetHotkeyScopeAllAppsCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.AllApps));
         SetHotkeyScopeOffCommand = new RelayCommand(() => SetHotkeyScope(HotkeyScope.Off));
-        SetClickThroughOffCommand = new RelayCommand(() => SetFloatingClickThrough(false));
-        SetClickThroughOnCommand = new RelayCommand(() => SetFloatingClickThrough(true));
         SetLanguageZhCommand = new RelayCommand(() => SetLanguage(LocalizationService.ZhCn));
         SetLanguageEnCommand = new RelayCommand(() => SetLanguage(LocalizationService.EnUs));
         MoveBrowserToCornerCommand = new RelayCommand(MoveBrowserToCorner);
@@ -198,10 +198,6 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public RelayCommand SetHotkeyScopeOffCommand { get; }
 
-    public RelayCommand SetClickThroughOffCommand { get; }
-
-    public RelayCommand SetClickThroughOnCommand { get; }
-
     public RelayCommand SetLanguageZhCommand { get; }
 
     public RelayCommand SetLanguageEnCommand { get; }
@@ -246,6 +242,15 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     {
         get => _currentAddress;
         private set => SetProperty(ref _currentAddress, value);
+    }
+
+    /// <summary>地址栏联想候选（收藏 / 历史），由视图在用户输入时刷新。</summary>
+    public ObservableCollection<AddressSuggestion> AddressSuggestions { get; } = new();
+
+    public bool IsAddressSuggestionsOpen
+    {
+        get => _isAddressSuggestionsOpen;
+        private set => SetProperty(ref _isAddressSuggestionsOpen, value);
     }
 
     public string FavoriteToggleText
@@ -752,6 +757,36 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         _browser.NavigateTo(input);
     }
 
+    /// <summary>按地址栏当前输入刷新联想候选；无候选时关闭下拉。</summary>
+    public void UpdateAddressSuggestions(string? input)
+    {
+        var suggestions = AddressSuggestion.Build(_browser.FavoriteEntries, _browser.HistoryEntries, input, _browser.CurrentAddress);
+        AddressSuggestions.Clear();
+        foreach (var suggestion in suggestions)
+        {
+            AddressSuggestions.Add(suggestion);
+        }
+
+        IsAddressSuggestionsOpen = AddressSuggestions.Count > 0;
+    }
+
+    public void CloseAddressSuggestions()
+    {
+        if (!IsAddressSuggestionsOpen && AddressSuggestions.Count == 0)
+        {
+            return;
+        }
+
+        IsAddressSuggestionsOpen = false;
+        AddressSuggestions.Clear();
+    }
+
+    public void OpenAddressSuggestion(AddressSuggestion suggestion)
+    {
+        CloseAddressSuggestions();
+        _browser.NavigateTo(suggestion.Url);
+    }
+
     private async Task RemoveFavoriteAsync(object? parameter)
     {
         if (parameter is ControlItemViewModel item)
@@ -927,8 +962,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         for (var i = 0; i < items.Count; i++)
         {
             var item = items[i];
-            if (item.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
-                item.Url.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            if (EntryText.MatchesQuery(item.Title, item.Url, searchText))
             {
                 _filterBuffer.Add(item);
             }
@@ -1518,9 +1552,12 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsHotkeyScopeOff => _browser.HotkeyScope == HotkeyScope.Off;
 
-    public bool IsClickThroughOn => _browser.FloatingClickThrough;
-
-    public bool IsClickThroughOff => !_browser.FloatingClickThrough;
+    /// <summary>浮窗鼠标穿透开关（双向绑定 ToggleSwitch）；写入走 <see cref="SetFloatingClickThrough"/>，含 Toast。</summary>
+    public bool IsClickThroughOn
+    {
+        get => _browser.FloatingClickThrough;
+        set => SetFloatingClickThrough(value);
+    }
 
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
 
@@ -1583,7 +1620,6 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private void RefreshClickThroughFlags()
     {
         OnPropertyChanged(nameof(IsClickThroughOn));
-        OnPropertyChanged(nameof(IsClickThroughOff));
     }
 
     private void SetLanguage(string language)

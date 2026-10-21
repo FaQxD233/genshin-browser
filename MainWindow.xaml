@@ -52,15 +52,28 @@
             Panel.ZIndex="3"
             MouseEnter="TitleBarArea_OnMouseEnter"
             MouseLeave="TitleBarArea_OnMouseLeave">
-      <!-- 标题与按钮分两列：窗口很窄时标题在按钮前省略，不压到按钮下面 -->
+      <!-- 图标、标题、按钮分三列：窗口很窄时标题在按钮前省略，不压到按钮下面 -->
       <Grid>
         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
+        <!-- 应用图标（头部特写，小尺寸更清楚）；按 64px 解码，高 DPI 下缩放也不糊 -->
+        <Image Grid.Column="0"
+               Width="16"
+               Height="16"
+               Margin="9,0,0,0"
+               VerticalAlignment="Center"
+               IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality">
+          <Image.Source>
+            <BitmapImage UriSource="/Resources/AppIcon/keqing-head.png" DecodePixelWidth="64"/>
+          </Image.Source>
+        </Image>
         <TextBlock x:Name="TitleBarTitleText"
-                   Grid.Column="0"
-                   Margin="10,0,8,0"
+                   Grid.Column="1"
+                   Margin="7,0,8,0"
                    IsHitTestVisible="False"
                    HorizontalAlignment="Left"
                    Text="{DynamicResource App.Title}"
@@ -68,7 +81,7 @@
                    VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis"
                    MaxWidth="360"/>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button x:Name="ModeToggleButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="ModeToggleButton_OnClick"
                   AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
@@ -112,8 +125,8 @@
             Panel.ZIndex="8"
             CornerRadius="0"/>
 
-    <!-- 主窗微 toast：模式切换 / 首次浮窗提示；底/字跟主题走，避免亮色黑底黑字 -->
-    <Border x:Name="ModeToastBorder"
+    <!-- 主窗微 toast：模式切换 / 首次浮窗提示 / 浮窗热键反馈（OSD）；底/字跟主题走，避免亮色黑底黑字 -->
+    <Border x:Name="MainToastBorder"
             Grid.Row="0"
             Grid.RowSpan="2"
             HorizontalAlignment="Center"
@@ -131,13 +144,22 @@
       <Border.RenderTransform>
         <TranslateTransform Y="10"/>
       </Border.RenderTransform>
-      <TextBlock x:Name="ModeToastText"
-                 FontSize="12"
-                 FontWeight="SemiBold"
-                 Foreground="{DynamicResource TextPrimary}"
-                 TextWrapping="Wrap"
-                 MaxWidth="420"
-                 TextAlignment="Center"/>
+      <StackPanel Orientation="Horizontal">
+        <!-- OSD 图标位：模式切换提示不带图标时折叠 -->
+        <TextBlock x:Name="MainToastIcon"
+                   Style="{StaticResource Mdl2IconText}"
+                   FontSize="14"
+                   Margin="0,0,8,0"
+                   Visibility="Collapsed"/>
+        <TextBlock x:Name="MainToastText"
+                   FontSize="12"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimary}"
+                   TextWrapping="Wrap"
+                   MaxWidth="420"
+                   TextAlignment="Center"
+                   VerticalAlignment="Center"/>
+      </StackPanel>
     </Border>
   </Grid>
 </Window>

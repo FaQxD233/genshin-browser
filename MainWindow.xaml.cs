@@ -93,7 +93,7 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _adjustingTitleBarBounds;
     private double _contentAreaHeight = 370;
     private DispatcherTimer? _titleBarHideTimer;
-    private DispatcherTimer? _modeToastTimer;
+    private DispatcherTimer? _mainToastTimer;
     private bool _isApplyingZoom;
 
     // 主窗移动/缩放时，控制窗尺寸显示与跟随位置的 UI 防抖
@@ -1944,23 +1944,24 @@ public partial class MainWindow : Window, IControlBrowser
         {
             var result = await EvaluateVideoHotkeyScriptAsync(core, BuildSeekScript(deltaSeconds));
             var secondsText = Math.Abs(deltaSeconds).ToString("0");
+            var backward = deltaSeconds < 0;
             switch (result)
             {
                 case "typing":
                     // 正在页面输入框中打字，静默忽略
                     break;
                 case "ok":
-                    SetStatusMessage(
-                        LocalizationService.Format(
-                            deltaSeconds < 0 ? "Status.SeekBackward" : "Status.SeekForward",
-                            secondsText),
-                        StatusLevel.Success);
+                    ReportVideoHotkeyResult(
+                        LocalizationService.Format(backward ? "Status.SeekBackward" : "Status.SeekForward", secondsText),
+                        StatusLevel.Success,
+                        backward ? OsdGlyphRewind : OsdGlyphFastForward,
+                        LocalizationService.Format(backward ? "Osd.SeekBackward" : "Osd.SeekForward", secondsText));
                     break;
                 case "no-video":
-                    SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning, OsdGlyphWarning);
                     break;
                 case "at-edge":
-                    SetStatusMessage(LocalizationService.Get("Status.SeekAtEdge"), StatusLevel.Info);
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.SeekAtEdge"), StatusLevel.Info, OsdGlyphInfo);
                     break;
                 default:
                     // live 流（duration=Infinity）等无时长的视频：命令已发出但不跳转
@@ -2057,6 +2058,39 @@ public partial class MainWindow : Window, IControlBrowser
                value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+    }
+
+    // 浮窗 OSD 图标（Segoe Fluent Icons 与 Segoe MDL2 Assets 同码位同含义）与显示时长
+    private const string OsdGlyphPlay = "\uE768";
+    private const string OsdGlyphPause = "\uE769";
+    private const string OsdGlyphRewind = "\uEB9E";
+    private const string OsdGlyphFastForward = "\uEB9D";
+    private const string OsdGlyphWarning = "\uE7BA";
+    private const string OsdGlyphInfo = "\uE946";
+    private static readonly TimeSpan OsdShortDuration = TimeSpan.FromSeconds(0.9);
+    private static readonly TimeSpan OsdNoticeDuration = TimeSpan.FromSeconds(1.2);
+    private static readonly TimeSpan OsdWarningDuration = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// 视频热键结果：写状态消息（浏览模式下由控制窗 Toast 显示）；浮窗模式下控制窗是隐藏的，
+    /// 再在主窗底部显示 OSD，否则边玩边按 K / 快进快退没有任何可见反馈。
+    /// 最小化（含 F7 隐藏）时不显示。<paramref name="osdMessage"/> 为 null 时 OSD 沿用状态消息。
+    /// </summary>
+    private void ReportVideoHotkeyResult(string statusMessage, StatusLevel level, string glyph, string? osdMessage = null)
+    {
+        SetStatusMessage(statusMessage, level);
+        if (_settings.WindowMode != WindowMode.Fixed || WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        var duration = level switch
+        {
+            StatusLevel.Warning or StatusLevel.Error => OsdWarningDuration,
+            StatusLevel.Info => OsdNoticeDuration,
+            _ => OsdShortDuration,
+        };
+        ShowMainToast(osdMessage ?? statusMessage, duration, glyph, level);
     }
 
     /// <summary>
@@ -2364,19 +2398,21 @@ public partial class MainWindow : Window, IControlBrowser
                     // 正在页面输入框中打字，静默忽略
                     break;
                 case "play":
-                    SetStatusMessage(LocalizationService.Get("Status.Played"), StatusLevel.Success);
+                    ReportVideoHotkeyResult(
+                        LocalizationService.Get("Status.Played"), StatusLevel.Success, OsdGlyphPlay, LocalizationService.Get("Osd.Play"));
                     break;
                 case "play-blocked":
-                    SetStatusMessage(LocalizationService.Get("Status.PlaybackBlocked"), StatusLevel.Warning);
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.PlaybackBlocked"), StatusLevel.Warning, OsdGlyphWarning);
                     break;
                 case "play-interrupted":
                     // 缓冲中被随后的暂停等操作打断：后一次操作已更新状态，这里不覆盖
                     break;
                 case "pause":
-                    SetStatusMessage(LocalizationService.Get("Status.Paused"), StatusLevel.Success);
+                    ReportVideoHotkeyResult(
+                        LocalizationService.Get("Status.Paused"), StatusLevel.Success, OsdGlyphPause, LocalizationService.Get("Osd.Pause"));
                     break;
                 case "no-video":
-                    SetStatusMessage(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning);
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning, OsdGlyphWarning);
                     break;
                 default:
                     SetStatusMessage(LocalizationService.Get("Status.PlaybackCommandSent"), StatusLevel.Info);
@@ -2431,7 +2467,7 @@ public partial class MainWindow : Window, IControlBrowser
         if (enteringFloating && !_settings.HasSeenFloatingModeHint)
         {
             _settings.HasSeenFloatingModeHint = true;
-            ShowMainModeToast(
+            ShowMainToast(
                 LocalizationService.Format(
                     clickThrough ? "Mode.FirstFloatingHintClickThrough" : "Mode.FirstFloatingHint",
                     FormatToggleModeHotkey()),
@@ -2442,7 +2478,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
         else
         {
-            ShowMainModeToast(
+            ShowMainToast(
                 enteringFloating
                     ? clickThrough
                         ? LocalizationService.Get("Mode.ToastFloatingClickThrough", "浮窗 · 鼠标穿透")
@@ -3271,50 +3307,71 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    private void ShowMainModeToast(string message, TimeSpan duration)
+    /// <summary>
+    /// 主窗底部居中的短提示：模式切换、首次浮窗引导、浮窗热键反馈共用。
+    /// <paramref name="glyph"/> 为图标字体码位，null 时不显示图标；警告级图标用警告色。
+    /// </summary>
+    private void ShowMainToast(string message, TimeSpan duration, string? glyph = null, StatusLevel level = StatusLevel.Info)
     {
-        if (ModeToastBorder is null || ModeToastText is null)
+        if (MainToastBorder is null || MainToastText is null || MainToastIcon is null)
         {
             return;
         }
 
-        ModeToastText.Text = message;
-        ModeToastBorder.Visibility = Visibility.Visible;
+        MainToastText.Text = message;
+        if (glyph is null)
+        {
+            MainToastIcon.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            MainToastIcon.Text = glyph;
+            MainToastIcon.SetResourceReference(
+                System.Windows.Controls.TextBlock.ForegroundProperty,
+                level == StatusLevel.Warning ? "AccentWarning" : "TextPrimary");
+            MainToastIcon.Visibility = Visibility.Visible;
+        }
 
-        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140))
+        // 已在显示（含淡出途中）时从当前值续播：浮窗里连按快进 / 快退，提示不会每次从 0 闪一下
+        var wasHidden = MainToastBorder.Visibility != Visibility.Visible;
+        MainToastBorder.Visibility = Visibility.Visible;
+
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(1, TimeSpan.FromMilliseconds(140))
         {
+            From = wasHidden ? 0 : null,
             EasingFunction = new System.Windows.Media.Animation.CubicEase
             {
                 EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
             }
         };
-        var slide = new System.Windows.Media.Animation.DoubleAnimation(10, 0, TimeSpan.FromMilliseconds(140))
+        var slide = new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(140))
         {
+            From = wasHidden ? 10 : null,
             EasingFunction = new System.Windows.Media.Animation.CubicEase
             {
                 EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut
             }
         };
-        ModeToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeIn);
-        if (ModeToastBorder.RenderTransform is System.Windows.Media.TranslateTransform tt)
+        MainToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        if (MainToastBorder.RenderTransform is System.Windows.Media.TranslateTransform tt)
         {
             tt.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
         }
 
-        if (_modeToastTimer is null)
+        if (_mainToastTimer is null)
         {
-            _modeToastTimer = new DispatcherTimer();
-            _modeToastTimer.Tick += ModeToastTimer_OnTick;
+            _mainToastTimer = new DispatcherTimer();
+            _mainToastTimer.Tick += MainToastTimer_OnTick;
         }
-        _modeToastTimer.Interval = duration;
-        _modeToastTimer.Stop();
-        _modeToastTimer.Start();
+        _mainToastTimer.Interval = duration;
+        _mainToastTimer.Stop();
+        _mainToastTimer.Start();
     }
 
-    private void ModeToastTimer_OnTick(object? sender, EventArgs e)
+    private void MainToastTimer_OnTick(object? sender, EventArgs e)
     {
-        _modeToastTimer?.Stop();
-        if (ModeToastBorder is null)
+        _mainToastTimer?.Stop();
+        if (MainToastBorder is null)
         {
             return;
         }
@@ -3322,12 +3379,12 @@ public partial class MainWindow : Window, IControlBrowser
         var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(160));
         fadeOut.Completed += (_, _) =>
         {
-            if (ModeToastBorder is not null)
+            if (MainToastBorder is not null)
             {
-                ModeToastBorder.Visibility = Visibility.Collapsed;
+                MainToastBorder.Visibility = Visibility.Collapsed;
             }
         };
-        ModeToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        MainToastBorder.BeginAnimation(UIElement.OpacityProperty, fadeOut);
     }
 
     /// <summary>
@@ -3506,11 +3563,11 @@ public partial class MainWindow : Window, IControlBrowser
             _titleBarHideTimer = null;
         }
 
-        if (_modeToastTimer is not null)
+        if (_mainToastTimer is not null)
         {
-            _modeToastTimer.Stop();
-            _modeToastTimer.Tick -= ModeToastTimer_OnTick;
-            _modeToastTimer = null;
+            _mainToastTimer.Stop();
+            _mainToastTimer.Tick -= MainToastTimer_OnTick;
+            _mainToastTimer = null;
         }
 
         DetachAllDownloadOperations(markInterrupted: true);
