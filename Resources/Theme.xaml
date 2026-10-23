@@ -6,6 +6,41 @@
 
   <CubicEase x:Key="EaseOutCubic" EasingMode="EaseOut"/>
 
+  <!-- 键盘焦点框（FocusVisualStyle：只在 Tab 等键盘导航时出现，鼠标点击不出现），替换系统默认虚线框。
+       默认外扩 2px 套在控件外面，圆角 8 = 控件圆角 6 + 2；贴着滚动区边缘的控件要给它留 2px，否则会被裁掉 -->
+  <Style x:Key="FocusRing">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border Margin="-2" BorderThickness="2" CornerRadius="8" BorderBrush="{DynamicResource AccentPrimary}"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 内缩版：挨着排、外面没有余量的控件（标题栏按钮、列表项）用，描边画在控件边界内侧 -->
+  <Style x:Key="FocusRingInset">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border BorderThickness="2" CornerRadius="6" BorderBrush="{DynamicResource AccentPrimary}"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 开关：只套住左侧 34×18 的轨道（不含「开启 / 关闭」文字），与轨道同为胶囊形 -->
+  <Style x:Key="FocusRingSwitch">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border Width="38" Margin="-2" HorizontalAlignment="Left"
+                  BorderThickness="2" CornerRadius="11" BorderBrush="{DynamicResource AccentPrimary}"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- Win11 自带 Fluent 图标；Win10 默认没有，逐字回退到 MDL2（项目所用码位两套字体含义一致） -->
   <Style x:Key="Mdl2IconText" TargetType="TextBlock">
     <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
@@ -22,6 +57,7 @@
     <Setter Property="Padding" Value="12,6"/>
     <Setter Property="FontSize" Value="12"/>
     <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
@@ -83,14 +119,6 @@
     </Setter>
   </Style>
 
-  <!-- 设置分区小标题：加大上边距，让分组之间更有呼吸感 -->
-  <Style x:Key="SettingsSectionTitle" TargetType="TextBlock">
-    <Setter Property="FontSize" Value="11"/>
-    <Setter Property="FontWeight" Value="SemiBold"/>
-    <Setter Property="Foreground" Value="{DynamicResource TextTertiary}"/>
-    <Setter Property="Margin" Value="0,10,0,8"/>
-  </Style>
-
   <!-- 分段控件轨道：一组互斥选项共用一个圆角矩形外框（外圆角 8 = 分段项圆角 6 + 内边距 2），
        内放横向 StackPanel + SegmentedItem -->
   <Style x:Key="SegmentedTrack" TargetType="Border">
@@ -127,9 +155,8 @@
     </Style.Triggers>
   </Style>
 
-  <!-- 键帽：快捷键录制按钮，与分段选中块同一套凸起（投影）表现按键；Tag=录制中（bool）时强调色描边与文字 -->
+  <!-- 键帽：快捷键录制按钮，与普通按钮同为四边 1px 描边、不加投影；Tag=录制中（bool）时强调色描边与文字 -->
   <Style x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-    <Setter Property="services:Elevation.Shadow" Value="{DynamicResource RaisedShadow}"/>
     <Setter Property="Padding" Value="10,0"/>
     <Setter Property="MinWidth" Value="44"/>
     <Setter Property="Height" Value="26"/>
@@ -150,6 +177,7 @@
     <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
     <Setter Property="FontSize" Value="11"/>
     <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingSwitch}"/>
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="Template">
       <Setter.Value>
@@ -266,6 +294,7 @@
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="Padding" Value="0"/>
     <Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingInset}"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
@@ -310,6 +339,7 @@
     <Setter Property="Padding" Value="12,8"/>
     <Setter Property="Cursor" Value="Hand"/>
     <Setter Property="FontSize" Value="12"/>
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing}"/>
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="RadioButton">
@@ -398,6 +428,7 @@
   </Style>
 
   <Style x:Key="ModernListBoxItem" TargetType="ListBoxItem">
+    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRingInset}"/>
     <Setter Property="Padding" Value="12,10"/>
     <Setter Property="Margin" Value="2,1"/>
     <Setter Property="Background" Value="Transparent"/>

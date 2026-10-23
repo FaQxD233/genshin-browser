@@ -221,7 +221,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
           </Grid.RowDefinitions>
-          <Grid Grid.Row="0" Margin="0,0,0,6">
+          <Grid Grid.Row="0" Margin="0,0,0,4">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*"/>
               <ColumnDefinition Width="Auto"/>
@@ -254,12 +254,12 @@
           <ScrollViewer Grid.Row="1"
                         VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled"
-                        MaxHeight="312"
-                        Padding="0,0,2,0">
-            <!-- 标签列按最长标签自适应并跨行对齐（SettingsLabel），最小 68：英文长标签不被截断 -->
-            <StackPanel Grid.IsSharedSizeScope="True">
-              <!-- 分组：窗口 -->
-              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Window}" Margin="0,0,0,8"/>
+                        MaxHeight="312">
+            <!-- 标签列按最长标签自适应并跨行对齐（SettingsLabel），最小 68：英文长标签不被截断。
+                 上、右各留 2px 给外扩的键盘焦点框（首行「应用」、右缘贴边按钮贴着滚动区边缘，否则被裁）；
+                 这 2px 从标题下边距和原滚动区右内边距挪来，内容位置不变 -->
+            <StackPanel Grid.IsSharedSizeScope="True" Margin="0,2,2,0">
+              <!-- 窗口：大小 / 贴边 / 鼠标穿透 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
@@ -336,7 +336,7 @@
               </Grid>
 
               <!-- 浮窗鼠标穿透：布尔项用开关 -->
-              <Grid Margin="0,0,0,10">
+              <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
                   <ColumnDefinition Width="*"/>
@@ -351,9 +351,8 @@
                           AutomationProperties.Name="{DynamicResource Settings.ClickThrough}"/>
               </Grid>
 
-              <!-- 分组：显示 — 不透明度 / 页面缩放同一行：− 数值 % + 重置 -->
-              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Display}"/>
-              <Grid Margin="0,0,0,10">
+              <!-- 显示：不透明度 / 页面缩放同一行：− 数值 % + 重置 -->
+              <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
                   <ColumnDefinition Width="12"/>
@@ -439,8 +438,7 @@
                 </Grid>
               </Grid>
 
-              <!-- 分组：外观 — 主题、语言各占一行（分段控件按内容宽度，同一行放两组在窄窗口会溢出） -->
-              <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Appearance}"/>
+              <!-- 外观：主题、语言各占一行（分段控件按内容宽度，同一行放两组在窄窗口会溢出） -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
@@ -528,7 +526,6 @@
         <StackPanel Grid.IsSharedSizeScope="True">
           <TextBlock Text="{DynamicResource Keys.Title}" FontSize="12" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,0,6"/>
-                <TextBlock Style="{StaticResource SettingsSectionTitle}" Text="{DynamicResource Settings.Hotkeys}"/>
                 <!-- 快捷键用键帽样式；录制中的键帽经 Tag 高亮，一眼看出正在录哪一组 -->
                 <Grid Margin="0,0,0,8">
                   <Grid.RowDefinitions>

@@ -23,13 +23,13 @@
   <!-- Top toolbar; {0}=current playback hotkey -->
   <sys:String x:Key="Toolbar.PlaybackTooltip">Play / pause video ({0})</sys:String>
   <sys:String x:Key="Toolbar.PlaybackName">Play or pause</sys:String>
-  <sys:String x:Key="Toolbar.SettingsTooltip">Floating window settings</sys:String>
-  <sys:String x:Key="Toolbar.SettingsName">Floating window settings</sys:String>
+  <sys:String x:Key="Toolbar.SettingsTooltip">Settings</sys:String>
+  <sys:String x:Key="Toolbar.SettingsName">Settings</sys:String>
   <sys:String x:Key="Toolbar.DownloadsTooltip">Downloads</sys:String>
   <sys:String x:Key="Toolbar.DownloadsName">Downloads</sys:String>
 
   <!-- Settings panel -->
-  <sys:String x:Key="Settings.Title">Floating window settings</sys:String>
+  <sys:String x:Key="Settings.Title">Settings</sys:String>
   <sys:String x:Key="Settings.Opacity">Opacity</sys:String>
   <sys:String x:Key="Settings.OpacityOutTooltip">Decrease opacity</sys:String>
   <sys:String x:Key="Settings.OpacityInTooltip">Increase opacity</sys:String>
@@ -75,10 +75,6 @@
   <sys:String x:Key="Settings.ApplySizeTooltip">Apply width/height to the browser window</sys:String>
   <sys:String x:Key="Settings.MoveTopRight">TR</sys:String>
   <sys:String x:Key="Settings.MoveTopRightTooltip">Snap to top-right (no gap)</sys:String>
-  <sys:String x:Key="Settings.Appearance">Appearance</sys:String>
-  <sys:String x:Key="Settings.Window">Window</sys:String>
-  <sys:String x:Key="Settings.Display">Display</sys:String>
-  <sys:String x:Key="Settings.Hotkeys">Hotkeys</sys:String>
   <sys:String x:Key="Settings.PercentUnit">%</sys:String>
   <sys:String x:Key="Toast.MovedTopRight">Moved to top-right</sys:String>
   <sys:String x:Key="Toast.InvalidWindowSize">Enter a valid window width/height (px)</sys:String>

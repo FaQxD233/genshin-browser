@@ -424,7 +424,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private bool _isSettingsExpanded;
 
     /// <summary>
-    /// 浮窗设置面板展开状态。与下载/按键绑定面板互斥。
+    /// 设置面板展开状态。与下载/按键绑定面板互斥。
     /// </summary>
     public bool IsSettingsExpanded
     {

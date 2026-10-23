@@ -48,7 +48,7 @@
   <SolidColorBrush x:Key="TextTertiary" Color="{StaticResource ColorTextTertiary}"/>
   <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource ColorSelection}"/>
 
-  <!-- 凸起面（分段选中块、键帽）：暗色下阴影几乎看不见，靠顶边 1px 高光表现凸起，
+  <!-- 凸起面（分段控件选中块）：暗色下阴影几乎看不见，靠顶边 1px 高光表现凸起，
        高光自上而下渐隐到透明，底边不出线 -->
   <LinearGradientBrush x:Key="RaisedBorderBrush" StartPoint="0,0" EndPoint="0,1">
     <GradientStop Offset="0" Color="#2EFFFFFF"/>

@@ -23,13 +23,13 @@
   <!-- Top toolbar；{0}=当前播放快捷键 -->
   <sys:String x:Key="Toolbar.PlaybackTooltip">控制视频播放/暂停 ({0})</sys:String>
   <sys:String x:Key="Toolbar.PlaybackName">播放或暂停</sys:String>
-  <sys:String x:Key="Toolbar.SettingsTooltip">浮窗设置</sys:String>
-  <sys:String x:Key="Toolbar.SettingsName">浮窗设置</sys:String>
+  <sys:String x:Key="Toolbar.SettingsTooltip">设置</sys:String>
+  <sys:String x:Key="Toolbar.SettingsName">设置</sys:String>
   <sys:String x:Key="Toolbar.DownloadsTooltip">下载管理</sys:String>
   <sys:String x:Key="Toolbar.DownloadsName">下载管理</sys:String>
 
   <!-- Settings panel -->
-  <sys:String x:Key="Settings.Title">浮窗设置</sys:String>
+  <sys:String x:Key="Settings.Title">设置</sys:String>
   <sys:String x:Key="Settings.Opacity">不透明度</sys:String>
   <sys:String x:Key="Settings.OpacityOutTooltip">降低不透明度</sys:String>
   <sys:String x:Key="Settings.OpacityInTooltip">提高不透明度</sys:String>
@@ -75,10 +75,6 @@
   <sys:String x:Key="Settings.ApplySizeTooltip">应用输入的宽高到浏览器窗口</sys:String>
   <sys:String x:Key="Settings.MoveTopRight">右上</sys:String>
   <sys:String x:Key="Settings.MoveTopRightTooltip">贴到工作区右上角（无空隙）</sys:String>
-  <sys:String x:Key="Settings.Appearance">外观</sys:String>
-  <sys:String x:Key="Settings.Window">窗口</sys:String>
-  <sys:String x:Key="Settings.Display">显示</sys:String>
-  <sys:String x:Key="Settings.Hotkeys">快捷键</sys:String>
   <sys:String x:Key="Settings.PercentUnit">%</sys:String>
   <sys:String x:Key="Toast.MovedTopRight">已移动到右上角</sys:String>
   <sys:String x:Key="Toast.InvalidWindowSize">请输入有效的窗口宽高（像素）</sys:String>
