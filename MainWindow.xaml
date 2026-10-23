@@ -16,6 +16,7 @@
         Foreground="{DynamicResource TextPrimary}"
         WindowStartupLocation="Manual"
         AllowsTransparency="True"
+        UseLayoutRounding="True"
         WindowStyle="None">
   <!-- 近透明而非全 Transparent：分层窗 + Composition WebView 全透明时，
        系统在视频/滚动条等区域偶发不绘制光标。Alpha=1 对肉眼不可见。 -->
@@ -87,6 +88,12 @@
                   AutomationProperties.Name="{DynamicResource Mode.ToggleName}">
             <TextBlock x:Name="ModeToggleIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE718;" FontSize="12" />
           </Button>
+          <!-- 视频铺满：E740 铺满 / E73F 退出，图标与提示随 ContainsFullScreenElement 切换 -->
+          <Button x:Name="VideoFillButton" Width="40" Height="30" Margin="0"
+                  Style="{StaticResource TitleBarButton}" Click="VideoFillButton_OnClick"
+                  AutomationProperties.Name="{DynamicResource TitleBar.VideoFillName}">
+            <TextBlock x:Name="VideoFillIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE740;" FontSize="12" />
+          </Button>
           <Button x:Name="MinButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="MinButton_OnClick"
                   ToolTip="{DynamicResource TitleBar.Minimize}" AutomationProperties.Name="{DynamicResource TitleBar.Minimize}">
@@ -95,7 +102,7 @@
           <Button x:Name="MaxButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="MaxButton_OnClick"
                   ToolTip="{DynamicResource TitleBar.Maximize}" AutomationProperties.Name="{DynamicResource TitleBar.MaximizeName}">
-            <TextBlock x:Name="MaxIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE740;" FontSize="12" />
+            <TextBlock x:Name="MaxIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE922;" FontSize="12" />
           </Button>
           <Button x:Name="CloseButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarCloseButton}" Click="CloseButton_OnClick"

@@ -138,7 +138,7 @@ public static class Placeholder
         }
     }
 
-    private static readonly Brush TextTertiaryBrush = CreateFrozen(Color.FromRgb(0x6E, 0x76, 0x81));
+    private static readonly Brush TextTertiaryBrush = CreateFrozen(Color.FromRgb(0x9C, 0x9A, 0x92));
 
     private static Brush CreateFrozen(Color color)
     {

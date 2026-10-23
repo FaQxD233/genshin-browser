@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:services="clr-namespace:GenshinBrowser.Services">
 
   <CornerRadius x:Key="CornerRadiusSm">6</CornerRadius>
 
@@ -24,13 +25,9 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="ButtonChrome"
-                  Background="{TemplateBinding Background}"
-                  BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}"
-                  CornerRadius="{StaticResource CornerRadiusSm}">
+          <Grid x:Name="ButtonRoot">
             <!-- 悬停/按下只渐变遮罩不透明度（不缩放：缩放会让密集布局里的文字发虚）；
-                 状态里用 0 时长目标值，过渡时长交给 VisualTransition 生成 -->
+                 状态里用 0 时长目标值，过渡时长交给 VisualTransition 生成。VSM 须挂在模板根元素上 -->
             <VisualStateManager.VisualStateGroups>
               <VisualStateGroup x:Name="CommonStates">
                 <VisualStateGroup.Transitions>
@@ -52,21 +49,33 @@
                 <VisualState x:Name="Disabled"/>
               </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
-            <Grid>
-              <!-- 遮罩夹在底色与内容之间：前景色低不透明度叠加，亮暗主题通用，文字不被染色。
-                   圆角 5 = 外圆角 6 − 1px 边框（Border 不按圆角裁剪子元素） -->
-              <Border x:Name="StateOverlay"
-                      Background="{DynamicResource TextPrimary}"
-                      CornerRadius="5"
-                      Opacity="0"
-                      IsHitTestVisible="False"/>
-              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Grid>
-          </Border>
+            <!-- 投影层：与底色同形状、垫在底色下面，只负责投出阴影（Elevation.Shadow，默认 null 不画）。
+                 阴影不直接加在按钮上：Effect 会连文字一起进位图管线，文字失去 ClearType 还带上影子 -->
+            <Border Background="{TemplateBinding Background}"
+                    CornerRadius="{StaticResource CornerRadiusSm}"
+                    Effect="{TemplateBinding services:Elevation.Shadow}"
+                    IsHitTestVisible="False"/>
+            <Border x:Name="ButtonChrome"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{StaticResource CornerRadiusSm}">
+              <Grid>
+                <!-- 遮罩夹在底色与内容之间：前景色低不透明度叠加，亮暗主题通用，文字不被染色。
+                     圆角 5 = 外圆角 6 − 1px 边框（Border 不按圆角裁剪子元素） -->
+                <Border x:Name="StateOverlay"
+                        Background="{DynamicResource TextPrimary}"
+                        CornerRadius="5"
+                        Opacity="0"
+                        IsHitTestVisible="False"/>
+                <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Grid>
+            </Border>
+          </Grid>
           <ControlTemplate.Triggers>
             <!-- 禁用态整体减淡（前进/后退无历史、下载未完成时的打开文件等），否则与可点击按钮无法区分 -->
             <Trigger Property="IsEnabled" Value="False">
-              <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.4"/>
+              <Setter TargetName="ButtonRoot" Property="Opacity" Value="0.4"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -86,7 +95,7 @@
        内放横向 StackPanel + SegmentedItem -->
   <Style x:Key="SegmentedTrack" TargetType="Border">
     <Setter Property="Background" Value="{DynamicResource SegmentTrackBackground}"/>
-    <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource SegmentTrackBorderBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="CornerRadius" Value="8"/>
     <Setter Property="Padding" Value="2"/>
@@ -94,12 +103,13 @@
     <Setter Property="VerticalAlignment" Value="Center"/>
   </Style>
 
-  <!-- 分段项：Tag 绑定选中态（bool）。未选中透明底、次要文字；选中为凸起底色 + 底边 2px 强调色线
-       （只给底边厚度，配合 6px 圆角画出跟随圆角的弧线）。未选中也保留 2px 透明底边、字重不变，切换时不跳动 -->
+  <!-- 分段项：Tag 绑定选中态（bool）。未选中透明底、次要文字；选中为凸起块（RaisedBorderBrush 描边 +
+       RaisedShadow 投影）+ 强调色文字。边框四边等粗（只给某一边厚度时 WPF 会沿圆角画成两头尖的月牙）；
+       未选中也保留 1px 透明边框、字重不变，切换时不跳动 -->
   <Style x:Key="SegmentedItem" TargetType="Button" BasedOn="{StaticResource ModernButton}">
     <Setter Property="Background" Value="Transparent"/>
     <Setter Property="BorderBrush" Value="Transparent"/>
-    <Setter Property="BorderThickness" Value="0,0,0,2"/>
+    <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
     <Setter Property="Padding" Value="10,0"/>
     <Setter Property="Margin" Value="1,0"/>
@@ -110,15 +120,16 @@
       <!-- 与 ToastBorderStyle 同理：Tag 声明类型是 object，属性触发器不做 "True"→bool 转换，须走 DataTrigger -->
       <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
         <Setter Property="Background" Value="{DynamicResource SegmentThumbBackground}"/>
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource RaisedBorderBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
+        <Setter Property="services:Elevation.Shadow" Value="{DynamicResource RaisedShadow}"/>
       </DataTrigger>
     </Style.Triggers>
   </Style>
 
-  <!-- 键帽：快捷键录制按钮，底边加厚 1px 模拟按键；Tag=录制中（bool）时强调色描边 + 选中底色 -->
+  <!-- 键帽：快捷键录制按钮，与分段选中块同一套凸起（投影）表现按键；Tag=录制中（bool）时强调色描边与文字 -->
   <Style x:Key="KeyCapButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
-    <Setter Property="BorderThickness" Value="1,1,1,2"/>
+    <Setter Property="services:Elevation.Shadow" Value="{DynamicResource RaisedShadow}"/>
     <Setter Property="Padding" Value="10,0"/>
     <Setter Property="MinWidth" Value="44"/>
     <Setter Property="Height" Value="26"/>
@@ -128,7 +139,6 @@
     <Style.Triggers>
       <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
         <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-        <Setter Property="Background" Value="{DynamicResource SelectionBrush}"/>
         <Setter Property="Foreground" Value="{DynamicResource AccentPrimary}"/>
       </DataTrigger>
     </Style.Triggers>
@@ -236,6 +246,17 @@
   <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
     <Setter Property="MinWidth" Value="36"/>
     <Setter Property="Padding" Value="8"/>
+  </Style>
+
+  <!-- 工具栏展开按钮（设置 / 按键 / 下载）：Tag 绑定对应面板是否展开（bool），展开时悬停底色 + 强调色描边 -->
+  <Style x:Key="ToolbarToggleButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="Padding" Value="0"/>
+    <Style.Triggers>
+      <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="True">
+        <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+      </DataTrigger>
+    </Style.Triggers>
   </Style>
 
   <!-- 标题栏按钮：扁平无边框，悬停高亮 -->

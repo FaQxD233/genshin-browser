@@ -78,6 +78,9 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _isMaximized;
     private Rect _savedBounds;
 
+    // 页面是否有全屏元素（视频铺满）：WebView2 ContainsFullScreenElementChanged 的缓存，驱动标题栏按钮与 Esc 退出
+    private bool _isVideoFilled;
+
     /// <summary>
     /// 浏览器光标强制可见的描述符与回调。退出时需要显式解绑，避免 WebView2 与窗口之间的事件订阅泄漏。
     /// </summary>
@@ -138,7 +141,7 @@ public partial class MainWindow : Window, IControlBrowser
         LocalizationService.Apply(_settings.Language);
         ApplyWindowOpacity(_settings.WindowOpacity);
         _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
-        UpdateModeToggleButton();
+        UpdateTitleBarButtons();
 
         Loaded += MainWindow_OnLoaded;
         Closing += MainWindow_OnClosing;
@@ -376,7 +379,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void OnHotkeysChanged()
     {
-        UpdateModeToggleButton();
+        UpdateTitleBarButtons();
         NotifyBrowserState(BrowserStateChangeKind.Mode);
     }
 
@@ -795,6 +798,7 @@ public partial class MainWindow : Window, IControlBrowser
         core.HistoryChanged += BrowserView_OnHistoryChanged;
         core.DownloadStarting += BrowserView_OnDownloadStarting;
         core.ProcessFailed += BrowserView_OnProcessFailed;
+        core.ContainsFullScreenElementChanged += BrowserView_OnContainsFullScreenElementChanged;
         _browserEventControl = browser;
         _browserEventCore = core;
     }
@@ -836,6 +840,7 @@ public partial class MainWindow : Window, IControlBrowser
                 core.HistoryChanged -= BrowserView_OnHistoryChanged;
                 core.DownloadStarting -= BrowserView_OnDownloadStarting;
                 core.ProcessFailed -= BrowserView_OnProcessFailed;
+                core.ContainsFullScreenElementChanged -= BrowserView_OnContainsFullScreenElementChanged;
             }
             catch
             {
@@ -847,6 +852,8 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _browserEventControl = null;
             _browserEventCore = null;
+            _isVideoFilled = false;
+            UpdateTitleBarButtons();
         }
     }
 
@@ -1431,8 +1438,37 @@ public partial class MainWindow : Window, IControlBrowser
         NotifyBrowserState(BrowserStateChangeKind.Navigation);
     }
 
+    private void BrowserView_OnContainsFullScreenElementChanged(object? sender, object e)
+    {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
+        try
+        {
+            _isVideoFilled = _browserEventCore?.ContainsFullScreenElement == true;
+        }
+        catch (Exception ex)
+        {
+            // 浏览器进程退出后读属性可能抛 COMException，按未铺满处理
+            FileLogger.LogException(ex, "Read ContainsFullScreenElement");
+            _isVideoFilled = false;
+        }
+
+        UpdateTitleBarButtons();
+    }
+
     private void MainWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // 视频铺满时 Esc 退出：主窗收到按键时直接处理，不依赖页面或 WebView2 自己响应
+        if (e.Key == Key.Escape && Keyboard.Modifiers == ModifierKeys.None && _isVideoFilled)
+        {
+            e.Handled = true;
+            _ = ToggleVideoFillAsync();
+            return;
+        }
+
         // 精确匹配 Ctrl 单个修饰键：HasFlag 会把 Ctrl+Shift+= / Ctrl+Alt+= 也当成缩放
         // 并吞掉，导致这些组合无法到达页面。仅当修饰键恰好是 Ctrl 时才拦截。
         if (Keyboard.Modifiers != ModifierKeys.Control)
@@ -1997,7 +2033,10 @@ public partial class MainWindow : Window, IControlBrowser
       return 'typing';
     }
   }
+""" + "\n" + FindVideoScript;
 
+    /// <summary>取目标视频放进 video：优先有尺寸（可见）的，找不到返回 'no-video'。视频热键与视频铺满脚本共用。</summary>
+    private const string FindVideoScript = """
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(v => {
     const rect = v.getBoundingClientRect();
@@ -2036,9 +2075,42 @@ public partial class MainWindow : Window, IControlBrowser
 """;
 
     /// <summary>
-    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频热键脚本，返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
+    /// 视频铺满（标题栏按钮 / 铺满时按 Esc）：已有全屏元素时退出；B 站点播放器自己的全屏按钮（播放器把自身容器全屏，
+    /// 弹幕与控制栏都保留），其它网站对视频元素请求全屏。主窗不处理 ContainsFullScreenElementChanged 的窗口化，
+    /// 全屏元素只铺满 WebView 区域、不占满屏幕。进入时等 fullscreenchange / fullscreenerror 结算，1.5 秒仍无结果按当前状态判断。
+    /// 退出直接 exitFullscreen：B 站在播放器容器上监听 fullscreenchange，会自己同步按钮状态。
+    /// </summary>
+    private const string ToggleVideoFillScript = "(() => {\n" + """
+  if (document.fullscreenElement) {
+    return document.exitFullscreen().then(() => 'exit', () => 'exit-failed');
+  }
+
+  const settle = request => new Promise(resolve => {
+    const finish = result => {
+      clearTimeout(timer);
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('fullscreenerror', onError);
+      resolve(result);
+    };
+    const onChange = () => finish(document.fullscreenElement ? 'fill' : 'blocked');
+    const onError = () => finish('blocked');
+    const timer = setTimeout(() => finish(document.fullscreenElement ? 'fill' : 'blocked'), 1500);
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('fullscreenerror', onError);
+    request();
+  });
+
+  const biliFull = document.querySelector('.bpx-player-ctrl-full');
+  if (biliFull) return settle(() => biliFull.click());
+""" + "\n" + FindVideoScript + "\n" + """
+  return settle(() => video.requestFullscreen().catch(() => {}));
+})()
+""";
+
+    /// <summary>
+    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频脚本（热键、标题栏视频铺满），返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
     /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"。awaitPromise 取结算值；
-    /// userGesture 让本次执行视为用户操作（热键本就是用户按键），play() 不被自动播放策略拦截。
+    /// userGesture 让本次执行视为用户操作（热键、按钮本就是用户操作），play() 不被自动播放策略拦截，requestFullscreen() 也需要它。
     /// </summary>
     private static async Task<string?> EvaluateVideoHotkeyScriptAsync(CoreWebView2 core, string script)
     {
@@ -2072,7 +2144,7 @@ public partial class MainWindow : Window, IControlBrowser
     private static readonly TimeSpan OsdWarningDuration = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// 视频热键结果：写状态消息（浏览模式下由控制窗 Toast 显示）；浮窗模式下控制窗是隐藏的，
+    /// 视频热键 / 标题栏视频按钮的结果：写状态消息（浏览模式下由控制窗 Toast 显示）；浮窗模式下控制窗是隐藏的，
     /// 再在主窗底部显示 OSD，否则边玩边按 K / 快进快退没有任何可见反馈。
     /// 最小化（含 F7 隐藏）时不显示。<paramref name="osdMessage"/> 为 null 时 OSD 沿用状态消息。
     /// </summary>
@@ -2426,6 +2498,40 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    /// <summary>标题栏「视频铺满」按钮与铺满时的 Esc：进入或退出页面全屏，见 <see cref="ToggleVideoFillScript"/>。</summary>
+    private async Task ToggleVideoFillAsync()
+    {
+        var core = BrowserView.CoreWebView2;
+        if (!_browserReady || core is null)
+        {
+            SetStatusMessage(LocalizationService.Get("Status.BrowserNotReady"), StatusLevel.Warning);
+            return;
+        }
+
+        try
+        {
+            var result = await EvaluateVideoHotkeyScriptAsync(core, ToggleVideoFillScript);
+            switch (result)
+            {
+                case "fill":
+                case "exit":
+                    // 画面变化本身就是反馈；按钮图标由 ContainsFullScreenElementChanged 同步
+                    break;
+                case "no-video":
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.NoVideo"), StatusLevel.Warning, OsdGlyphWarning);
+                    break;
+                default:
+                    ReportVideoHotkeyResult(LocalizationService.Get("Status.VideoFillBlocked"), StatusLevel.Warning, OsdGlyphWarning);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Toggle video fill");
+            SetStatusMessage(LocalizationService.Format("Status.VideoFillFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
     public void ToggleWindowMode()
     {
         SetWindowMode(_settings.WindowMode == WindowMode.Fixed ? WindowMode.Free : WindowMode.Fixed);
@@ -2458,7 +2564,7 @@ public partial class MainWindow : Window, IControlBrowser
         UpdateWebViewMemoryTargetLevel();
         // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
         ApplyTitleBarForCurrentMode(forceHideInFixed: true);
-        UpdateModeToggleButton();
+        UpdateTitleBarButtons();
 
         var enteringFloating = _settings.WindowMode == WindowMode.Fixed;
         // 鼠标穿透时浮窗点不到、标题栏也唤不出，提示里写明只能按模式快捷键回浏览调整
@@ -2800,13 +2906,13 @@ public partial class MainWindow : Window, IControlBrowser
             if (string.Equals(_settings.Language, lang, StringComparison.OrdinalIgnoreCase))
             {
                 LocalizationService.Apply(lang);
-                UpdateModeToggleButton();
+                UpdateTitleBarButtons();
                 return;
             }
 
             _settings.Language = lang;
             LocalizationService.Apply(lang);
-            UpdateModeToggleButton();
+            UpdateTitleBarButtons();
             QueueSettingsSave();
         }
     }
@@ -3281,15 +3387,18 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void ModeToggleButton_OnClick(object sender, RoutedEventArgs e) => ToggleWindowMode();
 
+    private void VideoFillButton_OnClick(object sender, RoutedEventArgs e) => _ = ToggleVideoFillAsync();
+
     private void MinButton_OnClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
     private void MaxButton_OnClick(object sender, RoutedEventArgs e) => ToggleMaximize();
 
     /// <summary>
-    /// 同步标题栏模式按钮图标与动作型 tooltip：浮窗=锁，浏览=解锁。
-    /// 快捷键文案跟当前设置走，避免改键后仍显示默认 F8。
+    /// 同步标题栏按钮图标与动作型 tooltip（模式、热键、语言、视频铺满状态变化时调用）：
+    /// 模式按钮浮窗=锁、浏览=解锁，快捷键文案跟当前设置走，避免改键后仍显示默认 F8；
+    /// 视频铺满按钮按当前是否铺满显示「铺满 / 退出」。
     /// </summary>
-    private void UpdateModeToggleButton()
+    private void UpdateTitleBarButtons()
     {
         if (ModeToggleIcon is not null)
         {
@@ -3304,6 +3413,13 @@ public partial class MainWindow : Window, IControlBrowser
             ModeToggleButton.ToolTip = _settings.WindowMode == WindowMode.Fixed
                 ? LocalizationService.Format("Mode.SwitchToBrowsingTooltip", hotkey)
                 : LocalizationService.Format("Mode.SwitchToFloatingTooltip", hotkey);
+        }
+
+        if (VideoFillButton is not null && VideoFillIcon is not null)
+        {
+            // E740 铺满 / E73F 退出（最大化按钮用标准标题栏码位 E922/E923，不与这里重复）
+            VideoFillIcon.Text = _isVideoFilled ? "\uE73F" : "\uE740";
+            VideoFillButton.ToolTip = LocalizationService.Get(_isVideoFilled ? "TitleBar.VideoFillExit" : "TitleBar.VideoFill");
         }
     }
 
@@ -3388,7 +3504,7 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 模式切换时主窗边缘短暂描边闪（浏览蓝 / 浮窗橙，色值来自主题 token）。
+    /// 模式切换时主窗边缘短暂描边闪（浏览橙 / 浮窗蓝，色值来自主题 token）。
     /// </summary>
     private void FlashModeBorder(bool floating)
     {
@@ -3401,8 +3517,8 @@ public partial class MainWindow : Window, IControlBrowser
         ModeFlashBorder.BorderBrush = TryFindResource(key) as System.Windows.Media.Brush
             ?? new System.Windows.Media.SolidColorBrush(
                 floating
-                    ? System.Windows.Media.Color.FromRgb(0xF0, 0xA0, 0x20)
-                    : System.Windows.Media.Color.FromRgb(0x58, 0xA6, 0xFF));
+                    ? System.Windows.Media.Color.FromRgb(0x58, 0xA6, 0xFF)
+                    : System.Windows.Media.Color.FromRgb(0xD9, 0x77, 0x57));
 
         var anim = new System.Windows.Media.Animation.DoubleAnimationUsingKeyFrames();
         anim.KeyFrames.Add(new System.Windows.Media.Animation.LinearDoubleKeyFrame(0, System.Windows.Media.Animation.KeyTime.FromTimeSpan(TimeSpan.Zero)));
@@ -3430,7 +3546,7 @@ public partial class MainWindow : Window, IControlBrowser
             Top = work.Top;
             Width = work.Width;
             Height = work.Height;
-            MaxIcon.Text = "\uE73F";
+            MaxIcon.Text = "\uE923";
         }
         else
         {
@@ -3440,7 +3556,7 @@ public partial class MainWindow : Window, IControlBrowser
             Width = _savedBounds.Width;
             Height = _savedBounds.Height;
             _isMaximized = false;
-            MaxIcon.Text = "\uE740";
+            MaxIcon.Text = "\uE922";
         }
 
         // 赋值期间的位置/尺寸事件已被 _isMaximized 守卫拦截，

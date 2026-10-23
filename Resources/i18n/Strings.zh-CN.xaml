@@ -151,6 +151,9 @@
   <sys:String x:Key="TitleBar.Maximize">最大化 / 还原</sys:String>
   <sys:String x:Key="TitleBar.MaximizeName">最大化或还原</sys:String>
   <sys:String x:Key="TitleBar.Close">关闭</sys:String>
+  <sys:String x:Key="TitleBar.VideoFill">视频铺满窗口</sys:String>
+  <sys:String x:Key="TitleBar.VideoFillExit">退出视频铺满 (Esc)</sys:String>
+  <sys:String x:Key="TitleBar.VideoFillName">视频铺满或退出</sys:String>
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">已恢复默认设置</sys:String>
@@ -213,6 +216,8 @@
   <sys:String x:Key="Status.PlaybackBlocked">浏览器拦截了自动播放，请点击页面内的播放按钮后再试。</sys:String>
   <sys:String x:Key="Status.PlaybackCommandSent">已发送播放控制命令。</sys:String>
   <sys:String x:Key="Status.PlaybackFailed">播放控制失败: {0}</sys:String>
+  <sys:String x:Key="Status.VideoFillBlocked">页面没有响应全屏操作。</sys:String>
+  <sys:String x:Key="Status.VideoFillFailed">视频铺满失败: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">刷新失败: {0}</sys:String>
   <sys:String x:Key="Status.FavoriteAdded">已收藏当前页面。</sys:String>
   <sys:String x:Key="Status.FavoriteAddFailed">收藏失败: {0}</sys:String>

@@ -151,6 +151,9 @@
   <sys:String x:Key="TitleBar.Maximize">Maximize / Restore</sys:String>
   <sys:String x:Key="TitleBar.MaximizeName">Maximize or restore</sys:String>
   <sys:String x:Key="TitleBar.Close">Close</sys:String>
+  <sys:String x:Key="TitleBar.VideoFill">Fill window with video</sys:String>
+  <sys:String x:Key="TitleBar.VideoFillExit">Exit video fill (Esc)</sys:String>
+  <sys:String x:Key="TitleBar.VideoFillName">Toggle video fill</sys:String>
 
   <!-- Hotkey / settings toasts -->
   <sys:String x:Key="Toast.RestoredDefaults">Defaults restored</sys:String>
@@ -213,6 +216,8 @@
   <sys:String x:Key="Status.PlaybackBlocked">The browser blocked autoplay. Please click the in-page play button first.</sys:String>
   <sys:String x:Key="Status.PlaybackCommandSent">Playback command sent.</sys:String>
   <sys:String x:Key="Status.PlaybackFailed">Playback control failed: {0}</sys:String>
+  <sys:String x:Key="Status.VideoFillBlocked">The page did not respond to the full-screen request.</sys:String>
+  <sys:String x:Key="Status.VideoFillFailed">Video fill failed: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">Reload failed: {0}</sys:String>
   <sys:String x:Key="Status.FavoriteAdded">Page added to favorites.</sys:String>
   <sys:String x:Key="Status.FavoriteAddFailed">Failed to favorite: {0}</sys:String>

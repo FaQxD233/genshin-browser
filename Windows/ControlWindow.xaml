@@ -13,6 +13,7 @@
         WindowStartupLocation="Manual"
         AllowsTransparency="False"
         WindowStyle="SingleBorderWindow"
+        UseLayoutRounding="True"
         Focusable="True">
   <Window.Resources>
     <services:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -139,52 +140,22 @@
           <!-- E768=播放（E769 是暂停图标，暂停状态下显示它会让人误以为正在播放） -->
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE768;" FontSize="13"/>
         </Button>
-        <Button x:Name="SettingsButton" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+        <Button x:Name="SettingsButton" Style="{StaticResource ToolbarToggleButton}" Tag="{Binding IsSettingsExpanded}"
+                Width="34" Height="30" Margin="0,0,6,0"
                 Command="{Binding ToggleSettingsCommand}"
                 ToolTip="{DynamicResource Toolbar.SettingsTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.SettingsName}">
-          <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-              <Setter Property="Padding" Value="0"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsSettingsExpanded}" Value="True">
-                  <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                  <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Button.Style>
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE713;" FontSize="13"/>
         </Button>
-        <Button x:Name="KeyBindingsButton" Width="34" Height="30" Margin="0,0,6,0" Padding="0"
+        <Button x:Name="KeyBindingsButton" Style="{StaticResource ToolbarToggleButton}" Tag="{Binding IsKeyBindingsExpanded}"
+                Width="34" Height="30" Margin="0,0,6,0"
                 Command="{Binding ToggleKeyBindingsCommand}"
                 ToolTip="{DynamicResource Toolbar.KeysTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.KeysName}">
-          <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-              <Setter Property="Padding" Value="0"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsKeyBindingsExpanded}" Value="True">
-                  <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                  <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Button.Style>
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE765;" FontSize="13"/>
         </Button>
-        <Button x:Name="DownloadsButton" Width="34" Height="30" Padding="0"
+        <Button x:Name="DownloadsButton" Style="{StaticResource ToolbarToggleButton}" Tag="{Binding IsDownloadsExpanded}"
+                Width="34" Height="30"
                 Command="{Binding ToggleDownloadsCommand}"
                 ToolTip="{DynamicResource Toolbar.DownloadsTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.DownloadsName}">
-          <Button.Style>
-            <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-              <Setter Property="Padding" Value="0"/>
-              <Style.Triggers>
-                <DataTrigger Binding="{Binding IsDownloadsExpanded}" Value="True">
-                  <Setter Property="Background" Value="{DynamicResource BackgroundHover}"/>
-                  <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
-                </DataTrigger>
-              </Style.Triggers>
-            </Style>
-          </Button.Style>
           <Grid Width="18" Height="18">
             <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE896;" FontSize="13"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
