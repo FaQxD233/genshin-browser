@@ -44,6 +44,12 @@ public static class AppConfig
         public const int MaxDownloadsFileSizeBytes = 16 * 1024 * 1024;
 
         /// <summary>
+        /// 导入配置文件的大小上限：设置、浏览记录、收藏三份上限之和（约 18.3 MB）再留余量；
+        /// 超过的不可能是本程序导出的，读入前直接拒绝。
+        /// </summary>
+        public const int MaxConfigFileSizeBytes = 24 * 1024 * 1024;
+
+        /// <summary>
         /// 日志保留天数。启动时清理超过此天数的旧日志文件。
         /// </summary>
         public const int LogRetentionDays = 14;

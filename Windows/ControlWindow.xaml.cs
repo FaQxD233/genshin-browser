@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using GenshinBrowser.Constants;
+using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 using GenshinBrowser.ViewModels;
 
@@ -105,6 +106,263 @@ public partial class ControlWindow : Window
         }
 
         _viewModel.SyncWindowSizeTexts();
+    }
+
+    /// <summary>设置面板右上角「管理配置」：在按钮下方右对齐弹出菜单（导入、导出配置、恢复默认）。</summary>
+    private void ManageConfigButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (ManageConfigButton.ContextMenu is not { } menu)
+        {
+            return;
+        }
+
+        menu.PlacementTarget = ManageConfigButton;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Custom;
+        menu.CustomPopupPlacementCallback = static (popupSize, targetSize, _) =>
+        [
+            new System.Windows.Controls.Primitives.CustomPopupPlacement(
+                new Point(targetSize.Width - popupSize.Width, targetSize.Height + 4),
+                System.Windows.Controls.Primitives.PopupPrimaryAxis.Horizontal),
+        ];
+        menu.IsOpen = true;
+    }
+
+    private void RestoreDefaultsMenuItem_OnClick(object sender, RoutedEventArgs e) =>
+        _viewModel.RestoreDefaultSettingsCommand.Execute(null);
+
+    private async void ExportConfigMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = LocalizationService.Get("Config.ExportDialogTitle"),
+            Filter = LocalizationService.Get("Config.FileFilter"),
+            FileName = ConfigBackupService.SuggestFileName(DateTime.Now),
+            DefaultExt = ".json",
+            AddExtension = true,
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await _viewModel.ExportConfigAsync(dialog.FileName);
+        }
+    }
+
+    /// <summary>
+    /// 导入配置：选文件 → 校验 → 有冲突时依次在窗内询问（任一步取消则什么都不改）：
+    /// 现有收藏 / 浏览记录里有文件里没有的网址时问合并还是替换；窗口大小 / 位置与现在不同时问是否恢复 → 导入。
+    /// </summary>
+    private async void ImportConfigMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = LocalizationService.Get("Config.ImportDialogTitle"),
+            Filter = LocalizationService.Get("Config.FileFilter"),
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var bundle = await _viewModel.ReadConfigAsync(dialog.FileName);
+        if (bundle is null)
+        {
+            return;
+        }
+
+        var mergeLists = true;
+        if (_viewModel.ConfigWouldReplaceEntries(bundle))
+        {
+            var choice = await AskAsync(
+                LocalizationService.Get("ImportLists.Title"),
+                LocalizationService.Get("ImportLists.Body"),
+                [LocalizationService.Get("ImportLists.Merge"), LocalizationService.Get("ImportLists.Replace")]);
+            if (choice is null)
+            {
+                return;
+            }
+
+            mergeLists = choice == 0;
+        }
+
+        var applyWindowBounds = true;
+        if (_viewModel.CompareImportedWindowBounds(bundle) is { HasDifference: true } windows)
+        {
+            var offScreen = windows.Main.ImportedPositionOffScreen || windows.Control.ImportedPositionOffScreen;
+            var choice = await AskAsync(
+                LocalizationService.Get("ImportWindows.Title"),
+                LocalizationService.Get(offScreen ? "ImportWindows.BodyOffScreen" : "ImportWindows.Body"),
+                [LocalizationService.Get("ImportWindows.Restore"), LocalizationService.Get("ImportWindows.KeepCurrent")]);
+            if (choice is null)
+            {
+                return;
+            }
+
+            applyWindowBounds = choice == 0;
+        }
+
+        await _viewModel.ImportConfigAsync(bundle, mergeLists, applyWindowBounds);
+    }
+
+    /// <summary>
+    /// 「管理配置 → 数据目录」：卡片显示当前位置，可打开文件夹或更改位置。新位置已有本程序数据则切换过去，没有则可选搬过去
+    /// 或从空白开始；确认后记下设置（下次启动生效），再问是否立即重启——浏览器数据目录在运行中被占用，只能重启后切换。
+    /// </summary>
+    private async void DataDirectoryMenuItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        var current = AppPaths.DataRoot;
+        var action = await AskAsync(
+            LocalizationService.Get("DataDir.Title"),
+            AppPaths.IsDefault(current) ? LocalizationService.Format("DataDir.BodyDefault", current) : current,
+            [LocalizationService.Get("DataDir.Change"), LocalizationService.Get("DataDir.Open")],
+            LocalizationService.Get("DataDir.Close"));
+        if (action == 1)
+        {
+            OpenFolder(current);
+            return;
+        }
+
+        if (action != 0)
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = LocalizationService.Get("DataDir.PickTitle"),
+            InitialDirectory = System.IO.Path.GetDirectoryName(current) ?? current,
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var target = dialog.FolderName;
+        var problem = AppPaths.SamePath(target, current) ? "Status.DataDirSame"
+            : AppPaths.AreNested(target, current) ? "Status.DataDirNested"
+            : !AppPaths.IsUsable(target) ? "Status.DataDirNotWritable"
+            : null;
+        if (problem is not null)
+        {
+            _viewModel.ShowNotice(LocalizationService.Get(problem), StatusLevel.Warning);
+            return;
+        }
+
+        string? moveFrom = null;
+        if (AppPaths.HasAppData(target))
+        {
+            var confirmed = await AskAsync(
+                LocalizationService.Get("DataDir.SwitchTitle"),
+                LocalizationService.Get("DataDir.SwitchBody"),
+                [LocalizationService.Get("DataDir.Switch")]);
+            if (confirmed is null)
+            {
+                return;
+            }
+        }
+        else
+        {
+            var move = await AskAsync(
+                LocalizationService.Get("DataDir.MoveTitle"),
+                LocalizationService.Get("DataDir.MoveBody"),
+                [LocalizationService.Get("DataDir.Move"), LocalizationService.Get("DataDir.StartFresh")]);
+            if (move is null)
+            {
+                return;
+            }
+
+            moveFrom = move == 0 ? current : null;
+        }
+
+        try
+        {
+            AppPaths.SaveDataDirectory(target, moveFrom);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            FileLogger.LogException(ex, "Save data directory");
+            _viewModel.ShowNotice(LocalizationService.Format("Status.DataDirSaveFailed", ex.Message), StatusLevel.Error);
+            return;
+        }
+
+        var restart = await AskAsync(
+            LocalizationService.Get("DataDir.RestartTitle"),
+            LocalizationService.Format("DataDir.RestartBody", target),
+            [LocalizationService.Get("DataDir.RestartNow")],
+            LocalizationService.Get("DataDir.Later"));
+        if (restart == 0)
+        {
+            _browser.RestartApplication();
+        }
+    }
+
+    private static void OpenFolder(string path)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            FileLogger.LogException(ex, "Open data directory");
+        }
+    }
+
+    private TaskCompletionSource<int?>? _modalChoice;
+
+    /// <summary>
+    /// 窗内模态询问：标题 + 一句说明 + 底栏等宽按钮。<paramref name="choices"/> 第一项为主按钮并获得焦点（回车即选），
+    /// 末尾自动加取消按钮（文字默认「取消」，可用 <paramref name="cancelLabel"/> 换成「关闭」「稍后」等）；
+    /// 选它或按 Esc 返回 null，否则返回所选项的序号。
+    /// </summary>
+    private Task<int?> AskAsync(string title, string body, IReadOnlyList<string> choices, string? cancelLabel = null)
+    {
+        CloseModal(null);
+        _modalChoice = new TaskCompletionSource<int?>();
+        ModalTitle.Text = title;
+        ModalBody.Text = body;
+        for (var i = 0; i <= choices.Count; i++)
+        {
+            var index = i;
+            var isCancel = i == choices.Count;
+            var button = new Button
+            {
+                Content = isCancel ? cancelLabel ?? LocalizationService.Get("Dialog.Cancel") : choices[i],
+                Style = (Style)FindResource(i == 0 ? "PrimaryButton" : "ModernButton"),
+                Height = 30,
+                FontSize = 12,
+                Padding = new Thickness(10, 0, 10, 0),
+                Margin = new Thickness(4, 0, 4, 0),
+            };
+            button.Click += (_, _) => CloseModal(isCancel ? null : index);
+            ModalButtons.Children.Add(button);
+        }
+
+        ModalLayer.Visibility = Visibility.Visible;
+        // 布局完成后再给主按钮焦点：回车直接选它，Tab 只在卡片的按钮间循环
+        _ = Dispatcher.InvokeAsync(() => ModalButtons.Children[0].Focus(), System.Windows.Threading.DispatcherPriority.Input);
+        return _modalChoice.Task;
+    }
+
+    private void CloseModal(int? choice)
+    {
+        ModalLayer.Visibility = Visibility.Collapsed;
+        ModalButtons.Children.Clear();
+        var pending = _modalChoice;
+        _modalChoice = null;
+        pending?.TrySetResult(choice);
+    }
+
+    private void ModalLayer_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CloseModal(null);
+        }
     }
 
     private void PercentBox_OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)

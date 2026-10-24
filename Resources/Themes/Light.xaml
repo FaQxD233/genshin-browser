@@ -48,6 +48,13 @@
   <SolidColorBrush x:Key="TextTertiary" Color="{StaticResource ColorTextTertiary}"/>
   <SolidColorBrush x:Key="SelectionBrush" Color="{StaticResource ColorSelection}"/>
 
+  <!-- 窗内对话框：卡片、底栏（Win11 对话框做法，底栏比卡片深一级）、遮罩与投影；主按钮（强调色实底）上的文字 -->
+  <SolidColorBrush x:Key="DialogBackground" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="DialogFooterBackground" Color="#F3F3F0"/>
+  <SolidColorBrush x:Key="ModalBackdropBrush" Color="#59141413"/>
+  <SolidColorBrush x:Key="TextOnAccent" Color="#FFFFFF"/>
+  <DropShadowEffect x:Key="ModalShadow" Color="#000000" Direction="270" ShadowDepth="8" BlurRadius="28" Opacity="0.18"/>
+
   <!-- 凸起面（分段控件选中块）：白底 + 极淡发丝描边 + 柔和下投影（iOS / macOS 分段控件同款做法） -->
   <SolidColorBrush x:Key="RaisedBorderBrush" Color="#12000000"/>
   <DropShadowEffect x:Key="RaisedShadow" Color="#000000" Direction="270" ShadowDepth="2" BlurRadius="8" Opacity="0.2"/>

@@ -22,6 +22,7 @@ namespace GenshinBrowser;
 
 public partial class MainWindow : Window, IControlBrowser
 {
+    private readonly string _dataRoot;
     private readonly SettingsService _settingsService;
     private readonly HistoryService _historyService;
     private readonly FavoritesService _favoritesService;
@@ -123,13 +124,13 @@ public partial class MainWindow : Window, IControlBrowser
     {
         InitializeComponent();
 
-        var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
-        Directory.CreateDirectory(dataRoot);
+        _dataRoot = AppPaths.DataRoot;
+        Directory.CreateDirectory(_dataRoot);
 
-        _settingsService = new SettingsService(Path.Combine(dataRoot, "settings.json"));
-        _historyService = new HistoryService(Path.Combine(dataRoot, "history.json"));
-        _favoritesService = new FavoritesService(Path.Combine(dataRoot, "favorites.json"));
-        _downloadsService = new DownloadsService(Path.Combine(dataRoot, "downloads.json"));
+        _settingsService = new SettingsService(Path.Combine(_dataRoot, "settings.json"));
+        _historyService = new HistoryService(Path.Combine(_dataRoot, "history.json"));
+        _favoritesService = new FavoritesService(Path.Combine(_dataRoot, "favorites.json"));
+        _downloadsService = new DownloadsService(Path.Combine(_dataRoot, "downloads.json"));
         _windowModeService = new WindowModeService(this);
         _keyboardHookService = new KeyboardHookService();
 
@@ -523,6 +524,8 @@ public partial class MainWindow : Window, IControlBrowser
                 return;
             }
 
+            ReportDataDirectoryNotice();
+
             _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
             _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
             _keyboardHookService.HideTogglePressed += KeyboardHookService_OnHideTogglePressed;
@@ -624,9 +627,7 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        var userDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GenshinBrowser", "WebViewProfile");
+        var userDataFolder = AppPaths.WebViewProfile;
         _webViewUserDataFolder = userDataFolder;
         _environmentPreloadTask = Task.Run(async () =>
         {
@@ -664,9 +665,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         await EnsureWebView2RuntimeAsync();
-        var userDataFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GenshinBrowser", "WebViewProfile");
+        var userDataFolder = AppPaths.WebViewProfile;
         _webViewUserDataFolder = userDataFolder;
         return await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
     }
@@ -2770,11 +2769,204 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
+    /// 启动时数据目录的提示：设置的位置不可用、刚搬完数据（旧数据还在）或搬运失败。浏览器就绪之后再发，免得被就绪提示盖掉。
+    /// </summary>
+    private void ReportDataDirectoryNotice()
+    {
+        if (AppPaths.UnavailableConfiguredDirectory is { } unavailable)
+        {
+            SetStatusMessage(LocalizationService.Format("Status.DataDirUnavailable", unavailable), StatusLevel.Warning);
+        }
+        else if (AppPaths.MoveFailure is { } failure)
+        {
+            SetStatusMessage(LocalizationService.Format("Status.DataDirMoveFailed", failure), StatusLevel.Warning);
+        }
+        else if (AppPaths.MovedFromDirectory is { } movedFrom)
+        {
+            SetStatusMessage(LocalizationService.Format("Status.DataDirMoved", movedFrom), StatusLevel.Success);
+        }
+    }
+
+    /// <summary>重启程序（更改数据目录后生效）：带 <see cref="App.RestartArgument"/> 启动新进程，再照常关闭本窗口保存数据。</summary>
+    public void RestartApplication()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = Environment.ProcessPath ?? throw new InvalidOperationException("Process path is unavailable."),
+                Arguments = App.RestartArgument,
+                UseShellExecute = false,
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            FileLogger.LogException(ex, "Restart application");
+            SetStatusMessage(LocalizationService.Format("Status.RestartFailed", ex.Message), StatusLevel.Error);
+            return;
+        }
+
+        Close();
+    }
+
+    /// <summary>导出配置（设置、收藏、浏览记录）到 <paramref name="path"/>，返回写入的收藏 / 浏览记录条数。</summary>
+    public async Task<(int Favorites, int History)> ExportConfigAsync(string path)
+    {
+        // 先把窗口此刻的位置大小与当前页面写进内存设置，导出的才是现在的状态
+        SaveWindowBounds();
+        _controlWindow?.SaveWindowBounds();
+        CaptureCurrentUrlToSettings();
+        var bundle = ConfigBackupService.Create(_settings, _favoritesService.GetEntries(), _historyService.GetEntries(), DateTime.UtcNow);
+        await ConfigBackupService.WriteAsync(path, bundle).ConfigureAwait(true);
+        return (bundle.Favorites?.Count ?? 0, bundle.History?.Count ?? 0);
+    }
+
+    /// <summary>导入配置里的窗口大小 / 位置与当前比较，导入前据此询问用哪一套。</summary>
+    public ImportWindowBoundsDiff CompareImportedWindowBounds(AppSettings imported)
+    {
+        var importedMain = ImportedMainWindowRect(imported);
+        var main = WindowBoundsChange.Create(
+            new Rect(Left, Top, BrowserWindowWidth, BrowserWindowHeight),
+            importedMain,
+            importedHasPosition: true,
+            importedOnScreen: WindowBoundsHelper.IsOnAnyScreen(this, importedMain));
+
+        // 控制窗与 ControlWindow.SaveWindowBounds 一样按 Width / Height 计
+        var currentControl = _controlWindow is { } controlWindow
+            ? new Rect(controlWindow.Left, controlWindow.Top, controlWindow.Width, controlWindow.Height)
+            : new Rect(_settings.ControlWindowLeft, _settings.ControlWindowTop, _settings.ControlWindowWidth, _settings.ControlWindowHeight);
+        var importedControl = ImportedControlWindowRect(imported);
+        var control = WindowBoundsChange.Create(
+            currentControl,
+            importedControl,
+            importedHasPosition: imported.HasControlWindowPosition,
+            importedOnScreen: WindowBoundsHelper.IsOnAnyScreen(this, importedControl));
+        return new ImportWindowBoundsDiff(main, control);
+    }
+
+    // 主窗高度存的是内容区高度（不含标题栏），与设置面板「窗口大小」一致
+    private static Rect ImportedMainWindowRect(AppSettings imported) =>
+        new(imported.WindowLeft, imported.WindowTop, imported.WindowWidth, imported.WindowHeight);
+
+    private static Rect ImportedControlWindowRect(AppSettings imported) =>
+        new(imported.ControlWindowLeft, imported.ControlWindowTop, imported.ControlWindowWidth, imported.ControlWindowHeight);
+
+    /// <summary>
+    /// 导入已经 <see cref="ConfigBackupService.Parse"/> 校验清洗过的配置：先把当前配置备份到数据目录下的
+    /// backups 文件夹（before-import.json），再即时应用设置、按 <paramref name="mergeLists"/> 合并或替换收藏与浏览记录，
+    /// 最后打开文件里记录的上次页面。<paramref name="applyWindowBounds"/> 为 false 时窗口大小与位置保持现在的。
+    /// </summary>
+    public async Task ImportConfigAsync(ConfigBundle bundle, bool mergeLists, bool applyWindowBounds)
+    {
+        await ExportConfigAsync(Path.Combine(_dataRoot, ConfigBackupService.BackupFolderName, ConfigBackupService.PreImportBackupFileName))
+            .ConfigureAwait(true);
+
+        if (bundle.Settings is { } settings)
+        {
+            ApplyImportedSettings(settings, applyWindowBounds);
+        }
+
+        if (bundle.Favorites is { } favorites)
+        {
+            await _favoritesService.ImportAsync(favorites, mergeLists).ConfigureAwait(true);
+        }
+
+        if (bundle.History is { } history)
+        {
+            await _historyService.ImportAsync(history, mergeLists).ConfigureAwait(true);
+        }
+
+        NotifyBrowserState(BrowserStateChangeKind.All);
+        if (!string.IsNullOrEmpty(bundle.Settings?.LastUrl))
+        {
+            NavigateTo(bundle.Settings.LastUrl);
+        }
+    }
+
+    /// <summary>
+    /// 即时应用导入的设置，走与界面操作相同的 setter，不重启。窗口模式不应用：
+    /// 导入只在浏览模式的控制窗里发起，切成浮窗会把控制台藏起来。
+    /// </summary>
+    private void ApplyImportedSettings(AppSettings imported, bool applyWindowBounds)
+    {
+        ThemeMode = imported.ThemeMode;
+        UiLanguage = imported.Language;
+        WindowOpacity = imported.WindowOpacity;
+        SetZoom(imported.ZoomFactor);
+        FloatingClickThrough = imported.FloatingClickThrough;
+        HotkeyScope = imported.HotkeyScope;
+        ApplyHotkeys(new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
+        {
+            [HotkeySlot.Mode] = (imported.ToggleModeKey, imported.ToggleModeModifiers),
+            [HotkeySlot.Playback] = (imported.TogglePlaybackKey, imported.TogglePlaybackModifiers),
+            [HotkeySlot.Hide] = (imported.ToggleHideKey, imported.ToggleHideModifiers),
+            [HotkeySlot.SeekBackward] = (imported.SeekBackwardKey, imported.SeekBackwardModifiers),
+            [HotkeySlot.SeekForward] = (imported.SeekForwardKey, imported.SeekForwardModifiers),
+        });
+
+        if (applyWindowBounds)
+        {
+            ApplyImportedWindowBounds(imported);
+        }
+
+        QueueSettingsSave();
+    }
+
+    /// <summary>
+    /// 应用导入的窗口大小与位置。文件里的位置不在任何屏幕内（换过电脑或显示器布局）时只导入大小、位置保持现在的；
+    /// 落在屏幕上的位置设好后钳制到工作区，大小超过屏幕的同样收进来。
+    /// </summary>
+    private void ApplyImportedWindowBounds(AppSettings imported)
+    {
+        // 主窗：尺寸走设置面板「应用」同一路径（含工作区钳制与标题栏高度换算）
+        ApplyBrowserWindowSize(imported.WindowWidth, imported.WindowHeight);
+        if (WindowBoundsHelper.IsOnAnyScreen(this, ImportedMainWindowRect(imported)))
+        {
+            Left = imported.WindowLeft;
+            Top = imported.WindowTop;
+            WindowBoundsHelper.ClampToWorkArea(this);
+        }
+
+        SaveWindowBounds();
+
+        // 控制窗：先写进设置再按设置恢复（RestoreControlWindowBounds 同样钳制）；位置不可用时沿用设置里现在的位置
+        _settings.ControlWindowWidth = imported.ControlWindowWidth;
+        _settings.ControlWindowHeight = imported.ControlWindowHeight;
+        if (imported.HasControlWindowPosition && WindowBoundsHelper.IsOnAnyScreen(this, ImportedControlWindowRect(imported)))
+        {
+            _settings.ControlWindowLeft = imported.ControlWindowLeft;
+            _settings.ControlWindowTop = imported.ControlWindowTop;
+            _settings.HasControlWindowPosition = true;
+        }
+
+        if (_controlWindow is not null)
+        {
+            RestoreControlWindowBounds(_controlWindow);
+        }
+    }
+
+    /// <summary>
     /// 恢复默认热键：模式=F8、播放=K、隐藏=F7、倒退=;、快进='。
     /// 先把非默认热键泊到 F9–F12 的空闲位（不能是任何默认值或其它热键当前值），
     /// 避免槽位间交叉占用导致目标默认值写不进去。
     /// </summary>
-    private void RestoreDefaultHotkeys()
+    private void RestoreDefaultHotkeys() => ApplyHotkeys(DefaultHotkeys);
+
+    private static readonly IReadOnlyDictionary<HotkeySlot, (Key Key, ModifierKeys Mods)> DefaultHotkeys =
+        new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
+        {
+            [HotkeySlot.Mode] = (Key.F8, ModifierKeys.None),
+            [HotkeySlot.Playback] = (Key.K, ModifierKeys.None),
+            [HotkeySlot.Hide] = (Key.F7, ModifierKeys.None),
+            [HotkeySlot.SeekBackward] = (Key.OemSemicolon, ModifierKeys.None),
+            [HotkeySlot.SeekForward] = (Key.OemQuotes, ModifierKeys.None),
+        };
+
+    /// <summary>
+    /// 把五组热键批量设为 <paramref name="targets"/>（恢复默认、导入配置共用；目标须两两不冲突，Sanitize 已保证）。
+    /// 逐组直接写会被「目标组合正被另一组占用」拦下，所以先把要改的组泊到目标之外的空闲键，再逐个写目标。
+    /// </summary>
+    private void ApplyHotkeys(IReadOnlyDictionary<HotkeySlot, (Key Key, ModifierKeys Mods)> targets)
     {
         var slots = new (HotkeySlot Slot, Func<Key> GetKey, Func<ModifierKeys> GetMods, Func<Key, ModifierKeys, bool> Set)[]
         {
@@ -2789,36 +2981,27 @@ public partial class MainWindow : Window, IControlBrowser
             (HotkeySlot.SeekForward, () => _settings.SeekForwardKey, () => _settings.SeekForwardModifiers,
                 (k, m) => TrySetSeekForwardHotkey(k, m)),
         };
-        var defaults = new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
-        {
-            [HotkeySlot.Mode] = (Key.F8, ModifierKeys.None),
-            [HotkeySlot.Playback] = (Key.K, ModifierKeys.None),
-            [HotkeySlot.Hide] = (Key.F7, ModifierKeys.None),
-            [HotkeySlot.SeekBackward] = (Key.OemSemicolon, ModifierKeys.None),
-            [HotkeySlot.SeekForward] = (Key.OemQuotes, ModifierKeys.None),
-        };
-
-        if (slots.All(slot => slot.GetKey() == defaults[slot.Slot].Key && slot.GetMods() == defaults[slot.Slot].Mods))
+        if (slots.All(slot => slot.GetKey() == targets[slot.Slot].Key && slot.GetMods() == targets[slot.Slot].Mods))
         {
             return;
         }
 
-        // 泊位数须 ≥ 槽位数（5）：全部槽位都需让位时仍有空位，恢复默认必成功；
-        // 与 SettingsService.HotkeyFallbackKeys 同源（F9-F12 + F6）
-        ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12, Key.F6];
-        var defaultKeys = defaults.Values.Select(pair => pair.Key).ToHashSet();
+        // 泊位须避开所有目标键，且个数 ≥ 槽位数（5）：目标最多占掉其中 5 个，所以 F9-F12、F6（与 SettingsService.HotkeyFallbackKeys
+        // 同源）之外再备 F13-F17（多数键盘没有这些键，临时泊在上面没有副作用），全部槽位都需让位时仍有空位
+        ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12, Key.F6, Key.F13, Key.F14, Key.F15, Key.F16, Key.F17];
+        var targetKeys = targets.Values.Select(pair => pair.Key).ToHashSet();
         foreach (var slot in slots)
         {
-            var (defaultKey, defaultMods) = defaults[slot.Slot];
-            if (slot.GetKey() == defaultKey && slot.GetMods() == defaultMods)
+            var (targetKey, targetMods) = targets[slot.Slot];
+            if (slot.GetKey() == targetKey && slot.GetMods() == targetMods)
             {
                 continue;
             }
 
-            // 泊位须避开：默认值集合、以及其它槽位当前已占的键
+            // 泊位须避开：目标键集合、以及其它槽位当前已占的键
             foreach (var park in parkingKeys)
             {
-                if (defaultKeys.Contains(park) ||
+                if (targetKeys.Contains(park) ||
                     slots.Any(other => other.Slot != slot.Slot && other.GetKey() == park))
                 {
                     continue;
@@ -2831,11 +3014,11 @@ public partial class MainWindow : Window, IControlBrowser
             }
         }
 
-        // 逐个写默认：泊位已腾出目标组合，正常应全部成功
+        // 逐个写目标：泊位已腾出目标组合，正常应全部成功
         foreach (var slot in slots)
         {
-            var (defaultKey, defaultMods) = defaults[slot.Slot];
-            slot.Set(defaultKey, defaultMods);
+            var (targetKey, targetMods) = targets[slot.Slot];
+            slot.Set(targetKey, targetMods);
         }
     }
 

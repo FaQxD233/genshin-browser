@@ -46,43 +46,7 @@ public sealed class SettingsService : IDisposable
 
     public async Task SaveAsync(AppSettings settings)
     {
-        var snapshot = new AppSettings
-        {
-            // WPF 始终以 Key 枚举落盘（schema 1），避免 WinUI 写入的 VK（schema 2）被二次误迁移。
-            SchemaVersion = 1,
-            LastUrl = settings.LastUrl,
-            WindowMode = settings.WindowMode,
-            WindowLeft = settings.WindowLeft,
-            WindowTop = settings.WindowTop,
-            WindowWidth = settings.WindowWidth,
-            WindowHeight = settings.WindowHeight,
-            ControlWindowLeft = settings.ControlWindowLeft,
-            ControlWindowTop = settings.ControlWindowTop,
-            HasControlWindowPosition = settings.HasControlWindowPosition,
-            ControlWindowWidth = settings.ControlWindowWidth,
-            ControlWindowHeight = settings.ControlWindowHeight,
-            WindowOpacity = settings.WindowOpacity,
-            ZoomFactor = settings.ZoomFactor,
-            ToggleModeKey = settings.ToggleModeKey,
-            ToggleModeModifiers = settings.ToggleModeModifiers,
-            TogglePlaybackKey = settings.TogglePlaybackKey,
-            TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
-            ToggleHideKey = settings.ToggleHideKey,
-            ToggleHideModifiers = settings.ToggleHideModifiers,
-            SeekBackwardKey = settings.SeekBackwardKey,
-            SeekBackwardModifiers = settings.SeekBackwardModifiers,
-            SeekForwardKey = settings.SeekForwardKey,
-            SeekForwardModifiers = settings.SeekForwardModifiers,
-            ThemeMode = settings.ThemeMode,
-            Language = settings.Language,
-            HotkeyScope = settings.HotkeyScope,
-            FloatingClickThrough = settings.FloatingClickThrough,
-            HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
-            LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
-            HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
-        };
-
-        snapshot = Sanitize(snapshot);
+        var snapshot = Sanitize(CreateSnapshot(settings));
         var requestVersion = Interlocked.Increment(ref _saveRequestVersion);
 
         try
@@ -122,6 +86,48 @@ public sealed class SettingsService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 设置的独立拷贝：落盘与导出配置都用它，序列化期间界面仍可改原对象。
+    /// </summary>
+    internal static AppSettings CreateSnapshot(AppSettings settings)
+    {
+        return new AppSettings
+        {
+            // WPF 始终以 Key 枚举落盘（schema 1），避免 WinUI 写入的 VK（schema 2）被二次误迁移。
+            SchemaVersion = 1,
+            LastUrl = settings.LastUrl,
+            WindowMode = settings.WindowMode,
+            WindowLeft = settings.WindowLeft,
+            WindowTop = settings.WindowTop,
+            WindowWidth = settings.WindowWidth,
+            WindowHeight = settings.WindowHeight,
+            ControlWindowLeft = settings.ControlWindowLeft,
+            ControlWindowTop = settings.ControlWindowTop,
+            HasControlWindowPosition = settings.HasControlWindowPosition,
+            ControlWindowWidth = settings.ControlWindowWidth,
+            ControlWindowHeight = settings.ControlWindowHeight,
+            WindowOpacity = settings.WindowOpacity,
+            ZoomFactor = settings.ZoomFactor,
+            ToggleModeKey = settings.ToggleModeKey,
+            ToggleModeModifiers = settings.ToggleModeModifiers,
+            TogglePlaybackKey = settings.TogglePlaybackKey,
+            TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
+            ToggleHideKey = settings.ToggleHideKey,
+            ToggleHideModifiers = settings.ToggleHideModifiers,
+            SeekBackwardKey = settings.SeekBackwardKey,
+            SeekBackwardModifiers = settings.SeekBackwardModifiers,
+            SeekForwardKey = settings.SeekForwardKey,
+            SeekForwardModifiers = settings.SeekForwardModifiers,
+            ThemeMode = settings.ThemeMode,
+            Language = settings.Language,
+            HotkeyScope = settings.HotkeyScope,
+            FloatingClickThrough = settings.FloatingClickThrough,
+            HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
+            LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
+            HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
+        };
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -133,9 +139,14 @@ public sealed class SettingsService : IDisposable
         _saveGate.Dispose();
     }
 
-    private static AppSettings DeserializeAndSanitize(string json)
+    private static AppSettings DeserializeAndSanitize(string json) =>
+        Normalize(JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions));
+
+    /// <summary>
+    /// 归一一份反序列化得到的设置（启动加载与导入配置共用）：schema 2 先转回 Key 枚举，再整套清洗。
+    /// </summary>
+    internal static AppSettings Normalize(AppSettings? settings)
     {
-        var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions);
         if (settings is not null && settings.SchemaVersion >= 2)
         {
             // WinUI schema 2 存的是 VK；System.Text.Json 会把 119/75 填进 Key 枚举槽位，

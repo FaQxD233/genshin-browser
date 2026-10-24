@@ -271,6 +271,14 @@
     <Setter Property="SnapsToDevicePixels" Value="True"/>
   </Style>
 
+  <!-- 主按钮：强调色实底白字，用于对话框里推荐的那一项 -->
+  <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
+    <Setter Property="Background" Value="{DynamicResource AccentPrimary}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimary}"/>
+    <Setter Property="Foreground" Value="{DynamicResource TextOnAccent}"/>
+    <Setter Property="FontWeight" Value="SemiBold"/>
+  </Style>
+
   <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource ModernButton}">
     <Setter Property="MinWidth" Value="36"/>
     <Setter Property="Padding" Value="8"/>
@@ -507,9 +515,16 @@
                   Background="{TemplateBinding Background}"
                   BorderThickness="0"
                   Padding="{TemplateBinding Padding}">
-            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+            <StackPanel Orientation="Horizontal">
+              <!-- 图标位（Icon 放 Mdl2IconText 字形）：没设 Icon 时折叠，收藏 / 历史右键菜单这类无图标菜单版式不变 -->
+              <ContentPresenter x:Name="IconPresenter" ContentSource="Icon" Width="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+              <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+            </StackPanel>
           </Border>
           <ControlTemplate.Triggers>
+            <Trigger Property="Icon" Value="{x:Null}">
+              <Setter TargetName="IconPresenter" Property="Visibility" Value="Collapsed"/>
+            </Trigger>
             <Trigger Property="IsHighlighted" Value="True">
               <Setter TargetName="MenuItemChrome" Property="Background" Value="{DynamicResource BackgroundHover}"/>
             </Trigger>

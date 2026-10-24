@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -904,6 +906,82 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>导出配置到 <paramref name="path"/>，结果用 Toast 提示。</summary>
+    public async Task ExportConfigAsync(string path)
+    {
+        try
+        {
+            var (favorites, history) = await _browser.ExportConfigAsync(path).ConfigureAwait(true);
+            ShowToast(LocalizationService.Format("Toast.ConfigExported", favorites, history), StatusLevel.Success);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            FileLogger.LogException(ex, "Export config");
+            ShowToast(LocalizationService.Format("Status.ConfigExportFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
+    /// <summary>读取并校验要导入的配置文件；不可用时 Toast 提示原因并返回 null。</summary>
+    public async Task<ConfigBundle?> ReadConfigAsync(string path)
+    {
+        try
+        {
+            return await ConfigBackupService.ReadAsync(path).ConfigureAwait(true);
+        }
+        catch (ConfigImportException ex)
+        {
+            ShowToast(LocalizationService.Get(ex.Error switch
+            {
+                ConfigImportError.NotConfigFile => "Status.ConfigNotRecognized",
+                ConfigImportError.NewerVersion => "Status.ConfigNewerVersion",
+                ConfigImportError.TooLarge => "Status.ConfigTooLarge",
+                _ => "Status.ConfigCorrupted",
+            }), StatusLevel.Warning);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            FileLogger.LogException(ex, "Read config");
+            ShowToast(LocalizationService.Format("Status.ConfigImportFailed", ex.Message), StatusLevel.Error);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 现有收藏 / 浏览记录里是否有文件里没有的网址：有时替换会去掉它们，需要先问用户（文件不含某一段时那一份不动）。
+    /// 没有时合并与替换结果相同，不必询问。
+    /// </summary>
+    public bool ConfigWouldReplaceEntries(ConfigBundle bundle) =>
+        (bundle.Favorites is { } favorites && EntryMerge.CountMissing(_browser.FavoriteEntries, favorites, e => e.Url) > 0) ||
+        (bundle.History is { } history && EntryMerge.CountMissing(_browser.HistoryEntries, history, e => e.Url) > 0);
+
+    /// <summary>文件里的窗口大小 / 位置与当前比较；文件不含设置段时返回 null（不涉及窗口）。</summary>
+    public ImportWindowBoundsDiff? CompareImportedWindowBounds(ConfigBundle bundle) =>
+        bundle.Settings is { } settings ? _browser.CompareImportedWindowBounds(settings) : null;
+
+    /// <summary>
+    /// 导入已校验的配置并刷新界面；<paramref name="mergeLists"/> 决定收藏 / 浏览记录合并还是替换，
+    /// <paramref name="applyWindowBounds"/> 决定窗口大小与位置用文件里的还是保持现在的。
+    /// </summary>
+    public async Task ImportConfigAsync(ConfigBundle bundle, bool mergeLists, bool applyWindowBounds)
+    {
+        try
+        {
+            await _browser.ImportConfigAsync(bundle, mergeLists, applyWindowBounds).ConfigureAwait(true);
+            RefreshFromBrowser();
+            SyncOpacityZoomTexts();
+            SyncWindowSizeTexts();
+            ShowToast(
+                LocalizationService.Format("Toast.ConfigImported", bundle.Favorites?.Count ?? 0, bundle.History?.Count ?? 0),
+                StatusLevel.Success);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            FileLogger.LogException(ex, "Import config");
+            ShowToast(LocalizationService.Format("Status.ConfigImportFailed", ex.Message), StatusLevel.Error);
+        }
+    }
+
     private void CancelDownload(object? parameter)
     {
         if (parameter is DownloadItem item)
@@ -1079,6 +1157,9 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     {
         return level is StatusLevel.Success or StatusLevel.Warning or StatusLevel.Error;
     }
+
+    /// <summary>控制窗代码里的操作结果提示（如更改数据目录时的校验）。</summary>
+    public void ShowNotice(string message, StatusLevel level) => ShowToast(message, level);
 
     private void ShowToast(string message) => ShowToast(message, StatusLevel.Info);
 

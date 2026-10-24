@@ -239,15 +239,47 @@
                   <TextBlock Text="{DynamicResource Settings.ClearBrowsingData}" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
               </Button>
-              <Button Style="{StaticResource ModernButton}"
+              <!-- 管理配置：点开下拉菜单（导入、导出配置、数据目录、恢复默认），菜单样式与收藏 / 历史右键菜单相同 -->
+              <Button x:Name="ManageConfigButton" Style="{StaticResource ModernButton}"
                       HorizontalAlignment="Right" VerticalAlignment="Center"
                       Padding="8,3" Height="24" FontSize="11"
-                      Command="{Binding RestoreDefaultSettingsCommand}"
-                      ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}">
+                      ToolTip="{DynamicResource Settings.ManageConfigTooltip}"
+                      AutomationProperties.Name="{DynamicResource Settings.ManageConfig}"
+                      Click="ManageConfigButton_OnClick">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" Margin="0,0,5,0" FontSize="11"/>
-                  <TextBlock Text="{DynamicResource Settings.RestoreDefaults}" VerticalAlignment="Center" FontSize="11"/>
+                  <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE9E9;" Margin="0,0,5,0" FontSize="11"/>
+                  <TextBlock Text="{DynamicResource Settings.ManageConfig}" VerticalAlignment="Center" FontSize="11"/>
+                  <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE70D;" Margin="5,1,0,0" FontSize="8"/>
                 </StackPanel>
+                <Button.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="{DynamicResource Settings.ConfigImport}" ToolTip="{DynamicResource Settings.ConfigImportTooltip}"
+                              Click="ImportConfigMenuItem_OnClick">
+                      <MenuItem.Icon>
+                        <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8B5;" FontSize="13"/>
+                      </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="{DynamicResource Settings.ConfigExport}" ToolTip="{DynamicResource Settings.ConfigExportTooltip}"
+                              Click="ExportConfigMenuItem_OnClick">
+                      <MenuItem.Icon>
+                        <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xEDE1;" FontSize="13"/>
+                      </MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="{DynamicResource Settings.DataDirectory}" ToolTip="{DynamicResource Settings.DataDirectoryTooltip}"
+                              Click="DataDirectoryMenuItem_OnClick">
+                      <MenuItem.Icon>
+                        <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE8B7;" FontSize="13"/>
+                      </MenuItem.Icon>
+                    </MenuItem>
+                    <Separator/>
+                    <MenuItem Header="{DynamicResource Settings.RestoreDefaults}" ToolTip="{DynamicResource Settings.RestoreDefaultsTooltip}"
+                              Click="RestoreDefaultsMenuItem_OnClick">
+                      <MenuItem.Icon>
+                        <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE72C;" FontSize="13"/>
+                      </MenuItem.Icon>
+                    </MenuItem>
+                  </ContextMenu>
+                </Button.ContextMenu>
               </Button>
             </StackPanel>
           </Grid>
@@ -702,22 +734,25 @@
           <RowDefinition Height="Auto"/>
           <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <TextBox x:Name="AddressBarTextBox"
-                 Grid.Row="0"
-                 Height="32"
-                 VerticalContentAlignment="Center"
-                 Style="{StaticResource ModernTextBox}"
-                 services:Placeholder.Text="{DynamicResource Nav.AddressPlaceholder}"
-                 services:Placeholder.Foreground="{DynamicResource TextTertiary}"
-                 ToolTip="{DynamicResource Nav.AddressTooltip}"
-                 TextChanged="AddressBarTextBox_OnTextChanged"
-                 LostKeyboardFocus="AddressBarTextBox_OnLostKeyboardFocus">
-          <TextBox.InputBindings>
-            <KeyBinding Key="Enter"
-                        Command="{Binding NavigateFromAddressBarCommand}"
-                        CommandParameter="{Binding Text, ElementName=AddressBarTextBox}" />
-          </TextBox.InputBindings>
-        </TextBox>
+        <!-- 占位文字是装饰层（Adorner）画的：放进自己的 AdornerDecorator，才会被窗内询问卡片盖住，
+             否则画在窗口最顶层、浮在卡片上面 -->
+        <AdornerDecorator Grid.Row="0">
+          <TextBox x:Name="AddressBarTextBox"
+                   Height="32"
+                   VerticalContentAlignment="Center"
+                   Style="{StaticResource ModernTextBox}"
+                   services:Placeholder.Text="{DynamicResource Nav.AddressPlaceholder}"
+                   services:Placeholder.Foreground="{DynamicResource TextTertiary}"
+                   ToolTip="{DynamicResource Nav.AddressTooltip}"
+                   TextChanged="AddressBarTextBox_OnTextChanged"
+                   LostKeyboardFocus="AddressBarTextBox_OnLostKeyboardFocus">
+            <TextBox.InputBindings>
+              <KeyBinding Key="Enter"
+                          Command="{Binding NavigateFromAddressBarCommand}"
+                          CommandParameter="{Binding Text, ElementName=AddressBarTextBox}" />
+            </TextBox.InputBindings>
+          </TextBox>
+        </AdornerDecorator>
         <ProgressBar Grid.Row="1" Margin="0,4,0,0" Height="2"
                      Style="{StaticResource AddressBarProgressBar}"
                      Visibility="{Binding IsNavigating, Converter={StaticResource BoolToVisibility}}"/>
@@ -850,12 +885,15 @@
 
       <!-- 搜索 -->
       <Grid Grid.Row="2" Margin="0,0,0,10">
-        <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBox}"
-                 Padding="28,8,12,8"
-                 services:Placeholder.Text="{DynamicResource Search.Placeholder}"
-                 services:Placeholder.Foreground="{DynamicResource TextTertiary}"
-                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                 ToolTip="{DynamicResource Search.Tooltip}"/>
+        <!-- 占位文字放进自己的装饰层，原因同地址栏 -->
+        <AdornerDecorator>
+          <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBox}"
+                   Padding="28,8,12,8"
+                   services:Placeholder.Text="{DynamicResource Search.Placeholder}"
+                   services:Placeholder.Foreground="{DynamicResource TextTertiary}"
+                   Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                   ToolTip="{DynamicResource Search.Tooltip}"/>
+        </AdornerDecorator>
         <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE721;"
                    FontSize="13" Foreground="{DynamicResource TextTertiary}"
                    HorizontalAlignment="Left" VerticalAlignment="Center"
@@ -1075,5 +1113,32 @@
         </Grid>
       </Border>
     </Border>
+
+    <!-- 窗内模态询问（导入配置时的冲突选择）：遮罩盖住整个窗口（负外边距抵掉根 Grid 的边距），点遮罩不关闭；
+         居中卡片 = 标题 + 一句说明 + 底栏等宽按钮，第一项为主按钮并获得焦点，Esc 取消。按钮在代码里按选项生成 -->
+    <Grid x:Name="ModalLayer" Grid.RowSpan="6" Margin="-16,-14" Panel.ZIndex="100"
+          Visibility="Collapsed" Background="{DynamicResource ModalBackdropBrush}"
+          KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Cycle"
+          PreviewKeyDown="ModalLayer_OnPreviewKeyDown">
+      <Grid MaxWidth="360" Margin="12" VerticalAlignment="Center">
+        <!-- 投影单独垫一层：Effect 加在卡片上会让里面的文字失去 ClearType -->
+        <Border Background="{DynamicResource DialogBackground}" CornerRadius="10" Effect="{DynamicResource ModalShadow}"/>
+        <Border Background="{DynamicResource DialogBackground}" BorderBrush="{DynamicResource BorderColor}"
+                BorderThickness="1" CornerRadius="10">
+          <StackPanel>
+            <StackPanel Margin="24,22,24,20">
+              <TextBlock x:Name="ModalTitle" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextPrimary}"/>
+              <TextBlock x:Name="ModalBody" Margin="0,8,0,0" FontSize="12" LineHeight="19" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextSecondary}"/>
+            </StackPanel>
+            <Border Background="{DynamicResource DialogFooterBackground}" BorderBrush="{DynamicResource BorderColor}"
+                    BorderThickness="0,1,0,0" CornerRadius="0,0,9,9" Padding="16,14">
+              <UniformGrid x:Name="ModalButtons" Rows="1" Margin="-4,0"/>
+            </Border>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Grid>
   </Grid>
 </Window>

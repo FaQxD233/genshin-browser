@@ -59,6 +59,26 @@ internal static class WindowBoundsHelper
 
     public static bool HasHandle(Window window) => new WindowInteropHelper(window).Handle != IntPtr.Zero;
 
+    /// <summary>
+    /// DIP 矩形是否和任一显示器有交集。导入别的电脑或旧显示器布局的配置时，窗口位置可能整块落在所有屏幕之外。
+    /// 按 <paramref name="reference"/> 的 DPI 换算成物理像素；多显示器缩放不同时只是粗判，有交集的位置之后还会钳制到工作区。
+    /// </summary>
+    public static bool IsOnAnyScreen(Window reference, Rect dipRect)
+    {
+        var toDevice = GetDeviceToDipTransform(reference);
+        toDevice.Invert();
+        var topLeft = toDevice.Transform(dipRect.TopLeft);
+        var bottomRight = toDevice.Transform(dipRect.BottomRight);
+        var rect = new NativeRect
+        {
+            Left = (int)Math.Floor(topLeft.X),
+            Top = (int)Math.Floor(topLeft.Y),
+            Right = (int)Math.Ceiling(bottomRight.X),
+            Bottom = (int)Math.Ceiling(bottomRight.Y),
+        };
+        return MonitorFromRect(ref rect, MonitorDefaultToNull) != IntPtr.Zero;
+    }
+
     public static void ClampToWorkArea(Window window)
     {
         ClampToWorkArea(window, GetWorkArea(window));
@@ -96,6 +116,7 @@ internal static class WindowBoundsHelper
         return Math.Min(Math.Max(value, min), max);
     }
 
+    private const uint MonitorDefaultToNull = 0;
     private const uint MonitorDefaultToNearest = 2;
 
     [StructLayout(LayoutKind.Sequential)]
@@ -118,6 +139,9 @@ internal static class WindowBoundsHelper
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr windowHandle, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     [return: MarshalAs(UnmanagedType.Bool)]

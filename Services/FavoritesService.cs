@@ -124,6 +124,31 @@ public sealed class FavoritesService : IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// 导入收藏（配置导入）：<paramref name="merge"/> 为 true 时与现有收藏合并，同一网址保留时间较新的一条；
+    /// false 时换成导入的列表。在锁内完成，导入期间新收藏的页面不会丢；完成后立即落盘，不等防抖。
+    /// </summary>
+    public async Task ImportAsync(IEnumerable<FavoriteEntry?> entries, bool merge)
+    {
+        var incoming = SanitizeEntries(entries);
+        lock (_entriesLock)
+        {
+            _entries = merge
+                ? EntryMerge.MergeByUrl(_entries, incoming, e => e.Url, e => e.SavedAt, AppConfig.Data.MaxFavoriteEntries)
+                : incoming;
+            _urlSet.Clear();
+            foreach (var e in _entries)
+            {
+                _urlSet.Add(e.Url);
+            }
+
+            _version++;
+            _snapshotCache = _entries.AsReadOnly();
+        }
+
+        await FlushAsync().ConfigureAwait(false);
+    }
+
     public bool Contains(string url)
     {
         if (!EntryText.TryNormalizeHttpUrl(url, out var normalizedUrl))
@@ -394,7 +419,7 @@ public sealed class FavoritesService : IDisposable
         }
     }
 
-    private static List<FavoriteEntry> SanitizeEntries(IEnumerable<FavoriteEntry?> loaded)
+    internal static List<FavoriteEntry> SanitizeEntries(IEnumerable<FavoriteEntry?> loaded)
     {
         var result = new List<FavoriteEntry>(AppConfig.Data.MaxFavoriteEntries);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

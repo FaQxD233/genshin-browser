@@ -198,8 +198,7 @@ public static class FileLogger
             return overrideRoot;
         }
 
-        var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
-        return Path.Combine(dataRoot, "logs");
+        return AppPaths.Logs;
     }
 
     /// <summary>测试专用：覆盖日志目录。生产代码不应设置。</summary>

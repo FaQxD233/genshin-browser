@@ -12,6 +12,9 @@ namespace GenshinBrowser;
 
 public partial class App : Application
 {
+    /// <summary>程序自己重启时带的参数：新进程先等旧进程退出，而不是当成「已有实例」直接退出。</summary>
+    public const string RestartArgument = "--wait-for-previous";
+
     private const string SingleInstanceMutexName = @"Local\GenshinBrowser_SingleInstance_3F7A2E1D";
     private Mutex? _singleInstanceMutex;
 
@@ -25,6 +28,12 @@ public partial class App : Application
 
         _singleInstanceMutex = new Mutex(initiallyOwned: true, name: SingleInstanceMutexName, out var createdNew);
 
+        // 更改数据目录后的自动重启：旧进程还在退出中，等它释放互斥量
+        if (!createdNew && e.Args.Contains(RestartArgument))
+        {
+            createdNew = WaitForPreviousInstance(_singleInstanceMutex);
+        }
+
         // 已有实例在运行：激活它并退出当前进程
         if (!createdNew)
         {
@@ -32,6 +41,9 @@ public partial class App : Application
             Shutdown();
             return;
         }
+
+        // 主窗创建前定下数据目录；更改过并选了搬运时，先把旧数据复制过去
+        AppPaths.RunPendingMove(CopyDataWithProgress);
 
         base.OnStartup(e);
 
@@ -42,6 +54,42 @@ public partial class App : Application
         _maintenanceTimer = new DispatcherTimer { Interval = MaintenanceInterval };
         _maintenanceTimer.Tick += (_, _) => RunMaintenanceCleanup();
         _maintenanceTimer.Start();
+    }
+
+    /// <summary>等旧实例退出（最多 30 秒）。旧进程退出时没释放互斥量会抛 AbandonedMutexException，此时互斥量已归本进程。</summary>
+    private static bool WaitForPreviousInstance(Mutex mutex)
+    {
+        try
+        {
+            return mutex.WaitOne(TimeSpan.FromSeconds(30));
+        }
+        catch (AbandonedMutexException)
+        {
+            return true;
+        }
+    }
+
+    private void CopyDataWithProgress(string source, string target)
+    {
+        // 进度窗沿用旧位置里的主题与语言
+        using (var settingsService = new SettingsService(Path.Combine(source, "settings.json")))
+        {
+            var settings = settingsService.Load();
+            ThemeService.Apply(settings.ThemeMode);
+            LocalizationService.Apply(settings.Language);
+        }
+
+        // 进度窗关闭时主窗还没创建：临时改为显式退出，免得「最后一个窗口关闭」把程序关掉
+        var previousMode = ShutdownMode;
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        try
+        {
+            GenshinBrowser.Windows.MigrationWindow.Run(source, target);
+        }
+        finally
+        {
+            ShutdownMode = previousMode;
+        }
     }
 
     private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromHours(6);
@@ -62,8 +110,7 @@ public partial class App : Application
 
             try
             {
-                var dataRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "GenshinBrowser");
-                JsonFileWriter.PurgeStaleTempFiles(dataRoot);
+                JsonFileWriter.PurgeStaleTempFiles(AppPaths.DataRoot);
             }
             catch
             {

@@ -1,0 +1,17 @@
+<Window x:Class="GenshinBrowser.Windows.MigrationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource App.Title}"
+        Width="360"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BackgroundPrimary}"
+        UseLayoutRounding="True">
+  <!-- 更改数据目录并选了搬运后第一次启动：主窗出现之前复制旧数据，这里显示进度 -->
+  <StackPanel Margin="24,20,24,24">
+    <TextBlock Text="{DynamicResource DataDir.Moving}" FontSize="13" FontWeight="SemiBold"
+               Foreground="{DynamicResource TextPrimary}"/>
+    <ProgressBar x:Name="CopyProgress" Style="{StaticResource ModernProgressBar}" Margin="0,14,0,0"/>
+  </StackPanel>
+</Window>

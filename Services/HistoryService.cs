@@ -150,6 +150,31 @@ public sealed class HistoryService : IDisposable
     }
 
     /// <summary>
+    /// 导入浏览记录（配置导入）：<paramref name="merge"/> 为 true 时与现有浏览记录合并，同一网址保留时间较新的一条；
+    /// false 时换成导入的列表。在锁内完成，导入期间新打开的页面不会丢；完成后立即落盘，不等防抖。
+    /// </summary>
+    public async Task ImportAsync(IEnumerable<HistoryEntry?> entries, bool merge)
+    {
+        var incoming = SanitizeEntries(entries);
+        lock (_entriesLock)
+        {
+            _entries = merge
+                ? EntryMerge.MergeByUrl(_entries, incoming, e => e.Url, e => e.VisitedAt, AppConfig.Data.MaxHistoryEntries)
+                : incoming;
+            _urlSet.Clear();
+            foreach (var e in _entries)
+            {
+                _urlSet.Add(e.Url);
+            }
+
+            _version++;
+            _snapshotCache = _entries.AsReadOnly();
+        }
+
+        await FlushAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// 将尚未落盘的变更立即写入。关闭应用前应调用；Dispose 不再二次写盘。
     /// </summary>
     public async Task FlushAsync()
@@ -409,7 +434,7 @@ public sealed class HistoryService : IDisposable
         }
     }
 
-    private static List<HistoryEntry> SanitizeEntries(IEnumerable<HistoryEntry?> loaded)
+    internal static List<HistoryEntry> SanitizeEntries(IEnumerable<HistoryEntry?> loaded)
     {
         var result = new List<HistoryEntry>(AppConfig.Data.MaxHistoryEntries);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

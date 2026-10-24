@@ -138,6 +138,21 @@ public interface IControlBrowser
     /// </summary>
     void RestoreDefaultSettings();
 
+    /// <summary>重启程序（更改数据目录后生效）。新进程启动失败时提示原因、不关闭。</summary>
+    void RestartApplication();
+
+    /// <summary>导出配置（设置、收藏、浏览记录）到文件，返回写入的收藏 / 浏览记录条数。</summary>
+    Task<(int Favorites, int History)> ExportConfigAsync(string path);
+
+    /// <summary>导入配置里的窗口大小 / 位置与当前比较（位置不在任何屏幕内时只算大小）。</summary>
+    ImportWindowBoundsDiff CompareImportedWindowBounds(AppSettings imported);
+
+    /// <summary>
+    /// 导入已校验的配置：先备份当前配置再即时应用；<paramref name="mergeLists"/> 为 true 时收藏 / 浏览记录与现有合并，false 时替换；
+    /// <paramref name="applyWindowBounds"/> 为 false 时窗口大小与位置保持现在的。
+    /// </summary>
+    Task ImportConfigAsync(ConfigBundle bundle, bool mergeLists, bool applyWindowBounds);
+
     /// <summary>
     /// 当前主题偏好：Dark / Light / System。
     /// </summary>

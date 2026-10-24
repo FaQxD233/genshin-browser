@@ -28,9 +28,11 @@
 - **浏览历史**：自动记录访问历史，支持搜索
 - **地址栏联想**：输入时从收藏和浏览记录里给出候选（收藏在前），`↑` `↓` 选择、`Enter` 打开、`Esc` 关闭
 - **智能恢复**：记住上次浏览的页面、窗口位置和大小
+- **配置导入 / 导出**：设置面板右上角「管理配置」里导入 / 导出，窗口大小与位置、各项设置、快捷键、收藏、浏览记录和当前页面存成一个 JSON 文件，可在另一台电脑导入（不含登录状态）；导入前自动备份当前配置，收藏 / 浏览记录或窗口大小位置与现在不同时先问你用哪一套
+- **数据目录可改**：「管理配置 → 数据目录」查看或更改设置、收藏、浏览记录和登录状态的保存位置（默认 `%LocalAppData%\GenshinBrowser`，设置记在注册表 `HKCU\Software\GenshinBrowser`，不依赖 AppData 里的文件）；换到空文件夹时可以把现有数据搬过去，重启后生效，旧位置的数据保留，确认无误后自己删除；设置的位置不可用（如移动硬盘没接）时本次退回默认位置并提示
 
 ### 本地日志
-- **自动记录**：运行日志写入 `%LocalAppData%\GenshinBrowser\logs\`
+- **自动记录**：运行日志写入数据目录下的 `logs\`（默认 `%LocalAppData%\GenshinBrowser\logs\`）
 - **异常追踪**：未处理异常自动捕获并写入日志
 - **排查方便**：按日期归档，便于定位问题
 
@@ -78,7 +80,7 @@ dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj
 ## 🔀 分支说明
 
 - **`main`**：WPF + WebView2 主线版本（本分支）
-- **`WinUI3-Experimental`**：WinUI 3 重构实验版，与主线共用 `%LocalAppData%\GenshinBrowser\settings.json`，热键通过 `SchemaVersion`（1=WPF Key 枚举 / 2=Win32 虚拟键码）双向兼容。实验版只认识 浏览 ⇄ 浮窗 与 播放/暂停 两组热键：在实验版里保存过设置后，主线的隐藏、快进快退键、热键生效范围与鼠标穿透会回到默认值
+- **`WinUI3-Experimental`**：WinUI 3 重构实验版，与主线共用 `%LocalAppData%\GenshinBrowser\settings.json`（主线改过数据目录后，实验版仍读这个默认位置），热键通过 `SchemaVersion`（1=WPF Key 枚举 / 2=Win32 虚拟键码）双向兼容。实验版只认识 浏览 ⇄ 浮窗 与 播放/暂停 两组热键：在实验版里保存过设置后，主线的隐藏、快进快退键、热键生效范围与鼠标穿透会回到默认值
 
 ## 📄 开源协议
 
