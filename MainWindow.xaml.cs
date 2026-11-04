@@ -45,6 +45,8 @@ public partial class MainWindow : Window, IControlBrowser
     /// 首屏 NavigationCompleted 后才触发自动缓存检查，避免与首屏加载抢 IO。
     /// </summary>
     private bool _autoCacheCheckScheduled;
+    // 启动提示（数据目录、数据文件读不出来）只在首屏导航结束后发一次
+    private bool _startupNoticesReported;
     private CancellationTokenSource? _cacheCheckCts;
     private Task? _cacheCheckTask;
     private string? _webViewUserDataFolder;
@@ -186,197 +188,30 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    public Key ToggleModeKey
-    {
-        get => _settings.ToggleModeKey;
-        set => TrySetToggleModeHotkey(value, _settings.ToggleModeModifiers);
-    }
+    public HotkeyBinding GetHotkey(HotkeySlot slot) => _settings.GetHotkey(slot);
 
-    public ModifierKeys ToggleModeModifiers
+    public bool TrySetHotkey(HotkeySlot slot, Key key, ModifierKeys modifiers)
     {
-        get => _settings.ToggleModeModifiers;
-        set => TrySetToggleModeHotkey(_settings.ToggleModeKey, value);
-    }
-
-    public Key TogglePlaybackKey
-    {
-        get => _settings.TogglePlaybackKey;
-        set => TrySetTogglePlaybackHotkey(value, _settings.TogglePlaybackModifiers);
-    }
-
-    public ModifierKeys TogglePlaybackModifiers
-    {
-        get => _settings.TogglePlaybackModifiers;
-        set => TrySetTogglePlaybackHotkey(_settings.TogglePlaybackKey, value);
-    }
-
-    public Key ToggleHideKey
-    {
-        get => _settings.ToggleHideKey;
-        set => TrySetToggleHideHotkey(value, _settings.ToggleHideModifiers);
-    }
-
-    public ModifierKeys ToggleHideModifiers
-    {
-        get => _settings.ToggleHideModifiers;
-        set => TrySetToggleHideHotkey(_settings.ToggleHideKey, value);
-    }
-
-    public Key SeekBackwardKey
-    {
-        get => _settings.SeekBackwardKey;
-        set => TrySetSeekBackwardHotkey(value, _settings.SeekBackwardModifiers);
-    }
-
-    public ModifierKeys SeekBackwardModifiers
-    {
-        get => _settings.SeekBackwardModifiers;
-        set => TrySetSeekBackwardHotkey(_settings.SeekBackwardKey, value);
-    }
-
-    public Key SeekForwardKey
-    {
-        get => _settings.SeekForwardKey;
-        set => TrySetSeekForwardHotkey(value, _settings.SeekForwardModifiers);
-    }
-
-    public ModifierKeys SeekForwardModifiers
-    {
-        get => _settings.SeekForwardModifiers;
-        set => TrySetSeekForwardHotkey(_settings.SeekForwardKey, value);
-    }
-
-    /// <summary>热键槽位标识，用于候选组合与其它槽位的冲突检查。</summary>
-    private enum HotkeySlot
-    {
-        Mode,
-        Playback,
-        Hide,
-        SeekBackward,
-        SeekForward,
-    }
-
-    /// <summary>候选 (Key, 修饰键) 是否已被其它热键槽位占用（仅 UI 线程读写 settings）。</summary>
-    private bool IsHotkeyOccupied(Key key, ModifierKeys modifiers, HotkeySlot self)
-    {
-        bool Occupied(HotkeySlot slot, Key slotKey, ModifierKeys slotMods) =>
-            slot != self && slotKey == key && slotMods == modifiers;
-
-        return Occupied(HotkeySlot.Mode, _settings.ToggleModeKey, _settings.ToggleModeModifiers)
-            || Occupied(HotkeySlot.Playback, _settings.TogglePlaybackKey, _settings.TogglePlaybackModifiers)
-            || Occupied(HotkeySlot.Hide, _settings.ToggleHideKey, _settings.ToggleHideModifiers)
-            || Occupied(HotkeySlot.SeekBackward, _settings.SeekBackwardKey, _settings.SeekBackwardModifiers)
-            || Occupied(HotkeySlot.SeekForward, _settings.SeekForwardKey, _settings.SeekForwardModifiers);
-    }
-
-    public bool TrySetToggleModeHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == _settings.ToggleModeKey && modifiers == _settings.ToggleModeModifiers)
+        var binding = new HotkeyBinding(key, modifiers);
+        if (_settings.GetHotkey(slot) == binding)
         {
             return true;
         }
 
-        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Mode) ||
-            !_keyboardHookService.TrySetToggleModeHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
+        // 先查其它槽位（仅 UI 线程读写 settings），再交钩子服务原子更新注册
+        if (HotkeySlots.All.Any(other => other != slot && _settings.GetHotkey(other) == binding) ||
+            !_keyboardHookService.TrySetHotkey(slot, KeyInterop.VirtualKeyFromKey(key), modifiers))
         {
             return false;
         }
 
-        _settings.ToggleModeKey = key;
-        _settings.ToggleModeModifiers = modifiers;
+        _settings.SetHotkey(slot, binding);
         QueueSettingsSave();
         OnHotkeysChanged();
         return true;
     }
 
-    public bool TrySetTogglePlaybackHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == _settings.TogglePlaybackKey && modifiers == _settings.TogglePlaybackModifiers)
-        {
-            return true;
-        }
-
-        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Playback) ||
-            !_keyboardHookService.TrySetTogglePlaybackHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
-        {
-            return false;
-        }
-
-        _settings.TogglePlaybackKey = key;
-        _settings.TogglePlaybackModifiers = modifiers;
-        QueueSettingsSave();
-        OnHotkeysChanged();
-        return true;
-    }
-
-    public bool TrySetToggleHideHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == _settings.ToggleHideKey && modifiers == _settings.ToggleHideModifiers)
-        {
-            return true;
-        }
-
-        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.Hide) ||
-            !_keyboardHookService.TrySetToggleHideHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
-        {
-            return false;
-        }
-
-        _settings.ToggleHideKey = key;
-        _settings.ToggleHideModifiers = modifiers;
-        QueueSettingsSave();
-        OnHotkeysChanged();
-        return true;
-    }
-
-    public bool TrySetSeekBackwardHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == _settings.SeekBackwardKey && modifiers == _settings.SeekBackwardModifiers)
-        {
-            return true;
-        }
-
-        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.SeekBackward) ||
-            !_keyboardHookService.TrySetSeekBackwardHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
-        {
-            return false;
-        }
-
-        _settings.SeekBackwardKey = key;
-        _settings.SeekBackwardModifiers = modifiers;
-        QueueSettingsSave();
-        OnHotkeysChanged();
-        return true;
-    }
-
-    public bool TrySetSeekForwardHotkey(Key key, ModifierKeys modifiers)
-    {
-        if (key == _settings.SeekForwardKey && modifiers == _settings.SeekForwardModifiers)
-        {
-            return true;
-        }
-
-        if (IsHotkeyOccupied(key, modifiers, HotkeySlot.SeekForward) ||
-            !_keyboardHookService.TrySetSeekForwardHotkey(KeyInterop.VirtualKeyFromKey(key), modifiers))
-        {
-            return false;
-        }
-
-        _settings.SeekForwardKey = key;
-        _settings.SeekForwardModifiers = modifiers;
-        QueueSettingsSave();
-        OnHotkeysChanged();
-        return true;
-    }
-
-    private string FormatToggleModeHotkey() =>
-        HotkeyFormatter.Format(_settings.ToggleModeKey, _settings.ToggleModeModifiers);
-
-    private string FormatTogglePlaybackHotkey() =>
-        HotkeyFormatter.Format(_settings.TogglePlaybackKey, _settings.TogglePlaybackModifiers);
-
-    private string FormatToggleHideHotkey() =>
-        HotkeyFormatter.Format(_settings.ToggleHideKey, _settings.ToggleHideModifiers);
+    private string FormatHotkey(HotkeySlot slot) => HotkeyFormatter.Format(_settings.GetHotkey(slot));
 
     private void OnHotkeysChanged()
     {
@@ -468,22 +303,15 @@ public partial class MainWindow : Window, IControlBrowser
 
             // 启动时 settings 已 Sanitize 无冲突；批量原子应用——逐个 TrySet 会被
             // 「交叉占用」配置（后写槽位的目标键是未更新槽位的默认键）整批拒绝
-            if (!_keyboardHookService.TrySetBuiltInHotkeys(
-                    KeyInterop.VirtualKeyFromKey(_settings.ToggleModeKey), _settings.ToggleModeModifiers,
-                    KeyInterop.VirtualKeyFromKey(_settings.TogglePlaybackKey), _settings.TogglePlaybackModifiers,
-                    KeyInterop.VirtualKeyFromKey(_settings.ToggleHideKey), _settings.ToggleHideModifiers,
-                    KeyInterop.VirtualKeyFromKey(_settings.SeekBackwardKey), _settings.SeekBackwardModifiers,
-                    KeyInterop.VirtualKeyFromKey(_settings.SeekForwardKey), _settings.SeekForwardModifiers))
+            if (!_keyboardHookService.TrySetBuiltInHotkeys(HotkeySlots.All.ToDictionary(
+                    slot => slot,
+                    slot => (KeyInterop.VirtualKeyFromKey(_settings.GetHotkey(slot).Key), _settings.GetHotkey(slot).Modifiers))))
             {
                 FileLogger.LogException(
                     new InvalidOperationException(
-                        $"Hotkeys in settings could not be applied (internal conflict): " +
-                        $"mode={_settings.ToggleModeKey}+{_settings.ToggleModeModifiers}, " +
-                        $"playback={_settings.TogglePlaybackKey}+{_settings.TogglePlaybackModifiers}, " +
-                        $"hide={_settings.ToggleHideKey}+{_settings.ToggleHideModifiers}, " +
-                        $"seekBack={_settings.SeekBackwardKey}+{_settings.SeekBackwardModifiers}, " +
-                        $"seekFwd={_settings.SeekForwardKey}+{_settings.SeekForwardModifiers}. " +
-                        "Falling back to built-in defaults."),
+                        "Hotkeys in settings could not be applied (internal conflict): " +
+                        string.Join(", ", HotkeySlots.All.Select(slot => $"{slot}={_settings.GetHotkey(slot)}")) +
+                        ". Falling back to built-in defaults."),
                     "Apply hotkeys from settings");
             }
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
@@ -524,13 +352,7 @@ public partial class MainWindow : Window, IControlBrowser
                 return;
             }
 
-            ReportDataDirectoryNotice();
-
-            _keyboardHookService.KPressed += KeyboardHookService_OnKPressed;
-            _keyboardHookService.ModeTogglePressed += KeyboardHookService_OnModeTogglePressed;
-            _keyboardHookService.HideTogglePressed += KeyboardHookService_OnHideTogglePressed;
-            _keyboardHookService.SeekBackwardPressed += KeyboardHookService_OnSeekBackwardPressed;
-            _keyboardHookService.SeekForwardPressed += KeyboardHookService_OnSeekForwardPressed;
+            _keyboardHookService.HotkeyPressed += KeyboardHookService_OnHotkeyPressed;
             StartKeyboardHook();
             EnsureMouseLeaveWatchStarted();
 
@@ -551,13 +373,11 @@ public partial class MainWindow : Window, IControlBrowser
     private void App_OnActivated(object? sender, EventArgs e)
     {
         _keyboardHookService.IsAppActive = true;
-        UpdateWebViewMemoryTargetLevel();
     }
 
     private void App_OnDeactivated(object? sender, EventArgs e)
     {
         _keyboardHookService.IsAppActive = false;
-        UpdateWebViewMemoryTargetLevel();
     }
 
     private void MainWindow_OnStateChanged(object? sender, EventArgs e)
@@ -575,8 +395,9 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 浮窗叠游戏、应用失焦或窗口最小化时请求 WebView2 使用低内存目标；
-    /// 浏览模式且前台可见时恢复 Normal，减轻与游戏争用内存。
+    /// 只在窗口最小化（含热键隐藏）时请求 WebView2 使用低内存目标，可见时一律 Normal。
+    /// 官方文档说 Low 用于不活动或隐藏的 WebView、可能把内存换出到磁盘；2026-11-04 实测它还会周期性修剪工作集、
+    /// 伴随大量缺页，类游戏负载下跳帧多约 20%（见视频播放卡顿计划 S1），而边玩边看时浮窗正可见。
     /// </summary>
     private void UpdateWebViewMemoryTargetLevel(CoreWebView2? core = null)
     {
@@ -594,12 +415,7 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        var preferLow =
-            _settings.WindowMode == WindowMode.Fixed ||
-            WindowState == WindowState.Minimized ||
-            !_keyboardHookService.IsAppActive;
-
-        var target = preferLow
+        var target = WindowState == WindowState.Minimized
             ? CoreWebView2MemoryUsageTargetLevel.Low
             : CoreWebView2MemoryUsageTargetLevel.Normal;
 
@@ -798,6 +614,7 @@ public partial class MainWindow : Window, IControlBrowser
         core.DownloadStarting += BrowserView_OnDownloadStarting;
         core.ProcessFailed += BrowserView_OnProcessFailed;
         core.ContainsFullScreenElementChanged += BrowserView_OnContainsFullScreenElementChanged;
+        core.LaunchingExternalUriScheme += BrowserView_OnLaunchingExternalUriScheme;
         _browserEventControl = browser;
         _browserEventCore = core;
     }
@@ -840,6 +657,7 @@ public partial class MainWindow : Window, IControlBrowser
                 core.DownloadStarting -= BrowserView_OnDownloadStarting;
                 core.ProcessFailed -= BrowserView_OnProcessFailed;
                 core.ContainsFullScreenElementChanged -= BrowserView_OnContainsFullScreenElementChanged;
+                core.LaunchingExternalUriScheme -= BrowserView_OnLaunchingExternalUriScheme;
             }
             catch
             {
@@ -1198,8 +1016,8 @@ public partial class MainWindow : Window, IControlBrowser
                 CompleteNavigation(
                     LocalizationService.Format(
                         "Status.PageLoaded",
-                        FormatTogglePlaybackHotkey(),
-                        FormatToggleModeHotkey()),
+                        FormatHotkey(HotkeySlot.Playback),
+                        FormatHotkey(HotkeySlot.ToggleMode)),
                     StatusLevel.Success,
                     BrowserStateChangeKind.History);
             }
@@ -1215,9 +1033,6 @@ public partial class MainWindow : Window, IControlBrowser
                     LocalizationService.Format("Status.LoadFailed", e.WebErrorStatus),
                     StatusLevel.Error);
             }
-
-            // 成功或失败都调度一次：首屏失败时仍应有机会腾空间，避免坏缓存卡住后续启动
-            TryScheduleAutoCacheCheck();
         }
         catch (Exception ex)
         {
@@ -1225,13 +1040,19 @@ public partial class MainWindow : Window, IControlBrowser
             CompleteNavigation(
                 LocalizationService.Format("Status.RecordStateFailed", ex.Message),
                 StatusLevel.Error);
+        }
+        finally
+        {
+            // 成功或失败都调度一次：首屏失败时仍应有机会腾空间，避免坏缓存卡住后续启动
             TryScheduleAutoCacheCheck();
+            ReportStartupNoticesOnce();
         }
     }
 
     /// <summary>
     /// 首屏导航结束后再异步检查/清理 WebView2 缓存，避免与首屏加载抢磁盘 IO。
-    /// 仅调度一次；24 小时节流与阈值判断在 CheckWebView2CacheSizeAsync 内。
+    /// 每次启动只调度一次，常驻期间不再检查：按设计如此（用户 2026-11-04 确认），不要挂到定时器上。
+    /// 24 小时节流与阈值判断在 CheckWebView2CacheSizeAsync 内。
     /// </summary>
     private void TryScheduleAutoCacheCheck()
     {
@@ -1413,7 +1234,8 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        // 拦截「在新窗口打开」的链接，统一在当前浏览器内导航，避免弹出无控制窗口的裸 WebView2
+        // 拦截「在新窗口打开」的链接，统一在当前浏览器内导航，避免弹出无控制窗口的裸 WebView2。
+        // 网页脚本自己触发（IsUserInitiated=false）的弹窗同样在当前页打开：按设计如此（用户 2026-11-04 确认），不要改成拦截
         if (string.IsNullOrEmpty(e.Uri))
         {
             return;
@@ -1456,6 +1278,53 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         UpdateTitleBarButtons();
+    }
+
+    /// <summary>
+    /// 网页要打开外部程序（xxx:// 等系统登记过的协议）。WebView2 默认对话框点「打开」后由浏览器进程启动，
+    /// 带本程序的管理员权限，所以一律取消默认处理：非用户点击触发的直接拦掉；用户点击触发的自己确认，
+    /// 确认后经资源管理器以普通权限打开（见 <see cref="ShellLauncher"/>）。
+    /// </summary>
+    private void BrowserView_OnLaunchingExternalUriScheme(object? sender, CoreWebView2LaunchingExternalUriSchemeEventArgs e)
+    {
+        if (!IsCurrentBrowserEventSender(sender))
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        var uri = e.Uri;
+        if (!e.IsUserInitiated)
+        {
+            FileLogger.LogDebug($"Blocked external URI scheme launch without user gesture: {uri}");
+            return;
+        }
+
+        var origin = string.IsNullOrWhiteSpace(e.InitiatingOrigin)
+            ? LocalizationService.Get("ExternalApp.UnknownOrigin")
+            : e.InitiatingOrigin;
+        // 事件回调里不弹模态框：放到下一轮消息循环，WebView2 这边已经取消、不必等
+        _ = Dispatcher.InvokeAsync(() => ConfirmAndLaunchExternalUri(uri, origin));
+    }
+
+    private void ConfirmAndLaunchExternalUri(string uri, string origin)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        var answer = System.Windows.MessageBox.Show(
+            this,
+            LocalizationService.Format("ExternalApp.Body", origin, uri),
+            LocalizationService.Get("ExternalApp.Title"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+        if (answer == MessageBoxResult.Yes && !ShellLauncher.TryOpen(uri))
+        {
+            SetStatusMessage(LocalizationService.Format("Status.ExternalAppFailed", uri), StatusLevel.Warning);
+        }
     }
 
     private void MainWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -1815,7 +1684,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    private void KeyboardHookService_OnKPressed(object? sender, EventArgs e)
+    private void KeyboardHookService_OnHotkeyPressed(object? sender, HotkeySlot slot)
     {
         if (_isShuttingDown)
         {
@@ -1824,68 +1693,28 @@ public partial class MainWindow : Window, IControlBrowser
 
         _ = Dispatcher.InvokeAsync(() =>
         {
-            if (IsKeyboardFocusInTextInput())
+            switch (slot)
             {
-                return; // 控制窗地址栏/搜索框输入中，不误触播放
+                case HotkeySlot.ToggleMode:
+                    ToggleWindowMode();
+                    return;
+                case HotkeySlot.Hide:
+                    ToggleFloatingHidden();
+                    return;
             }
 
-            _ = ToggleVideoPlaybackAsync();
-        });
-    }
-
-    private void KeyboardHookService_OnModeTogglePressed(object? sender, EventArgs e)
-    {
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        _ = Dispatcher.InvokeAsync(ToggleWindowMode);
-    }
-
-    private void KeyboardHookService_OnHideTogglePressed(object? sender, EventArgs e)
-    {
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        _ = Dispatcher.InvokeAsync(ToggleFloatingHidden);
-    }
-
-    private void KeyboardHookService_OnSeekBackwardPressed(object? sender, EventArgs e)
-    {
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        _ = Dispatcher.InvokeAsync(() =>
-        {
+            // 播放与快进快退：控制窗地址栏 / 搜索框输入中不误触
             if (IsKeyboardFocusInTextInput())
             {
                 return;
             }
 
-            _ = SeekVideoAsync(-5);
-        });
-    }
-
-    private void KeyboardHookService_OnSeekForwardPressed(object? sender, EventArgs e)
-    {
-        if (_isShuttingDown)
-        {
-            return;
-        }
-
-        _ = Dispatcher.InvokeAsync(() =>
-        {
-            if (IsKeyboardFocusInTextInput())
+            _ = slot switch
             {
-                return;
-            }
-
-            _ = SeekVideoAsync(5);
+                HotkeySlot.Playback => ToggleVideoPlaybackAsync(),
+                HotkeySlot.SeekBackward => SeekVideoAsync(-5),
+                _ => SeekVideoAsync(5),
+            };
         });
     }
 
@@ -1936,7 +1765,7 @@ public partial class MainWindow : Window, IControlBrowser
 
             WindowState = WindowState.Minimized;
             SetStatusMessage(
-                LocalizationService.Format("Status.WindowHidden", FormatToggleHideHotkey()),
+                LocalizationService.Format("Status.WindowHidden", FormatHotkey(HotkeySlot.Hide)),
                 StatusLevel.Info);
         }
     }
@@ -2559,8 +2388,6 @@ public partial class MainWindow : Window, IControlBrowser
         _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateBrowserAcceleratorKeys();
-        // 浮窗叠游戏 / 失焦 / 最小化时降低 WebView 内存目标，前台浏览再恢复
-        UpdateWebViewMemoryTargetLevel();
         // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
         ApplyTitleBarForCurrentMode(forceHideInFixed: true);
         UpdateTitleBarButtons();
@@ -2575,10 +2402,10 @@ public partial class MainWindow : Window, IControlBrowser
             ShowMainToast(
                 LocalizationService.Format(
                     clickThrough ? "Mode.FirstFloatingHintClickThrough" : "Mode.FirstFloatingHint",
-                    FormatToggleModeHotkey()),
+                    FormatHotkey(HotkeySlot.ToggleMode)),
                 TimeSpan.FromSeconds(3.2));
             SetStatusMessage(
-                LocalizationService.Format("Mode.FixedOn", FormatToggleModeHotkey()),
+                LocalizationService.Format("Mode.FixedOn", FormatHotkey(HotkeySlot.ToggleMode)),
                 StatusLevel.Success);
         }
         else
@@ -2592,7 +2419,7 @@ public partial class MainWindow : Window, IControlBrowser
                 TimeSpan.FromSeconds(1.1));
             SetStatusMessage(
                 enteringFloating
-                    ? LocalizationService.Format("Mode.FixedOn", FormatToggleModeHotkey())
+                    ? LocalizationService.Format("Mode.FixedOn", FormatHotkey(HotkeySlot.ToggleMode))
                     : LocalizationService.Get("Mode.FreeOn"),
                 StatusLevel.Info);
         }
@@ -2769,21 +2596,49 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 启动时数据目录的提示：设置的位置不可用、刚搬完数据（旧数据还在）或搬运失败。浏览器就绪之后再发，免得被就绪提示盖掉。
+    /// 启动时的提示：数据目录不可用 / 刚搬完数据（旧数据还在）/ 搬运失败，以及数据文件读不出来（原文件改名保留或本次不写盘）。
+    /// 首屏导航结束后一起发（只发一次），免得被就绪、页面已加载的提示盖掉；有几条就分行显示。
     /// </summary>
-    private void ReportDataDirectoryNotice()
+    private void ReportStartupNoticesOnce()
     {
+        if (_startupNoticesReported || _isShuttingDown)
+        {
+            return;
+        }
+
+        _startupNoticesReported = true;
+        var notices = new List<string>();
+        var level = StatusLevel.Success;
         if (AppPaths.UnavailableConfiguredDirectory is { } unavailable)
         {
-            SetStatusMessage(LocalizationService.Format("Status.DataDirUnavailable", unavailable), StatusLevel.Warning);
+            notices.Add(LocalizationService.Format("Status.DataDirUnavailable", unavailable));
+            level = StatusLevel.Warning;
         }
         else if (AppPaths.MoveFailure is { } failure)
         {
-            SetStatusMessage(LocalizationService.Format("Status.DataDirMoveFailed", failure), StatusLevel.Warning);
+            notices.Add(LocalizationService.Format("Status.DataDirMoveFailed", failure));
+            level = StatusLevel.Warning;
         }
         else if (AppPaths.MovedFromDirectory is { } movedFrom)
         {
-            SetStatusMessage(LocalizationService.Format("Status.DataDirMoved", movedFrom), StatusLevel.Success);
+            notices.Add(LocalizationService.Format("Status.DataDirMoved", movedFrom));
+        }
+
+        var problems = new[]
+        {
+            _settingsService.LoadProblem, _favoritesService.LoadProblem, _historyService.LoadProblem, _downloadsService.LoadProblem,
+        };
+        foreach (var problem in problems.OfType<DataFileProblem>())
+        {
+            notices.Add(problem.PreservedPath is { } preservedPath
+                ? LocalizationService.Format("Status.DataFilePreserved", problem.FileName, Path.GetFileName(preservedPath))
+                : LocalizationService.Format("Status.DataFileBlocked", problem.FileName));
+            level = StatusLevel.Warning;
+        }
+
+        if (notices.Count > 0)
+        {
+            SetStatusMessage(string.Join(Environment.NewLine, notices), level);
         }
     }
 
@@ -2895,14 +2750,7 @@ public partial class MainWindow : Window, IControlBrowser
         SetZoom(imported.ZoomFactor);
         FloatingClickThrough = imported.FloatingClickThrough;
         HotkeyScope = imported.HotkeyScope;
-        ApplyHotkeys(new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
-        {
-            [HotkeySlot.Mode] = (imported.ToggleModeKey, imported.ToggleModeModifiers),
-            [HotkeySlot.Playback] = (imported.TogglePlaybackKey, imported.TogglePlaybackModifiers),
-            [HotkeySlot.Hide] = (imported.ToggleHideKey, imported.ToggleHideModifiers),
-            [HotkeySlot.SeekBackward] = (imported.SeekBackwardKey, imported.SeekBackwardModifiers),
-            [HotkeySlot.SeekForward] = (imported.SeekForwardKey, imported.SeekForwardModifiers),
-        });
+        ApplyHotkeys(imported);
 
         if (applyWindowBounds)
         {
@@ -2946,42 +2794,18 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 恢复默认热键：模式=F8、播放=K、隐藏=F7、倒退=;、快进='。
-    /// 先把非默认热键泊到 F9–F12 的空闲位（不能是任何默认值或其它热键当前值），
-    /// 避免槽位间交叉占用导致目标默认值写不进去。
+    /// 恢复默认热键（默认值取自 <see cref="AppSettings"/>：模式=F8、播放=K、隐藏=F7、倒退=;、快进='）。
     /// </summary>
-    private void RestoreDefaultHotkeys() => ApplyHotkeys(DefaultHotkeys);
-
-    private static readonly IReadOnlyDictionary<HotkeySlot, (Key Key, ModifierKeys Mods)> DefaultHotkeys =
-        new Dictionary<HotkeySlot, (Key Key, ModifierKeys Mods)>
-        {
-            [HotkeySlot.Mode] = (Key.F8, ModifierKeys.None),
-            [HotkeySlot.Playback] = (Key.K, ModifierKeys.None),
-            [HotkeySlot.Hide] = (Key.F7, ModifierKeys.None),
-            [HotkeySlot.SeekBackward] = (Key.OemSemicolon, ModifierKeys.None),
-            [HotkeySlot.SeekForward] = (Key.OemQuotes, ModifierKeys.None),
-        };
+    private void RestoreDefaultHotkeys() => ApplyHotkeys(new AppSettings());
 
     /// <summary>
-    /// 把五组热键批量设为 <paramref name="targets"/>（恢复默认、导入配置共用；目标须两两不冲突，Sanitize 已保证）。
+    /// 把五组热键批量设为 <paramref name="targets"/> 里的值（恢复默认、导入配置共用；目标须两两不冲突，Sanitize 已保证）。
     /// 逐组直接写会被「目标组合正被另一组占用」拦下，所以先把要改的组泊到目标之外的空闲键，再逐个写目标。
     /// </summary>
-    private void ApplyHotkeys(IReadOnlyDictionary<HotkeySlot, (Key Key, ModifierKeys Mods)> targets)
+    private void ApplyHotkeys(AppSettings targets)
     {
-        var slots = new (HotkeySlot Slot, Func<Key> GetKey, Func<ModifierKeys> GetMods, Func<Key, ModifierKeys, bool> Set)[]
-        {
-            (HotkeySlot.Mode, () => _settings.ToggleModeKey, () => _settings.ToggleModeModifiers,
-                (k, m) => TrySetToggleModeHotkey(k, m)),
-            (HotkeySlot.Playback, () => _settings.TogglePlaybackKey, () => _settings.TogglePlaybackModifiers,
-                (k, m) => TrySetTogglePlaybackHotkey(k, m)),
-            (HotkeySlot.Hide, () => _settings.ToggleHideKey, () => _settings.ToggleHideModifiers,
-                (k, m) => TrySetToggleHideHotkey(k, m)),
-            (HotkeySlot.SeekBackward, () => _settings.SeekBackwardKey, () => _settings.SeekBackwardModifiers,
-                (k, m) => TrySetSeekBackwardHotkey(k, m)),
-            (HotkeySlot.SeekForward, () => _settings.SeekForwardKey, () => _settings.SeekForwardModifiers,
-                (k, m) => TrySetSeekForwardHotkey(k, m)),
-        };
-        if (slots.All(slot => slot.GetKey() == targets[slot.Slot].Key && slot.GetMods() == targets[slot.Slot].Mods))
+        var changing = HotkeySlots.All.Where(slot => _settings.GetHotkey(slot) != targets.GetHotkey(slot)).ToList();
+        if (changing.Count == 0)
         {
             return;
         }
@@ -2989,25 +2813,19 @@ public partial class MainWindow : Window, IControlBrowser
         // 泊位须避开所有目标键，且个数 ≥ 槽位数（5）：目标最多占掉其中 5 个，所以 F9-F12、F6（与 SettingsService.HotkeyFallbackKeys
         // 同源）之外再备 F13-F17（多数键盘没有这些键，临时泊在上面没有副作用），全部槽位都需让位时仍有空位
         ReadOnlySpan<Key> parkingKeys = [Key.F9, Key.F10, Key.F11, Key.F12, Key.F6, Key.F13, Key.F14, Key.F15, Key.F16, Key.F17];
-        var targetKeys = targets.Values.Select(pair => pair.Key).ToHashSet();
-        foreach (var slot in slots)
+        var targetKeys = HotkeySlots.All.Select(slot => targets.GetHotkey(slot).Key).ToHashSet();
+        foreach (var slot in changing)
         {
-            var (targetKey, targetMods) = targets[slot.Slot];
-            if (slot.GetKey() == targetKey && slot.GetMods() == targetMods)
-            {
-                continue;
-            }
-
             // 泊位须避开：目标键集合、以及其它槽位当前已占的键
             foreach (var park in parkingKeys)
             {
                 if (targetKeys.Contains(park) ||
-                    slots.Any(other => other.Slot != slot.Slot && other.GetKey() == park))
+                    HotkeySlots.All.Any(other => other != slot && _settings.GetHotkey(other).Key == park))
                 {
                     continue;
                 }
 
-                if (slot.Set(park, ModifierKeys.None))
+                if (TrySetHotkey(slot, park, ModifierKeys.None))
                 {
                     break;
                 }
@@ -3015,10 +2833,10 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         // 逐个写目标：泊位已腾出目标组合，正常应全部成功
-        foreach (var slot in slots)
+        foreach (var slot in changing)
         {
-            var (targetKey, targetMods) = targets[slot.Slot];
-            slot.Set(targetKey, targetMods);
+            var (targetKey, targetModifiers) = targets.GetHotkey(slot);
+            TrySetHotkey(slot, targetKey, targetModifiers);
         }
     }
 
@@ -3591,7 +3409,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         if (ModeToggleButton is not null)
         {
-            var hotkey = FormatToggleModeHotkey();
+            var hotkey = FormatHotkey(HotkeySlot.ToggleMode);
             // 动作型 tooltip：写清点下去会进入哪一侧
             ModeToggleButton.ToolTip = _settings.WindowMode == WindowMode.Fixed
                 ? LocalizationService.Format("Mode.SwitchToBrowsingTooltip", hotkey)
@@ -3842,11 +3660,7 @@ public partial class MainWindow : Window, IControlBrowser
             _mouseLeaveWatchTimer = null;
         }
 
-        _keyboardHookService.KPressed -= KeyboardHookService_OnKPressed;
-        _keyboardHookService.ModeTogglePressed -= KeyboardHookService_OnModeTogglePressed;
-        _keyboardHookService.HideTogglePressed -= KeyboardHookService_OnHideTogglePressed;
-        _keyboardHookService.SeekBackwardPressed -= KeyboardHookService_OnSeekBackwardPressed;
-        _keyboardHookService.SeekForwardPressed -= KeyboardHookService_OnSeekForwardPressed;
+        _keyboardHookService.HotkeyPressed -= KeyboardHookService_OnHotkeyPressed;
 
         if (_windowBoundsUiDebounceTimer is not null)
         {

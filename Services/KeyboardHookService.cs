@@ -8,11 +8,7 @@ namespace GenshinBrowser.Services;
 
 public sealed class KeyboardHookService : IDisposable
 {
-    private const string ToggleModeRegistrationId = "toggle-mode";
-    private const string TogglePlaybackRegistrationId = "toggle-playback";
-    private const string ToggleHideRegistrationId = "toggle-hide";
-    private const string SeekBackwardRegistrationId = "seek-backward";
-    private const string SeekForwardRegistrationId = "seek-forward";
+    private const string BuiltInRegistrationPrefix = "builtin:";
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
     private const int WmKeyUp = 0x0101;
@@ -27,55 +23,46 @@ public sealed class KeyboardHookService : IDisposable
     internal const int WrongThreadErrorCode = unchecked((int)0x80000014);
 
     /// <summary>
-    /// 热键主键的合法 VK：非零、单字节且不是修饰键。
+    /// 热键主键的合法 VK：非零、单字节，不是修饰键，也不是 VK_PROCESSKEY。
     /// 修饰键作主键是永不触发的死键：其 KeyDown 时修饰状态必然为按下，
     /// 与任何修饰期望都矛盾（VK_CONTROL 泛型状态覆盖 LCtrl/RCtrl）。
+    /// VK_PROCESSKEY 是输入法处理按键后的占位键，低级钩子收到的是真实键码，同样永不触发。
     /// </summary>
     private static bool IsValidHotkeyVirtualKey(int virtualKey) =>
-        virtualKey is > 0 and <= 0xFF && !IsModifierVirtualKey(virtualKey);
+        virtualKey is > 0 and <= 0xFF and not VkProcessKey && !IsModifierVirtualKey(virtualKey);
+
+    private const int VkProcessKey = 0xE5;
 
     private static bool IsModifierVirtualKey(int virtualKey) =>
         virtualKey is 0x10 or 0x11 or 0x12 or 0x5B or 0x5C or (>= 0xA0 and <= 0xA5);
 
-    private volatile int _toggleModeVk = 0x77; // Default F8 (VK_F8)
-    private volatile int _togglePlaybackVk = 0x4B; // Default K (VK_K)
-    private volatile int _toggleHideVk = 0x76; // Default F7 (VK_F7)
-    private volatile int _seekBackwardVk = 0xBA; // Default ; (VK_OEM_1)
-    private volatile int _seekForwardVk = 0xDE; // Default ' (VK_OEM_7)
-    private volatile ModifierKeys _toggleModeModifiers = ModifierKeys.None;
-    private volatile ModifierKeys _togglePlaybackModifiers = ModifierKeys.None;
-    private volatile ModifierKeys _toggleHideModifiers = ModifierKeys.None;
-    private volatile ModifierKeys _seekBackwardModifiers = ModifierKeys.None;
-    private volatile ModifierKeys _seekForwardModifiers = ModifierKeys.None;
+    // 内置热键（VK + 修饰键），下标为 HotkeySlot；只在 _registrationLock 内读写。
+    // 钩子回调不读它，只读发布出去的不可变快照 _hotkeySnapshot。
+    private readonly (int VirtualKey, ModifierKeys Modifiers)[] _builtIn = CreateDefaultBuiltIn();
 
-    public int ToggleModeVk
+    // 默认值取自 AppSettings（F8 / K / F7 / ; / '），两边不再各写一份
+    private static (int VirtualKey, ModifierKeys Modifiers)[] CreateDefaultBuiltIn()
     {
-        get => _toggleModeVk;
-        set => TrySetToggleModeHotkey(value, _toggleModeModifiers);
+        var defaults = new AppSettings();
+        return HotkeySlots.All
+            .Select(slot => defaults.GetHotkey(slot))
+            .Select(binding => (KeyInterop.VirtualKeyFromKey(binding.Key), binding.Modifiers))
+            .ToArray();
     }
 
-    public int TogglePlaybackVk
+    /// <summary>某组内置热键当前的 VK 与修饰键。</summary>
+    public (int VirtualKey, ModifierKeys Modifiers) GetHotkey(HotkeySlot slot)
     {
-        get => _togglePlaybackVk;
-        set => TrySetTogglePlaybackHotkey(value, _togglePlaybackModifiers);
-    }
-
-    public ModifierKeys ToggleModeModifiers
-    {
-        get => _toggleModeModifiers;
-        set => TrySetToggleModeHotkey(_toggleModeVk, value);
-    }
-
-    public ModifierKeys TogglePlaybackModifiers
-    {
-        get => _togglePlaybackModifiers;
-        set => TrySetTogglePlaybackHotkey(_togglePlaybackVk, value);
+        lock (_registrationLock)
+        {
+            return _builtIn[(int)slot];
+        }
     }
 
     /// <summary>
-    /// 原子更新模式热键 (VK + 修饰键)。与播放热键最终组合冲突时返回 false，不改任何状态。
+    /// 原子更新一组内置热键 (VK + 修饰键)。主键不合法、与任一其它注册（内置或自定义）冲突、或已释放时返回 false，不改任何状态。
     /// </summary>
-    public bool TrySetToggleModeHotkey(int virtualKey, ModifierKeys modifiers)
+    public bool TrySetHotkey(HotkeySlot slot, int virtualKey, ModifierKeys modifiers)
     {
         if (!IsValidHotkeyVirtualKey(virtualKey))
         {
@@ -89,203 +76,46 @@ public sealed class KeyboardHookService : IDisposable
                 return false;
             }
 
-            if (virtualKey == _toggleModeVk && modifiers == _toggleModeModifiers)
+            if (_builtIn[(int)slot] == (virtualKey, modifiers))
             {
                 return true;
             }
 
-            if (HasConflictingRegistrationLocked(ToggleModeRegistrationId, virtualKey, modifiers))
+            var id = RegistrationId(slot);
+            if (HasConflictingRegistrationLocked(id, virtualKey, modifiers))
             {
                 return false;
             }
 
-            _toggleModeVk = virtualKey;
-            _toggleModeModifiers = modifiers;
-            _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
+            _builtIn[(int)slot] = (virtualKey, modifiers);
+            _registrations[id] = CreateBuiltInRegistration(slot);
             PublishSnapshotLocked();
             return true;
         }
     }
 
     /// <summary>
-    /// 原子更新播放热键 (VK + 修饰键)。与模式热键最终组合冲突时返回 false，不改任何状态。
-    /// </summary>
-    public bool TrySetTogglePlaybackHotkey(int virtualKey, ModifierKeys modifiers)
-    {
-        if (!IsValidHotkeyVirtualKey(virtualKey))
-        {
-            return false;
-        }
-
-        lock (_registrationLock)
-        {
-            if (_isDisposed)
-            {
-                return false;
-            }
-
-            if (virtualKey == _togglePlaybackVk && modifiers == _togglePlaybackModifiers)
-            {
-                return true;
-            }
-
-            if (HasConflictingRegistrationLocked(TogglePlaybackRegistrationId, virtualKey, modifiers))
-            {
-                return false;
-            }
-
-            _togglePlaybackVk = virtualKey;
-            _togglePlaybackModifiers = modifiers;
-            _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
-            PublishSnapshotLocked();
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 原子更新浮窗隐藏热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
-    /// </summary>
-    public bool TrySetToggleHideHotkey(int virtualKey, ModifierKeys modifiers)
-    {
-        if (!IsValidHotkeyVirtualKey(virtualKey))
-        {
-            return false;
-        }
-
-        lock (_registrationLock)
-        {
-            if (_isDisposed)
-            {
-                return false;
-            }
-
-            if (virtualKey == _toggleHideVk && modifiers == _toggleHideModifiers)
-            {
-                return true;
-            }
-
-            if (HasConflictingRegistrationLocked(ToggleHideRegistrationId, virtualKey, modifiers))
-            {
-                return false;
-            }
-
-            _toggleHideVk = virtualKey;
-            _toggleHideModifiers = modifiers;
-            _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
-            PublishSnapshotLocked();
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 原子更新视频倒退热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
-    /// </summary>
-    public bool TrySetSeekBackwardHotkey(int virtualKey, ModifierKeys modifiers)
-    {
-        if (!IsValidHotkeyVirtualKey(virtualKey))
-        {
-            return false;
-        }
-
-        lock (_registrationLock)
-        {
-            if (_isDisposed)
-            {
-                return false;
-            }
-
-            if (virtualKey == _seekBackwardVk && modifiers == _seekBackwardModifiers)
-            {
-                return true;
-            }
-
-            if (HasConflictingRegistrationLocked(SeekBackwardRegistrationId, virtualKey, modifiers))
-            {
-                return false;
-            }
-
-            _seekBackwardVk = virtualKey;
-            _seekBackwardModifiers = modifiers;
-            _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
-            PublishSnapshotLocked();
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 原子更新视频快进热键。与任一其它内置热键最终组合冲突时返回 false，不改任何状态。
-    /// </summary>
-    public bool TrySetSeekForwardHotkey(int virtualKey, ModifierKeys modifiers)
-    {
-        if (!IsValidHotkeyVirtualKey(virtualKey))
-        {
-            return false;
-        }
-
-        lock (_registrationLock)
-        {
-            if (_isDisposed)
-            {
-                return false;
-            }
-
-            if (virtualKey == _seekForwardVk && modifiers == _seekForwardModifiers)
-            {
-                return true;
-            }
-
-            if (HasConflictingRegistrationLocked(SeekForwardRegistrationId, virtualKey, modifiers))
-            {
-                return false;
-            }
-
-            _seekForwardVk = virtualKey;
-            _seekForwardModifiers = modifiers;
-            _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
-            PublishSnapshotLocked();
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 批量原子应用五组内置热键。只校验「目标组合彼此互异」与「不与非内置自定义注册冲突」，
+    /// 批量原子应用全部内置热键（每个槽位都要给）。只校验「目标组合彼此互异」与「不与非内置自定义注册冲突」，
     /// 不与替换前的旧内置注册比较——用于启动时从配置整体恢复：旧注册仍是默认组合，
     /// 逐个 TrySet 会被交叉占用配置（如 Mode=K、Playback=F8）整批拒绝。
     /// 任一校验失败返回 false 且不改动任何状态。
     /// </summary>
-    public bool TrySetBuiltInHotkeys(
-        int toggleModeVk, ModifierKeys toggleModeModifiers,
-        int togglePlaybackVk, ModifierKeys togglePlaybackModifiers,
-        int toggleHideVk, ModifierKeys toggleHideModifiers,
-        int seekBackwardVk, ModifierKeys seekBackwardModifiers,
-        int seekForwardVk, ModifierKeys seekForwardModifiers)
+    public bool TrySetBuiltInHotkeys(IReadOnlyDictionary<HotkeySlot, (int VirtualKey, ModifierKeys Modifiers)> bindings)
     {
-        var pairs = new (int Vk, ModifierKeys Mods)[]
+        var pairs = new (int VirtualKey, ModifierKeys Modifiers)[HotkeySlots.All.Count];
+        foreach (var slot in HotkeySlots.All)
         {
-            (toggleModeVk, toggleModeModifiers),
-            (togglePlaybackVk, togglePlaybackModifiers),
-            (toggleHideVk, toggleHideModifiers),
-            (seekBackwardVk, seekBackwardModifiers),
-            (seekForwardVk, seekForwardModifiers),
-        };
-
-        foreach (var pair in pairs)
-        {
-            if (!IsValidHotkeyVirtualKey(pair.Vk))
+            if (!bindings.TryGetValue(slot, out var pair) || !IsValidHotkeyVirtualKey(pair.VirtualKey))
             {
                 return false;
             }
+
+            pairs[(int)slot] = pair;
         }
 
-        for (var i = 0; i < pairs.Length; i++)
+        if (pairs.Distinct().Count() != pairs.Length)
         {
-            for (var j = i + 1; j < pairs.Length; j++)
-            {
-                if (pairs[i].Vk == pairs[j].Vk && pairs[i].Mods == pairs[j].Mods)
-                {
-                    return false;
-                }
-            }
+            return false;
         }
 
         lock (_registrationLock)
@@ -297,51 +127,35 @@ public sealed class KeyboardHookService : IDisposable
 
             foreach (var pair in _registrations)
             {
-                if (IsBuiltInRegistrationId(pair.Key))
+                if (!IsBuiltInRegistrationId(pair.Key) &&
+                    pairs.Contains((pair.Value.VirtualKey, pair.Value.Modifiers)))
                 {
-                    continue;
-                }
-
-                foreach (var candidate in pairs)
-                {
-                    if (candidate.Vk == pair.Value.VirtualKey && candidate.Mods == pair.Value.Modifiers)
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
 
-            _toggleModeVk = toggleModeVk;
-            _toggleModeModifiers = toggleModeModifiers;
-            _togglePlaybackVk = togglePlaybackVk;
-            _togglePlaybackModifiers = togglePlaybackModifiers;
-            _toggleHideVk = toggleHideVk;
-            _toggleHideModifiers = toggleHideModifiers;
-            _seekBackwardVk = seekBackwardVk;
-            _seekBackwardModifiers = seekBackwardModifiers;
-            _seekForwardVk = seekForwardVk;
-            _seekForwardModifiers = seekForwardModifiers;
+            pairs.CopyTo(_builtIn, 0);
             RebuildBuiltInRegistrationsLocked();
             PublishSnapshotLocked();
             return true;
         }
     }
 
+    private static string RegistrationId(HotkeySlot slot) => BuiltInRegistrationPrefix + slot;
+
     private static bool IsBuiltInRegistrationId(string id) =>
-        id is ToggleModeRegistrationId or TogglePlaybackRegistrationId or ToggleHideRegistrationId
-            or SeekBackwardRegistrationId or SeekForwardRegistrationId;
+        id.StartsWith(BuiltInRegistrationPrefix, StringComparison.Ordinal);
 
     private void RebuildBuiltInRegistrationsLocked()
     {
-        _registrations[ToggleModeRegistrationId] = CreateBuiltInRegistration(ToggleModeRegistrationId);
-        _registrations[TogglePlaybackRegistrationId] = CreateBuiltInRegistration(TogglePlaybackRegistrationId);
-        _registrations[ToggleHideRegistrationId] = CreateBuiltInRegistration(ToggleHideRegistrationId);
-        _registrations[SeekBackwardRegistrationId] = CreateBuiltInRegistration(SeekBackwardRegistrationId);
-        _registrations[SeekForwardRegistrationId] = CreateBuiltInRegistration(SeekForwardRegistrationId);
+        foreach (var slot in HotkeySlots.All)
+        {
+            _registrations[RegistrationId(slot)] = CreateBuiltInRegistration(slot);
+        }
     }
 
     /// <summary>
-    /// 为 true 时内置模式/播放热键不触发（录制快捷键期间使用），不影响已注册的其它热键。
+    /// 为 true 时内置热键不触发（录制快捷键期间使用），不影响已注册的其它热键。
     /// </summary>
     public bool SuspendBuiltInHotkeys
     {
@@ -369,15 +183,8 @@ public sealed class KeyboardHookService : IDisposable
         }
     }
 
-    public event EventHandler? KPressed;
-
-    public event EventHandler? ModeTogglePressed;
-
-    public event EventHandler? HideTogglePressed;
-
-    public event EventHandler? SeekBackwardPressed;
-
-    public event EventHandler? SeekForwardPressed;
+    /// <summary>内置热键按下（在钩子安装线程上触发，订阅方须尽快返回）。</summary>
+    public event EventHandler<HotkeySlot>? HotkeyPressed;
 
     // 由 UI 层维护：浮窗模式下用户在游戏中，K 必须全局生效；
     // 浏览模式下仅在应用处于前台时生效，避免在 QQ/密码框等输入 k 误触发播放控制。
@@ -862,11 +669,11 @@ public sealed class KeyboardHookService : IDisposable
         return name;
     }
 
-    private void Raise(EventHandler? handler)
+    private void Raise(HotkeySlot slot)
     {
         try
         {
-            handler?.Invoke(this, EventArgs.Empty);
+            HotkeyPressed?.Invoke(this, slot);
         }
         catch
         {
@@ -892,37 +699,14 @@ public sealed class KeyboardHookService : IDisposable
         return false;
     }
 
-    private HotkeyRegistration CreateBuiltInRegistration(string id)
+    private HotkeyRegistration CreateBuiltInRegistration(HotkeySlot slot)
     {
-        return id switch
-        {
-            ToggleModeRegistrationId => new HotkeyRegistration(
-                _toggleModeVk,
-                _toggleModeModifiers,
-                () => Raise(ModeTogglePressed),
-                CanExecuteScopedHotkey),
-            TogglePlaybackRegistrationId => new HotkeyRegistration(
-                _togglePlaybackVk,
-                _togglePlaybackModifiers,
-                () => Raise(KPressed),
-                CanExecuteScopedHotkey),
-            ToggleHideRegistrationId => new HotkeyRegistration(
-                _toggleHideVk,
-                _toggleHideModifiers,
-                () => Raise(HideTogglePressed),
-                CanExecuteHideToggleHotkey),
-            SeekBackwardRegistrationId => new HotkeyRegistration(
-                _seekBackwardVk,
-                _seekBackwardModifiers,
-                () => Raise(SeekBackwardPressed),
-                CanExecuteScopedHotkey),
-            SeekForwardRegistrationId => new HotkeyRegistration(
-                _seekForwardVk,
-                _seekForwardModifiers,
-                () => Raise(SeekForwardPressed),
-                CanExecuteScopedHotkey),
-            _ => throw new ArgumentOutOfRangeException(nameof(id)),
-        };
+        var (virtualKey, modifiers) = _builtIn[(int)slot];
+        return new HotkeyRegistration(
+            virtualKey,
+            modifiers,
+            () => Raise(slot),
+            slot == HotkeySlot.Hide ? CanExecuteHideToggleHotkey : CanExecuteScopedHotkey);
     }
 
     /// <summary>

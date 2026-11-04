@@ -60,11 +60,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         RemoveHistoryCommand = new AsyncRelayCommand(parameter => RemoveHistoryAsync(parameter));
         GoBackCommand = new RelayCommand(_browser.GoBack, () => _browser.CanGoBack);
         GoForwardCommand = new RelayCommand(_browser.GoForward, () => _browser.CanGoForward);
-        RecordToggleModeKeyCommand = new RelayCommand(StartRecordingToggleModeKey);
-        RecordTogglePlaybackKeyCommand = new RelayCommand(StartRecordingTogglePlaybackKey);
-        RecordToggleHideKeyCommand = new RelayCommand(StartRecordingToggleHideKey);
-        RecordSeekBackwardKeyCommand = new RelayCommand(StartRecordingSeekBackwardKey);
-        RecordSeekForwardKeyCommand = new RelayCommand(StartRecordingSeekForwardKey);
+        _hotkeyRows = HotkeySlots.All.Select(slot => new HotkeyRowViewModel(this, slot)).ToArray();
         ToggleSettingsCommand = new RelayCommand(ToggleSettings);
         ToggleDownloadsCommand = new RelayCommand(ToggleDownloads);
         ToggleKeyBindingsCommand = new RelayCommand(ToggleKeyBindings);
@@ -152,15 +148,18 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public AsyncRelayCommand RemoveHistoryCommand { get; }
 
-    public RelayCommand RecordToggleModeKeyCommand { get; }
+    // 按键绑定面板的五行（下标为 HotkeySlot）；XAML 按名字绑定下面五个属性
+    private readonly HotkeyRowViewModel[] _hotkeyRows;
 
-    public RelayCommand RecordTogglePlaybackKeyCommand { get; }
+    public HotkeyRowViewModel ToggleModeHotkey => _hotkeyRows[(int)HotkeySlot.ToggleMode];
 
-    public RelayCommand RecordToggleHideKeyCommand { get; }
+    public HotkeyRowViewModel PlaybackHotkey => _hotkeyRows[(int)HotkeySlot.Playback];
 
-    public RelayCommand RecordSeekBackwardKeyCommand { get; }
+    public HotkeyRowViewModel HideHotkey => _hotkeyRows[(int)HotkeySlot.Hide];
 
-    public RelayCommand RecordSeekForwardKeyCommand { get; }
+    public HotkeyRowViewModel SeekBackwardHotkey => _hotkeyRows[(int)HotkeySlot.SeekBackward];
+
+    public HotkeyRowViewModel SeekForwardHotkey => _hotkeyRows[(int)HotkeySlot.SeekForward];
 
     public RelayCommand ZoomInCommand { get; }
 
@@ -220,19 +219,19 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     /// <summary>切换到浏览的动作型 tooltip（含当前快捷键）。</summary>
     public string SwitchToBrowsingTooltip =>
-        LocalizationService.Format("Mode.SwitchToBrowsingTooltip", FormatToggleModeHotkey());
+        LocalizationService.Format("Mode.SwitchToBrowsingTooltip", FormatHotkey(HotkeySlot.ToggleMode));
 
     /// <summary>切换到浮窗的动作型 tooltip（含当前快捷键）。</summary>
     public string SwitchToFloatingTooltip =>
-        LocalizationService.Format("Mode.SwitchToFloatingTooltip", FormatToggleModeHotkey());
+        LocalizationService.Format("Mode.SwitchToFloatingTooltip", FormatHotkey(HotkeySlot.ToggleMode));
 
     /// <summary>播放按钮 tooltip（含当前快捷键）。</summary>
     public string PlaybackTooltip =>
-        LocalizationService.Format("Toolbar.PlaybackTooltip", FormatTogglePlaybackHotkey());
+        LocalizationService.Format("Toolbar.PlaybackTooltip", FormatHotkey(HotkeySlot.Playback));
 
     /// <summary>鼠标穿透说明 tooltip（含模式快捷键：穿透时只能按它回浏览模式调整）。</summary>
     public string ClickThroughTooltip =>
-        LocalizationService.Format("Settings.ClickThroughTooltip", FormatToggleModeHotkey());
+        LocalizationService.Format("Settings.ClickThroughTooltip", FormatHotkey(HotkeySlot.ToggleMode));
 
     public string StatusMessage
     {
@@ -1189,217 +1188,77 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private bool _isRecordingToggleModeKey;
-    private bool _isRecordingTogglePlaybackKey;
-    private bool _isRecordingToggleHideKey;
-    private bool _isRecordingSeekBackwardKey;
-    private bool _isRecordingSeekForwardKey;
+    // 当前正在录制的热键槽位（同一时刻至多一个），null 为未在录制
+    private HotkeySlot? _recordingSlot;
     private ModifierKeys _currentRecordingModifiers;
 
-    /// <summary>当前正在录制的热键槽位（同一时刻至多一个）。</summary>
-    private enum RecordingSlot
+    internal HotkeySlot? RecordingSlot => _recordingSlot;
+
+    public bool IsRecordingAnyKey => _recordingSlot is not null;
+
+    /// <summary>键帽文字：录制中显示已按住的修饰键加省略号，否则显示当前热键。</summary>
+    internal string GetHotkeyText(HotkeySlot slot) => _recordingSlot == slot
+        ? HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "..."
+        : FormatHotkey(slot);
+
+    /// <summary>
+    /// 录制用的实际按键：Alt 组合报 System、输入法处理中（中文输入法开着时的字母键）报 ImeProcessed、死键报 DeadCharProcessed，
+    /// 真实键分别在 SystemKey / ImeProcessedKey / DeadCharProcessedKey 里。直接用 Key 会把占位键录成热键，永远不触发。
+    /// </summary>
+    internal static Key ResolveRecordedKey(Key key, Key systemKey, Key imeProcessedKey, Key deadCharProcessedKey) => key switch
     {
-        None,
-        Mode,
-        Playback,
-        Hide,
-        SeekBackward,
-        SeekForward,
-    }
+        Key.System => systemKey,
+        Key.ImeProcessed => imeProcessedKey,
+        Key.DeadCharProcessed => deadCharProcessedKey,
+        _ => key,
+    };
 
-    private RecordingSlot CurrentRecordingSlot => _isRecordingToggleModeKey ? RecordingSlot.Mode
-        : _isRecordingTogglePlaybackKey ? RecordingSlot.Playback
-        : _isRecordingToggleHideKey ? RecordingSlot.Hide
-        : _isRecordingSeekBackwardKey ? RecordingSlot.SeekBackward
-        : _isRecordingSeekForwardKey ? RecordingSlot.SeekForward
-        : RecordingSlot.None;
-
-    public bool IsRecordingAnyKey => CurrentRecordingSlot != RecordingSlot.None;
-
-    // 各槽位是否正在录制：按键绑定面板经 Tag 高亮对应按钮
-    public bool IsRecordingToggleModeKey => _isRecordingToggleModeKey;
-
-    public bool IsRecordingTogglePlaybackKey => _isRecordingTogglePlaybackKey;
-
-    public bool IsRecordingToggleHideKey => _isRecordingToggleHideKey;
-
-    public bool IsRecordingSeekBackwardKey => _isRecordingSeekBackwardKey;
-
-    public bool IsRecordingSeekForwardKey => _isRecordingSeekForwardKey;
-
-    public string ToggleModeKeyText
+    /// <summary>开始录制：一次只录一组（切到别的组时原来的作废），挂起内置热键并提示。</summary>
+    internal void StartRecording(HotkeySlot slot)
     {
-        get
-        {
-            if (_isRecordingToggleModeKey)
-            {
-                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
-            }
-            return FormatToggleModeHotkey();
-        }
-    }
-
-    public string TogglePlaybackKeyText
-    {
-        get
-        {
-            if (_isRecordingTogglePlaybackKey)
-            {
-                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
-            }
-            return FormatTogglePlaybackHotkey();
-        }
-    }
-
-    public string ToggleHideKeyText
-    {
-        get
-        {
-            if (_isRecordingToggleHideKey)
-            {
-                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
-            }
-            return HotkeyFormatter.Format(_browser.ToggleHideKey, _browser.ToggleHideModifiers);
-        }
-    }
-
-    public string SeekBackwardKeyText
-    {
-        get
-        {
-            if (_isRecordingSeekBackwardKey)
-            {
-                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
-            }
-            return HotkeyFormatter.Format(_browser.SeekBackwardKey, _browser.SeekBackwardModifiers);
-        }
-    }
-
-    public string SeekForwardKeyText
-    {
-        get
-        {
-            if (_isRecordingSeekForwardKey)
-            {
-                return HotkeyFormatter.GetModifiersString(_currentRecordingModifiers) + "...";
-            }
-            return HotkeyFormatter.Format(_browser.SeekForwardKey, _browser.SeekForwardModifiers);
-        }
-    }
-
-    private void StartRecordingToggleModeKey() => StartRecordingCore(
-        () => _isRecordingToggleModeKey = true,
-        "Toast.RecordToggleMode",
-        "请按下「浏览 ⇄ 浮窗」快捷键（按 Esc 取消）");
-
-    private void StartRecordingTogglePlaybackKey() => StartRecordingCore(
-        () => _isRecordingTogglePlaybackKey = true,
-        "Toast.RecordPlayback",
-        "请按下“视频播放”快捷键（按 Esc 取消）");
-
-    private void StartRecordingToggleHideKey() => StartRecordingCore(
-        () => _isRecordingToggleHideKey = true,
-        "Toast.RecordHide",
-        "请按下「隐藏浮窗」快捷键（按 Esc 取消）");
-
-    private void StartRecordingSeekBackwardKey() => StartRecordingCore(
-        () => _isRecordingSeekBackwardKey = true,
-        "Toast.RecordSeekBackward",
-        "请按下「倒退 5 秒」快捷键（按 Esc 取消）");
-
-    private void StartRecordingSeekForwardKey() => StartRecordingCore(
-        () => _isRecordingSeekForwardKey = true,
-        "Toast.RecordSeekForward",
-        "请按下「快进 5 秒」快捷键（按 Esc 取消）");
-
-    /// <summary>开始录制：先清掉其它槽位的录制态（一次只录一个），挂起内置热键并提示。</summary>
-    private void StartRecordingCore(Action activateSlot, string toastKey, string toastFallback)
-    {
-        _isRecordingToggleModeKey = false;
-        _isRecordingTogglePlaybackKey = false;
-        _isRecordingToggleHideKey = false;
-        _isRecordingSeekBackwardKey = false;
-        _isRecordingSeekForwardKey = false;
+        _recordingSlot = slot;
         _currentRecordingModifiers = ModifierKeys.None;
-        activateSlot();
         _browser.SetHotkeyRecordingActive(true);
         NotifyHotkeyDependentTexts();
-        ShowToast(LocalizationService.Get(toastKey, toastFallback), StatusLevel.Info);
+        ShowToast(LocalizationService.Get($"Toast.Record{slot}"), StatusLevel.Info);
     }
 
     public void UpdateRecordingModifiers(ModifierKeys modifiers)
     {
         _currentRecordingModifiers = modifiers;
-        OnPropertyChanged(nameof(ToggleModeKeyText));
-        OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        OnPropertyChanged(nameof(ToggleHideKeyText));
-        OnPropertyChanged(nameof(SeekBackwardKeyText));
-        OnPropertyChanged(nameof(SeekForwardKeyText));
+        if (_recordingSlot is { } slot)
+        {
+            _hotkeyRows[(int)slot].Refresh();
+        }
     }
 
     public void FinishRecordingKey(Key key, ModifierKeys modifiers)
     {
+        if (_recordingSlot is not { } slot)
+        {
+            return;
+        }
+
         if (key == Key.Escape)
         {
             StopHotkeyRecording();
             NotifyHotkeyDependentTexts();
-            ShowToast(LocalizationService.Get("Toast.RecordCanceled", "已取消录制。"), StatusLevel.Warning);
+            ShowToast(LocalizationService.Get("Toast.RecordCanceled"), StatusLevel.Warning);
             return;
         }
 
-        switch (CurrentRecordingSlot)
+        // 成功时读回实际生效值并提示；失败提示被占用（可能被五组热键任一组占用）
+        if (_browser.TrySetHotkey(slot, key, modifiers))
         {
-            case RecordingSlot.Mode:
-                ApplyRecordedHotkey(
-                    () => _browser.TrySetToggleModeHotkey(key, modifiers),
-                    "Toast.ToggleModeSet",
-                    "已将「浏览 ⇄ 浮窗」设为 {0}",
-                    () => HotkeyFormatter.Format(_browser.ToggleModeKey, _browser.ToggleModeModifiers));
-                break;
-            case RecordingSlot.Playback:
-                ApplyRecordedHotkey(
-                    () => _browser.TrySetTogglePlaybackHotkey(key, modifiers),
-                    "Toast.PlaybackSet",
-                    "已将“视频播放”设为 {0}",
-                    () => HotkeyFormatter.Format(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers));
-                break;
-            case RecordingSlot.Hide:
-                ApplyRecordedHotkey(
-                    () => _browser.TrySetToggleHideHotkey(key, modifiers),
-                    "Toast.HideSet",
-                    "已将「隐藏浮窗」设为 {0}",
-                    () => HotkeyFormatter.Format(_browser.ToggleHideKey, _browser.ToggleHideModifiers));
-                break;
-            case RecordingSlot.SeekBackward:
-                ApplyRecordedHotkey(
-                    () => _browser.TrySetSeekBackwardHotkey(key, modifiers),
-                    "Toast.SeekBackwardSet",
-                    "已将「倒退 5 秒」设为 {0}",
-                    () => HotkeyFormatter.Format(_browser.SeekBackwardKey, _browser.SeekBackwardModifiers));
-                break;
-            case RecordingSlot.SeekForward:
-                ApplyRecordedHotkey(
-                    () => _browser.TrySetSeekForwardHotkey(key, modifiers),
-                    "Toast.SeekForwardSet",
-                    "已将「快进 5 秒」设为 {0}",
-                    () => HotkeyFormatter.Format(_browser.SeekForwardKey, _browser.SeekForwardModifiers));
-                break;
+            ShowToast(LocalizationService.Format($"Toast.{slot}Set", FormatHotkey(slot)), StatusLevel.Success);
+        }
+        else
+        {
+            ShowToast(LocalizationService.Get("Toast.HotkeyInUse"), StatusLevel.Warning);
         }
 
         StopHotkeyRecording();
         NotifyHotkeyDependentTexts();
-    }
-
-    /// <summary>应用录制结果：成功读回实际生效值并 toast；失败提示被占用（可能被五组热键任一组占用）。</summary>
-    private void ApplyRecordedHotkey(Func<bool> apply, string setKey, string setFallback, Func<string> formatActual)
-    {
-        if (!apply())
-        {
-            ShowToast(LocalizationService.Get("Toast.HotkeyInUse", "该快捷键已被其它快捷键占用！"), StatusLevel.Warning);
-            return;
-        }
-
-        ShowToast(LocalizationService.Format(setKey, formatActual()), StatusLevel.Success);
     }
 
     /// <summary>
@@ -1419,11 +1278,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     private void StopHotkeyRecording()
     {
-        _isRecordingToggleModeKey = false;
-        _isRecordingTogglePlaybackKey = false;
-        _isRecordingToggleHideKey = false;
-        _isRecordingSeekBackwardKey = false;
-        _isRecordingSeekForwardKey = false;
+        _recordingSlot = null;
         _currentRecordingModifiers = ModifierKeys.None;
         _browser.SetHotkeyRecordingActive(false);
     }
@@ -1693,7 +1548,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         RefreshClickThroughFlags();
         ShowToast(
             enabled
-                ? LocalizationService.Format("Toast.ClickThroughOn", FormatToggleModeHotkey())
+                ? LocalizationService.Format("Toast.ClickThroughOn", FormatHotkey(HotkeySlot.ToggleMode))
                 : LocalizationService.Get("Toast.ClickThroughOff", "浮窗鼠标穿透：已关闭"),
             StatusLevel.Success);
     }
@@ -1756,25 +1611,16 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private void NotifyHotkeyDependentTexts()
     {
         // 录制态与按键文案在同一时机变化（开始/结束/取消录制），一并通知录制按钮高亮
-        OnPropertyChanged(nameof(IsRecordingToggleModeKey));
-        OnPropertyChanged(nameof(IsRecordingTogglePlaybackKey));
-        OnPropertyChanged(nameof(IsRecordingToggleHideKey));
-        OnPropertyChanged(nameof(IsRecordingSeekBackwardKey));
-        OnPropertyChanged(nameof(IsRecordingSeekForwardKey));
-        OnPropertyChanged(nameof(ToggleModeKeyText));
-        OnPropertyChanged(nameof(TogglePlaybackKeyText));
-        OnPropertyChanged(nameof(ToggleHideKeyText));
-        OnPropertyChanged(nameof(SeekBackwardKeyText));
-        OnPropertyChanged(nameof(SeekForwardKeyText));
+        foreach (var row in _hotkeyRows)
+        {
+            row.Refresh();
+        }
+
         OnPropertyChanged(nameof(SwitchToBrowsingTooltip));
         OnPropertyChanged(nameof(SwitchToFloatingTooltip));
         OnPropertyChanged(nameof(PlaybackTooltip));
         OnPropertyChanged(nameof(ClickThroughTooltip));
     }
 
-    private string FormatToggleModeHotkey() =>
-        HotkeyFormatter.Format(_browser.ToggleModeKey, _browser.ToggleModeModifiers);
-
-    private string FormatTogglePlaybackHotkey() =>
-        HotkeyFormatter.Format(_browser.TogglePlaybackKey, _browser.TogglePlaybackModifiers);
+    private string FormatHotkey(HotkeySlot slot) => HotkeyFormatter.Format(_browser.GetHotkey(slot));
 }

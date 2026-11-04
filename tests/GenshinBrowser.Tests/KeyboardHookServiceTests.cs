@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Input;
+using GenshinBrowser.Models;
 using GenshinBrowser.Services;
 
 namespace GenshinBrowser.Tests;
@@ -25,36 +26,35 @@ public sealed class KeyboardHookServiceTests
     public void BuiltInHotkeys_RejectConflictingVkAndModifiers()
     {
         using var service = new KeyboardHookService();
-        var modeVk = service.ToggleModeVk;
-        var modeMods = service.ToggleModeModifiers;
+        var modeVk = service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey;
+        var modeMods = service.GetHotkey(HotkeySlot.ToggleMode).Modifiers;
 
         // 试图把播放键改成与模式键相同：应被拒绝，播放键保持默认
-        var originalPlaybackVk = service.TogglePlaybackVk;
-        service.TogglePlaybackVk = modeVk;
-        service.TogglePlaybackModifiers = modeMods;
+        var originalPlaybackVk = service.GetHotkey(HotkeySlot.Playback).VirtualKey;
+        Assert.False(service.TrySetHotkey(HotkeySlot.Playback, modeVk, modeMods));
 
-        Assert.Equal(originalPlaybackVk, service.TogglePlaybackVk);
+        Assert.Equal(originalPlaybackVk, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(modeVk));
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(originalPlaybackVk));
     }
 
     [Fact]
-    public void TrySetToggleModeHotkey_IsAtomicAgainstFinalConflict()
+    public void TrySetHotkey_IsAtomicAgainstFinalConflict()
     {
         using var service = new KeyboardHookService();
         // Mode F8+None, Playback F8+Ctrl —— 录制 Mode 为 K+Ctrl 时，分步写入会在中间态失败
-        Assert.True(service.TrySetTogglePlaybackHotkey(0x77, ModifierKeys.Control)); // F8+Ctrl
-        Assert.True(service.TrySetToggleModeHotkey(0x4B, ModifierKeys.Control)); // K+Ctrl 最终不冲突
+        Assert.True(service.TrySetHotkey(HotkeySlot.Playback, 0x77, ModifierKeys.Control)); // F8+Ctrl
+        Assert.True(service.TrySetHotkey(HotkeySlot.ToggleMode, 0x4B, ModifierKeys.Control)); // K+Ctrl 最终不冲突
 
-        Assert.Equal(0x4B, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.Control, service.ToggleModeModifiers);
-        Assert.Equal(0x77, service.TogglePlaybackVk);
-        Assert.Equal(ModifierKeys.Control, service.TogglePlaybackModifiers);
+        Assert.Equal(0x4B, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
+        Assert.Equal(ModifierKeys.Control, service.GetHotkey(HotkeySlot.ToggleMode).Modifiers);
+        Assert.Equal(0x77, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
+        Assert.Equal(ModifierKeys.Control, service.GetHotkey(HotkeySlot.Playback).Modifiers);
 
         // 最终组合与播放键相同：原子拒绝，状态不变
-        Assert.False(service.TrySetToggleModeHotkey(0x77, ModifierKeys.Control));
-        Assert.Equal(0x4B, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.Control, service.ToggleModeModifiers);
+        Assert.False(service.TrySetHotkey(HotkeySlot.ToggleMode, 0x77, ModifierKeys.Control));
+        Assert.Equal(0x4B, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
+        Assert.Equal(ModifierKeys.Control, service.GetHotkey(HotkeySlot.ToggleMode).Modifiers);
     }
 
     [Fact]
@@ -67,22 +67,22 @@ public sealed class KeyboardHookServiceTests
         const int vkK = 0x4B;
         const int vkF9 = 0x78;
 
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, ModifierKeys.None));
-        Assert.True(service.TrySetToggleModeHotkey(vkK, ModifierKeys.None));
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF8, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Playback, vkF9, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.ToggleMode, vkK, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Playback, vkF8, ModifierKeys.None));
         // 现为 Mode=K, Playback=F8
 
-        Assert.False(service.TrySetTogglePlaybackHotkey(vkK, ModifierKeys.None));
-        Assert.False(service.TrySetToggleModeHotkey(vkF8, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.Playback, vkK, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.ToggleMode, vkF8, ModifierKeys.None));
 
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkF9, ModifierKeys.None));
-        Assert.True(service.TrySetToggleModeHotkey(vkF8, ModifierKeys.None));
-        Assert.True(service.TrySetTogglePlaybackHotkey(vkK, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Playback, vkF9, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.ToggleMode, vkF8, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Playback, vkK, ModifierKeys.None));
 
-        Assert.Equal(vkF8, service.ToggleModeVk);
-        Assert.Equal(ModifierKeys.None, service.ToggleModeModifiers);
-        Assert.Equal(vkK, service.TogglePlaybackVk);
-        Assert.Equal(ModifierKeys.None, service.TogglePlaybackModifiers);
+        Assert.Equal(vkF8, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
+        Assert.Equal(ModifierKeys.None, service.GetHotkey(HotkeySlot.ToggleMode).Modifiers);
+        Assert.Equal(vkK, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
+        Assert.Equal(ModifierKeys.None, service.GetHotkey(HotkeySlot.Playback).Modifiers);
     }
 
     [Fact]
@@ -93,8 +93,8 @@ public sealed class KeyboardHookServiceTests
         Assert.Throws<InvalidOperationException>(() =>
             service.RegisterOrUpdateHotkey(
                 "custom",
-                service.ToggleModeVk,
-                service.ToggleModeModifiers,
+                service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey,
+                service.GetHotkey(HotkeySlot.ToggleMode).Modifiers,
                 () => { }));
     }
 
@@ -104,17 +104,40 @@ public sealed class KeyboardHookServiceTests
         using var service = new KeyboardHookService();
         // VK_RCONTROL=0xA3、VK_LSHIFT=0xA0、VK_LWIN=0x5B：修饰键作主键时 KeyDown
         // 必然置位修饰状态，与任何修饰期望都矛盾（永不触发的死键），必须拒绝。
-        Assert.False(service.TrySetToggleModeHotkey(0xA3, ModifierKeys.None));
-        Assert.False(service.TrySetToggleHideHotkey(0xA0, ModifierKeys.None));
-        Assert.False(service.TrySetSeekBackwardHotkey(0x5B, ModifierKeys.None));
-        Assert.False(service.TrySetSeekForwardHotkey(0x5C, ModifierKeys.None));
-        Assert.False(service.TrySetTogglePlaybackHotkey(0x11, ModifierKeys.None));
-        Assert.False(service.TrySetBuiltInHotkeys(
-            0xA3, ModifierKeys.None,
-            0x4B, ModifierKeys.None,
-            0x76, ModifierKeys.None,
-            0xBA, ModifierKeys.None,
-            0xDE, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.ToggleMode, 0xA3, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.Hide, 0xA0, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.SeekBackward, 0x5B, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.SeekForward, 0x5C, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.Playback, 0x11, ModifierKeys.None));
+        Assert.False(service.TrySetBuiltInHotkeys(Bindings(
+            (0xA3, ModifierKeys.None),
+            (0x4B, ModifierKeys.None),
+            (0x76, ModifierKeys.None),
+            (0xBA, ModifierKeys.None),
+            (0xDE, ModifierKeys.None))));
+    }
+
+    [Fact]
+    public void TrySetHotkey_RejectsImeProcessKeyAsPrimary()
+    {
+        // VK_PROCESSKEY=0xE5：中文输入法开着时 WPF 报的 ImeProcessed 换算过来就是它；
+        // 低级钩子收到的是真实键码，这个热键永远不触发，必须拒绝。
+        using var service = new KeyboardHookService();
+        Assert.False(service.TrySetHotkey(HotkeySlot.Playback, 0xE5, ModifierKeys.None));
+        Assert.Equal(0x4B, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
+    }
+
+    [Fact]
+    public void TrySetBuiltInHotkeys_RequiresEverySlot()
+    {
+        using var service = new KeyboardHookService();
+        var partial = new Dictionary<HotkeySlot, (int VirtualKey, ModifierKeys Modifiers)>
+        {
+            [HotkeySlot.ToggleMode] = (0x75, ModifierKeys.None),
+        };
+
+        Assert.False(service.TrySetBuiltInHotkeys(partial));
+        Assert.Equal(0x77, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
     }
 
     [Fact]
@@ -217,18 +240,18 @@ public sealed class KeyboardHookServiceTests
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkQuote));
 
         // 与任一内置默认冲突的赋值被拒绝
-        Assert.False(service.TrySetTogglePlaybackHotkey(vkF7, ModifierKeys.None));
-        Assert.False(service.TrySetToggleModeHotkey(vkSemicolon, ModifierKeys.None));
-        Assert.False(service.TrySetSeekBackwardHotkey(vkQuote, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.Playback, vkF7, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.ToggleMode, vkSemicolon, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.SeekBackward, vkQuote, ModifierKeys.None));
 
         // 空闲键可正常更新并迁移注册
         const int vkF6 = 0x75;
-        Assert.True(service.TrySetToggleHideHotkey(vkF6, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Hide, vkF6, ModifierKeys.None));
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF6));
         Assert.Equal(0, service.GetRegistrationCountForVirtualKey(vkF7));
 
         // 同值重复写入幂等
-        Assert.True(service.TrySetToggleHideHotkey(vkF6, ModifierKeys.None));
+        Assert.True(service.TrySetHotkey(HotkeySlot.Hide, vkF6, ModifierKeys.None));
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF6));
     }
 
@@ -238,9 +261,9 @@ public sealed class KeyboardHookServiceTests
         var service = new KeyboardHookService();
         service.Dispose();
 
-        Assert.False(service.TrySetToggleHideHotkey(0x75, ModifierKeys.None));
-        Assert.False(service.TrySetSeekBackwardHotkey(0x75, ModifierKeys.None));
-        Assert.False(service.TrySetSeekForwardHotkey(0x75, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.Hide, 0x75, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.SeekBackward, 0x75, ModifierKeys.None));
+        Assert.False(service.TrySetHotkey(HotkeySlot.SeekForward, 0x75, ModifierKeys.None));
     }
 
 
@@ -256,16 +279,16 @@ public sealed class KeyboardHookServiceTests
         const int vkSemicolon = 0xBA;
         const int vkQuote = 0xDE;
 
-        Assert.False(service.TrySetToggleModeHotkey(vkK, ModifierKeys.None), "单键设置应被旧默认 Playback=K 拒绝（佐证交叉占用问题）");
+        Assert.False(service.TrySetHotkey(HotkeySlot.ToggleMode, vkK, ModifierKeys.None), "单键设置应被旧默认 Playback=K 拒绝（佐证交叉占用问题）");
 
-        Assert.True(service.TrySetBuiltInHotkeys(
-            vkK, ModifierKeys.None,
-            vkF8, ModifierKeys.None,
-            vkF7, ModifierKeys.None,
-            vkSemicolon, ModifierKeys.None,
-            vkQuote, ModifierKeys.None));
-        Assert.Equal(vkK, service.ToggleModeVk);
-        Assert.Equal(vkF8, service.TogglePlaybackVk);
+        Assert.True(service.TrySetBuiltInHotkeys(Bindings(
+            (vkK, ModifierKeys.None),
+            (vkF8, ModifierKeys.None),
+            (vkF7, ModifierKeys.None),
+            (vkSemicolon, ModifierKeys.None),
+            (vkQuote, ModifierKeys.None))));
+        Assert.Equal(vkK, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
+        Assert.Equal(vkF8, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkK));
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF8));
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkF7));
@@ -273,13 +296,13 @@ public sealed class KeyboardHookServiceTests
         Assert.Equal(1, service.GetRegistrationCountForVirtualKey(vkQuote));
 
         // 再换回默认同样成功
-        Assert.True(service.TrySetBuiltInHotkeys(
-            vkF8, ModifierKeys.None,
-            vkK, ModifierKeys.None,
-            vkF7, ModifierKeys.None,
-            vkSemicolon, ModifierKeys.None,
-            vkQuote, ModifierKeys.None));
-        Assert.Equal(vkF8, service.ToggleModeVk);
+        Assert.True(service.TrySetBuiltInHotkeys(Bindings(
+            (vkF8, ModifierKeys.None),
+            (vkK, ModifierKeys.None),
+            (vkF7, ModifierKeys.None),
+            (vkSemicolon, ModifierKeys.None),
+            (vkQuote, ModifierKeys.None))));
+        Assert.Equal(vkF8, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
     }
 
     [Fact]
@@ -290,30 +313,30 @@ public sealed class KeyboardHookServiceTests
         const int vkK = 0x4B;
 
         // 内部重复（两组同组合）拒绝且不改动任何状态
-        Assert.False(service.TrySetBuiltInHotkeys(
-            vkF8, ModifierKeys.None,
-            vkF8, ModifierKeys.None,
-            0x76, ModifierKeys.None,
-            0xBA, ModifierKeys.None,
-            0xDE, ModifierKeys.None));
-        Assert.Equal(vkF8, service.ToggleModeVk);
-        Assert.Equal(vkK, service.TogglePlaybackVk);
+        Assert.False(service.TrySetBuiltInHotkeys(Bindings(
+            (vkF8, ModifierKeys.None),
+            (vkF8, ModifierKeys.None),
+            (0x76, ModifierKeys.None),
+            (0xBA, ModifierKeys.None),
+            (0xDE, ModifierKeys.None))));
+        Assert.Equal(vkF8, service.GetHotkey(HotkeySlot.ToggleMode).VirtualKey);
+        Assert.Equal(vkK, service.GetHotkey(HotkeySlot.Playback).VirtualKey);
 
         // 同键不同修饰键不算冲突（合法）
-        Assert.True(service.TrySetBuiltInHotkeys(
-            vkF8, ModifierKeys.None,
-            vkF8, ModifierKeys.Control,
-            0x76, ModifierKeys.None,
-            0xBA, ModifierKeys.None,
-            0xDE, ModifierKeys.None));
+        Assert.True(service.TrySetBuiltInHotkeys(Bindings(
+            (vkF8, ModifierKeys.None),
+            (vkF8, ModifierKeys.Control),
+            (0x76, ModifierKeys.None),
+            (0xBA, ModifierKeys.None),
+            (0xDE, ModifierKeys.None))));
 
         // 非法 VK 拒绝
-        Assert.False(service.TrySetBuiltInHotkeys(
-            0, ModifierKeys.None,
-            vkK, ModifierKeys.None,
-            0x76, ModifierKeys.None,
-            0xBA, ModifierKeys.None,
-            0xDE, ModifierKeys.None));
+        Assert.False(service.TrySetBuiltInHotkeys(Bindings(
+            (0, ModifierKeys.None),
+            (vkK, ModifierKeys.None),
+            (0x76, ModifierKeys.None),
+            (0xBA, ModifierKeys.None),
+            (0xDE, ModifierKeys.None))));
     }
 
 
@@ -329,6 +352,21 @@ public sealed class KeyboardHookServiceTests
         Assert.Equal("Ctrl + ;", HotkeyFormatter.Format(
             System.Windows.Input.Key.OemSemicolon, System.Windows.Input.ModifierKeys.Control));
     }
+
+    /// <summary>按槽位顺序（模式、播放、隐藏、倒退、快进）组装批量设置的参数。</summary>
+    private static Dictionary<HotkeySlot, (int VirtualKey, ModifierKeys Modifiers)> Bindings(
+        (int, ModifierKeys) toggleMode,
+        (int, ModifierKeys) playback,
+        (int, ModifierKeys) hide,
+        (int, ModifierKeys) seekBackward,
+        (int, ModifierKeys) seekForward) => new()
+        {
+            [HotkeySlot.ToggleMode] = toggleMode,
+            [HotkeySlot.Playback] = playback,
+            [HotkeySlot.Hide] = hide,
+            [HotkeySlot.SeekBackward] = seekBackward,
+            [HotkeySlot.SeekForward] = seekForward,
+        };
 
     private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
     {

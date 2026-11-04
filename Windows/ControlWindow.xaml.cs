@@ -908,7 +908,7 @@ public partial class ControlWindow : Window
         if (_viewModel.IsRecordingAnyKey)
         {
             e.Handled = true;
-            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            var key = ControlWindowViewModel.ResolveRecordedKey(e.Key, e.SystemKey, e.ImeProcessedKey, e.DeadCharProcessedKey);
 
             if (key == Key.LeftCtrl || key == Key.RightCtrl ||
                 key == Key.LeftAlt || key == Key.RightAlt ||
@@ -960,7 +960,7 @@ public partial class ControlWindow : Window
         if (_viewModel.IsRecordingAnyKey)
         {
             e.Handled = true;
-            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            var key = ControlWindowViewModel.ResolveRecordedKey(e.Key, e.SystemKey, e.ImeProcessedKey, e.DeadCharProcessedKey);
             if (key == Key.LeftCtrl || key == Key.RightCtrl ||
                 key == Key.LeftAlt || key == Key.RightAlt ||
                 key == Key.LeftShift || key == Key.RightShift ||

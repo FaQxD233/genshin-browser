@@ -603,11 +603,12 @@
             </Grid>
           </Border>
           <ControlTemplate.Triggers>
+            <!-- 不定进度的循环动画只在 IsIndeterminate 期间运行：退出时移除，免得控件折叠后时钟仍每帧驱动渲染 -->
             <Trigger Property="IsIndeterminate" Value="True">
               <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
               <Setter TargetName="IndeterminateFill" Property="Visibility" Value="Visible"/>
               <Trigger.EnterActions>
-                <BeginStoryboard>
+                <BeginStoryboard x:Name="IndeterminateAnimation">
                   <Storyboard RepeatBehavior="Forever">
                     <DoubleAnimation Storyboard.TargetName="IndeterminateTransform"
                                      Storyboard.TargetProperty="X"
@@ -615,6 +616,9 @@
                   </Storyboard>
                 </BeginStoryboard>
               </Trigger.EnterActions>
+              <Trigger.ExitActions>
+                <RemoveStoryboard BeginStoryboardName="IndeterminateAnimation"/>
+              </Trigger.ExitActions>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -622,9 +626,9 @@
     </Setter>
   </Style>
 
+  <!-- 地址栏加载条：IsIndeterminate 由使用处绑定到「正在加载」，加载结束动画随之停止 -->
   <Style x:Key="AddressBarProgressBar" TargetType="ProgressBar" BasedOn="{StaticResource ModernProgressBar}">
     <Setter Property="Height" Value="2"/>
-    <Setter Property="IsIndeterminate" Value="True"/>
   </Style>
 
   <!-- 必须直接作为 Style 使用，不要 BasedOn 派生：派生样式中下面 Tag DataTrigger 的

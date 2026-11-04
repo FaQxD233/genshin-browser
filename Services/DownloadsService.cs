@@ -1,7 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json;
 using GenshinBrowser.Constants;
 using GenshinBrowser.Models;
 using GenshinBrowser.Utils;
@@ -19,37 +18,63 @@ public sealed class DownloadsService : IDisposable
     private readonly object _gate = new();
     private readonly object _persistLock = new();
     private readonly Dictionary<DownloadItem, CoreWebView2DownloadOperation> _operations = new();
-    private readonly SemaphoreSlim _saveGate = new(1, 1);
     private readonly string? _downloadsPath;
-    private CancellationTokenSource? _saveDebounceCts;
-    private int _version;
-    private int _savedVersion;
-    private bool _disposed;
+    // 没给路径（单测）时为 null，不落盘
+    private readonly DebouncedJsonSaver<List<PersistedDownloadEntry>>? _saver;
 
     public DownloadsService(string? downloadsPath = null)
     {
         _downloadsPath = downloadsPath;
+        if (downloadsPath is not null)
+        {
+            _saver = new DebouncedJsonSaver<List<PersistedDownloadEntry>>(
+                downloadsPath,
+                JsonFileWriter.CompactOptions,
+                AppConfig.Data.DownloadSaveDebounceMs,
+                "Save downloads",
+                _persistLock,
+                CreatePersistSnapshot);
+        }
     }
+
+    /// <summary>启动加载时读不出来的情况（原文件已改名保留，或改名失败、本次不写盘）；正常为 null。</summary>
+    public DataFileProblem? LoadProblem { get; private set; }
 
     /// <summary>
     /// 异步从磁盘加载下载记录。构造函数不再同步读盘，避免阻塞首帧。
-    /// 必须从 UI 线程调用：填充 <see cref="Downloads"/>（ObservableCollection）依赖本方法
-    /// 首个 await 捕获的调用方上下文，磁盘读取与反序列化全程在线程池执行。
+    /// 必须从 UI 线程调用：读盘与反序列化在线程池执行，回到调用方（UI）线程后才填充 <see cref="Downloads"/>（ObservableCollection）。
     /// </summary>
     public async Task InitializeAsync()
     {
-        var (sanitized, changed) = await LoadFromDiskAsync().ConfigureAwait(true);
-        // 这里已恢复到调用方（UI）线程：LoadFromDiskAsync 内部全程 ConfigureAwait(false)，
-        // 不会再触碰 ObservableCollection；首个 await 在 UI 线程上捕获上下文，恢复才有效。
+        if (_downloadsPath is null || _saver is null)
+        {
+            return;
+        }
+
+        var (loaded, problem) = await DataFile.ReadAsync<List<PersistedDownloadEntry?>>(
+            _downloadsPath, AppConfig.Data.MaxDownloadsFileSizeBytes, options: null, "Load downloads").ConfigureAwait(true);
+        LoadProblem = problem;
+        if (problem is { PreservedPath: null })
+        {
+            _saver.BlockWrites();
+        }
+
+        if (loaded is null)
+        {
+            return;
+        }
+
+        var sanitized = SanitizeEntries(loaded);
+        // 加载期间 Track 的新任务已插在最前，磁盘里的旧记录接在后面
         foreach (var item in sanitized)
         {
             Downloads.Add(item);
         }
 
-        // 加载窗口内已有 Track/状态变更（版本 > 0）时保留其 dirty 标记，避免覆盖竞态期间的变更。
-        lock (_persistLock)
+        // 磁盘内容需要清洗（如上次退出时还在下载的记为中断）时写回一次
+        if (!EntriesMatch(loaded, sanitized))
         {
-            _version = changed ? Math.Max(_version, 1) : 0;
+            QueuePersist();
         }
     }
 
@@ -184,14 +209,15 @@ public sealed class DownloadsService : IDisposable
     }
 
     /// <summary>
-    /// 直接 shell 执行风险过高的扩展名：UseShellExecute 打开这些文件等于运行程序/脚本。
+    /// 直接 shell 执行风险过高的扩展名：UseShellExecute 打开这些文件等于运行程序 / 脚本、导入注册表或安装应用。
     /// FilePath 持久化自磁盘上的 downloads.json，被篡改时可诱导「打开文件」按钮执行任意代码，
     /// 因此这些类型不直接执行，改为在资源管理器中定位文件由用户手动决定。
     /// </summary>
     private static readonly HashSet<string> DirectExecuteRiskyExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".pif", ".hta",
-        ".lnk", ".url", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".ps1", ".msh",
+        ".exe", ".msi", ".msp", ".bat", ".cmd", ".com", ".scr", ".pif", ".hta", ".cpl", ".msc", ".jar",
+        ".lnk", ".url", ".scf", ".vbs", ".vbe", ".js", ".jse", ".ws", ".wsf", ".wsh", ".ps1", ".psm1", ".msh",
+        ".reg", ".chm", ".application", ".appinstaller", ".appx", ".appxbundle", ".msix", ".msixbundle",
     };
 
     public bool OpenFile(DownloadItem item)
@@ -201,23 +227,17 @@ public sealed class DownloadsService : IDisposable
             return false;
         }
 
-        try
+        var extension = Path.GetExtension(item.FilePath);
+        if (DirectExecuteRiskyExtensions.Contains(extension))
         {
-            var extension = Path.GetExtension(item.FilePath);
-            if (DirectExecuteRiskyExtensions.Contains(extension))
-            {
-                // 高危类型不 shell 执行：资源管理器里选中该文件，交给用户判断；
-                // /select 参数形式 explorer 解析失败时退回仅打开所在文件夹。
-                return RevealInExplorer(item.FilePath) || OpenFolder(item);
-            }
+            // 高危类型不 shell 执行：资源管理器里选中该文件，交给用户判断；
+            // /select 参数形式 explorer 解析失败时退回仅打开所在文件夹。
+            return RevealInExplorer(item.FilePath) || OpenFolder(item);
+        }
 
-            Process.Start(new ProcessStartInfo(item.FilePath) { UseShellExecute = true });
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        // 本程序以管理员身份运行：经资源管理器以普通权限打开；打不开时退回在文件夹中显示，不提权打开
+        return ShellLauncher.TryOpen(item.FilePath, Path.GetDirectoryName(item.FilePath)) ||
+               RevealInExplorer(item.FilePath);
     }
 
     /// <summary>在资源管理器中打开并选中指定文件。路径以独立参数传递，不经 shell 解析。</summary>
@@ -291,197 +311,12 @@ public sealed class DownloadsService : IDisposable
         }
     }
 
-    public async Task FlushAsync()
-    {
-        CancelDebouncedSave();
-        if (_downloadsPath is null)
-        {
-            return;
-        }
+    /// <summary>立即写入尚未落盘的改动。关闭前在 UI 线程调用（快照要读下载列表）；Dispose 不再写盘。</summary>
+    public Task FlushAsync() => _saver?.FlushAsync() ?? Task.CompletedTask;
 
-        while (!_disposed)
-        {
-            List<PersistedDownloadEntry> snapshot;
-            int version;
-            lock (_persistLock)
-            {
-                if (_version == _savedVersion)
-                {
-                    return;
-                }
+    public void Dispose() => _saver?.Dispose();
 
-                version = _version;
-                snapshot = CreatePersistSnapshot();
-            }
-
-            await SaveAsync(snapshot, version).ConfigureAwait(false);
-        }
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-        CancelDebouncedSave();
-        _saveGate.Dispose();
-    }
-
-    private void QueuePersist()
-    {
-        if (_downloadsPath is null)
-        {
-            return;
-        }
-
-        List<PersistedDownloadEntry> snapshot;
-        int version;
-        CancellationToken token;
-        // 合并两段锁为一段，_disposed 检查必须在锁内（见 FavoritesService.QueueDebouncedSave 同类修复）。
-        lock (_persistLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _version++;
-            version = _version;
-            snapshot = CreatePersistSnapshot();
-
-            _saveDebounceCts?.Cancel();
-            _saveDebounceCts?.Dispose();
-            _saveDebounceCts = new CancellationTokenSource();
-            token = _saveDebounceCts.Token;
-        }
-
-        _ = SaveDebouncedAsync(snapshot, version, token);
-    }
-
-    private void CancelDebouncedSave()
-    {
-        lock (_persistLock)
-        {
-            _saveDebounceCts?.Cancel();
-            _saveDebounceCts?.Dispose();
-            _saveDebounceCts = null;
-        }
-    }
-
-    private async Task SaveDebouncedAsync(
-        IReadOnlyList<PersistedDownloadEntry> snapshot,
-        int version,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await Task.Delay(AppConfig.Data.DownloadSaveDebounceMs, cancellationToken).ConfigureAwait(false);
-            await SaveAsync(snapshot, version, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // A newer snapshot replaced this one.
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ObjectDisposedException)
-        {
-            // SaveAsync already logged the concrete failure; ODE is the Dispose race on shutdown.
-        }
-    }
-
-    private async Task SaveAsync(
-        IReadOnlyList<PersistedDownloadEntry> snapshot,
-        int version,
-        CancellationToken cancellationToken = default)
-    {
-        if (_downloadsPath is null)
-        {
-            return;
-        }
-
-        try
-        {
-            await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (ObjectDisposedException)
-        {
-            // Dispose 与在途保存的关闭竞态：保存闸已释放，放弃本次写盘（不匹配下方过滤器的异常不能外泄）。
-            return;
-        }
-
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            lock (_persistLock)
-            {
-                if (version != _version)
-                {
-                    return;
-                }
-            }
-
-            await JsonFileWriter.WriteAtomicAsync(
-                _downloadsPath,
-                snapshot,
-                JsonFileWriter.CompactOptions).ConfigureAwait(false);
-            lock (_persistLock)
-            {
-                if (version == _version)
-                {
-                    _savedVersion = version;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-        {
-            FileLogger.LogException(ex, "Save downloads");
-            throw;
-        }
-        finally
-        {
-            try
-            {
-                _saveGate.Release();
-            }
-            catch (ObjectDisposedException)
-            {
-                // 关闭竞态：Dispose 已先行释放 _saveGate；写盘已成功或被取消，无需 Release。
-            }
-        }
-    }
-
-    private async Task<(List<DownloadItem> Sanitized, bool Changed)> LoadFromDiskAsync()
-    {
-        if (_downloadsPath is null || !File.Exists(_downloadsPath))
-        {
-            return (new List<DownloadItem>(), false);
-        }
-
-        try
-        {
-            // 异步读盘 + 在线程池反序列化，避免阻塞 UI 线程。
-            // 本方法只产出数据，不碰任何 ObservableCollection（填充在 InitializeAsync 的 UI 恢复点）。
-            var json = await JsonFileWriter.ReadAllTextBoundedAsync(
-                _downloadsPath,
-                AppConfig.Data.MaxDownloadsFileSizeBytes).ConfigureAwait(false);
-
-            var (loaded, sanitized) = await Task.Run(() =>
-            {
-                var l = JsonSerializer.Deserialize<List<PersistedDownloadEntry?>>(json)
-                        ?? new List<PersistedDownloadEntry?>();
-                return (l, SanitizeEntries(l));
-            }).ConfigureAwait(false);
-
-            return (sanitized, !EntriesMatch(loaded, sanitized));
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            FileLogger.LogException(ex, "Load downloads");
-            return (new List<DownloadItem>(), false);
-        }
-    }
+    private void QueuePersist() => _saver?.MarkChanged();
 
     private List<PersistedDownloadEntry> CreatePersistSnapshot()
     {

@@ -268,6 +268,12 @@
   <sys:String x:Key="Status.DataDirUnavailable">数据目录 {0} 不可用，本次使用默认位置。</sys:String>
   <sys:String x:Key="Status.DataDirMoved">数据已搬到新位置；旧位置的数据还在 {0}，确认无误后可以自己删除。</sys:String>
   <sys:String x:Key="Status.DataDirMoveFailed">搬运数据失败，继续使用原来的位置: {0}</sys:String>
+  <sys:String x:Key="Status.DataFilePreserved">{0} 读不出来，原文件已改名为 {1} 留在数据目录里，这次从空白开始。</sys:String>
+  <sys:String x:Key="Status.DataFileBlocked">{0} 读不出来（可能被其它程序占用），本次运行不会写入它，以免覆盖原有数据；重启程序再试。</sys:String>
+  <sys:String x:Key="ExternalApp.Title">打开外部程序？</sys:String>
+  <sys:String x:Key="ExternalApp.Body">{0} 想打开外部程序：&#x0a;{1}&#x0a;&#x0a;只在你信任这个网站时打开。</sys:String>
+  <sys:String x:Key="ExternalApp.UnknownOrigin">网页</sys:String>
+  <sys:String x:Key="Status.ExternalAppFailed">无法打开外部程序：{0}</sys:String>
   <sys:String x:Key="Status.RestartFailed">重启失败: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">刷新失败: {0}</sys:String>
   <sys:String x:Key="Status.FavoriteAdded">已收藏当前页面。</sys:String>

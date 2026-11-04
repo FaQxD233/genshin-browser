@@ -100,4 +100,39 @@ public sealed class AppSettings
     /// 之后即使用户把热键改成与损坏特征相同的组合（RightCtrl + NumPad1）也不会再被重置。
     /// </summary>
     public bool HotkeyCorruptionRepairAttempted { get; set; }
+
+    /// <summary>按槽位读热键。落盘仍是上面各自的 Key / Modifiers 字段（WinUI 分支按字段名读写）。</summary>
+    public HotkeyBinding GetHotkey(HotkeySlot slot) => slot switch
+    {
+        HotkeySlot.ToggleMode => new(ToggleModeKey, ToggleModeModifiers),
+        HotkeySlot.Playback => new(TogglePlaybackKey, TogglePlaybackModifiers),
+        HotkeySlot.Hide => new(ToggleHideKey, ToggleHideModifiers),
+        HotkeySlot.SeekBackward => new(SeekBackwardKey, SeekBackwardModifiers),
+        HotkeySlot.SeekForward => new(SeekForwardKey, SeekForwardModifiers),
+        _ => throw new ArgumentOutOfRangeException(nameof(slot)),
+    };
+
+    public void SetHotkey(HotkeySlot slot, HotkeyBinding binding)
+    {
+        switch (slot)
+        {
+            case HotkeySlot.ToggleMode:
+                (ToggleModeKey, ToggleModeModifiers) = binding;
+                break;
+            case HotkeySlot.Playback:
+                (TogglePlaybackKey, TogglePlaybackModifiers) = binding;
+                break;
+            case HotkeySlot.Hide:
+                (ToggleHideKey, ToggleHideModifiers) = binding;
+                break;
+            case HotkeySlot.SeekBackward:
+                (SeekBackwardKey, SeekBackwardModifiers) = binding;
+                break;
+            case HotkeySlot.SeekForward:
+                (SeekForwardKey, SeekForwardModifiers) = binding;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(slot));
+        }
+    }
 }

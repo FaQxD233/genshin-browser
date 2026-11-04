@@ -268,6 +268,12 @@
   <sys:String x:Key="Status.DataDirUnavailable">Data folder {0} isn't available, so the default location is used this time.</sys:String>
   <sys:String x:Key="Status.DataDirMoved">Data moved. The old copy is still in {0}; delete it yourself once everything looks right.</sys:String>
   <sys:String x:Key="Status.DataDirMoveFailed">Moving data failed, so the original folder is still used: {0}</sys:String>
+  <sys:String x:Key="Status.DataFilePreserved">{0} could not be read. The original was renamed to {1} in the data folder; starting empty this time.</sys:String>
+  <sys:String x:Key="Status.DataFileBlocked">{0} could not be read (another program may be using it). It won't be written this session so the existing data isn't overwritten; restart to try again.</sys:String>
+  <sys:String x:Key="ExternalApp.Title">Open external app?</sys:String>
+  <sys:String x:Key="ExternalApp.Body">{0} wants to open an external app:&#x0a;{1}&#x0a;&#x0a;Only open it if you trust this site.</sys:String>
+  <sys:String x:Key="ExternalApp.UnknownOrigin">A web page</sys:String>
+  <sys:String x:Key="Status.ExternalAppFailed">Couldn't open the external app: {0}</sys:String>
   <sys:String x:Key="Status.RestartFailed">Restart failed: {0}</sys:String>
   <sys:String x:Key="Status.ReloadFailed">Reload failed: {0}</sys:String>
   <sys:String x:Key="Status.FavoriteAdded">Page added to favorites.</sys:String>

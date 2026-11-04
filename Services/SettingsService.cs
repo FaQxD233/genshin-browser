@@ -12,40 +12,41 @@ public sealed class SettingsService : IDisposable
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private long _saveRequestVersion;
     private volatile bool _disposed;
+    // 读盘失败且原文件没能改名保留时置位：本次运行不写 settings.json，免得覆盖还在的设置
+    private volatile bool _writeBlocked;
 
     public SettingsService(string settingsPath)
     {
         _settingsPath = settingsPath;
     }
 
+    /// <summary>最近一次 <see cref="Load"/> 读不出来的情况（原文件已改名保留，或改名失败、本次不写盘）；正常为 null。</summary>
+    public DataFileProblem? LoadProblem { get; private set; }
+
     /// <summary>
     /// 同步读取配置。用于主窗构造阶段，在窗口首次显示前恢复位置，
     /// 避免异步 Loaded 期间默认坐标被写回 settings.json。
+    /// 文件不存在或读不出来时得到默认值；后者原文件改名保留（见 <see cref="DataFile.Read{T}"/>）。
     /// </summary>
     public AppSettings Load()
     {
-        if (!File.Exists(_settingsPath))
-        {
-            // 走 Sanitize 而非裸 new：让内存对象与「从磁盘加载并归一」路径语义一致，
-            // 尤其 HotkeyCorruptionRepairAttempted 必须在内存对象上置位；否则每次保存的
-            // 快照都会重跑一次性修复逻辑，用户日后故意设置的「损坏特征」组合会被静默重置。
-            return Sanitize(null);
-        }
-
-        try
-        {
-            var json = JsonFileWriter.ReadAllTextBounded(_settingsPath, AppConfig.Data.MaxSettingsFileSizeBytes);
-            return DeserializeAndSanitize(json);
-        }
-        catch (Exception ex) when (ex is JsonException or IOException or InvalidDataException or UnauthorizedAccessException)
-        {
-            FileLogger.LogException(ex, "Load settings (sync)");
-            return Sanitize(null);
-        }
+        // 缺文件也走 Normalize 而非裸 new：让内存对象与「从磁盘加载并归一」路径语义一致，
+        // 尤其 HotkeyCorruptionRepairAttempted 必须在内存对象上置位；否则每次保存的
+        // 快照都会重跑一次性修复逻辑，用户日后故意设置的「损坏特征」组合会被静默重置。
+        var settings = DataFile.Read<AppSettings>(
+            _settingsPath, AppConfig.Data.MaxSettingsFileSizeBytes, JsonFileWriter.SharedOptions, "Load settings (sync)", out var problem);
+        LoadProblem = problem;
+        _writeBlocked = problem is { PreservedPath: null };
+        return Normalize(settings);
     }
 
     public async Task SaveAsync(AppSettings settings)
     {
+        if (_writeBlocked)
+        {
+            return;
+        }
+
         var snapshot = Sanitize(CreateSnapshot(settings));
         var requestVersion = Interlocked.Increment(ref _saveRequestVersion);
 
@@ -91,7 +92,7 @@ public sealed class SettingsService : IDisposable
     /// </summary>
     internal static AppSettings CreateSnapshot(AppSettings settings)
     {
-        return new AppSettings
+        var snapshot = new AppSettings
         {
             // WPF 始终以 Key 枚举落盘（schema 1），避免 WinUI 写入的 VK（schema 2）被二次误迁移。
             SchemaVersion = 1,
@@ -108,16 +109,6 @@ public sealed class SettingsService : IDisposable
             ControlWindowHeight = settings.ControlWindowHeight,
             WindowOpacity = settings.WindowOpacity,
             ZoomFactor = settings.ZoomFactor,
-            ToggleModeKey = settings.ToggleModeKey,
-            ToggleModeModifiers = settings.ToggleModeModifiers,
-            TogglePlaybackKey = settings.TogglePlaybackKey,
-            TogglePlaybackModifiers = settings.TogglePlaybackModifiers,
-            ToggleHideKey = settings.ToggleHideKey,
-            ToggleHideModifiers = settings.ToggleHideModifiers,
-            SeekBackwardKey = settings.SeekBackwardKey,
-            SeekBackwardModifiers = settings.SeekBackwardModifiers,
-            SeekForwardKey = settings.SeekForwardKey,
-            SeekForwardModifiers = settings.SeekForwardModifiers,
             ThemeMode = settings.ThemeMode,
             Language = settings.Language,
             HotkeyScope = settings.HotkeyScope,
@@ -126,6 +117,12 @@ public sealed class SettingsService : IDisposable
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
             HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,
         };
+        foreach (var slot in HotkeySlots.All)
+        {
+            snapshot.SetHotkey(slot, settings.GetHotkey(slot));
+        }
+
+        return snapshot;
     }
 
     public void Dispose()
@@ -138,9 +135,6 @@ public sealed class SettingsService : IDisposable
         _disposed = true;
         _saveGate.Dispose();
     }
-
-    private static AppSettings DeserializeAndSanitize(string json) =>
-        Normalize(JsonSerializer.Deserialize<AppSettings>(json, JsonFileWriter.SharedOptions));
 
     /// <summary>
     /// 归一一份反序列化得到的设置（启动加载与导入配置共用）：schema 2 先转回 Key 枚举，再整套清洗。
@@ -212,16 +206,14 @@ public sealed class SettingsService : IDisposable
             RepairKnownHotkeyCorruption(settings, defaults);
             settings.HotkeyCorruptionRepairAttempted = true;
         }
-        settings.ToggleModeKey = IsValidHotkey(settings.ToggleModeKey) ? settings.ToggleModeKey : defaults.ToggleModeKey;
-        settings.TogglePlaybackKey = IsValidHotkey(settings.TogglePlaybackKey) ? settings.TogglePlaybackKey : defaults.TogglePlaybackKey;
-        settings.ToggleHideKey = IsValidHotkey(settings.ToggleHideKey) ? settings.ToggleHideKey : defaults.ToggleHideKey;
-        settings.SeekBackwardKey = IsValidHotkey(settings.SeekBackwardKey) ? settings.SeekBackwardKey : defaults.SeekBackwardKey;
-        settings.SeekForwardKey = IsValidHotkey(settings.SeekForwardKey) ? settings.SeekForwardKey : defaults.SeekForwardKey;
-        settings.ToggleModeModifiers = NormalizeModifiers(settings.ToggleModeModifiers);
-        settings.TogglePlaybackModifiers = NormalizeModifiers(settings.TogglePlaybackModifiers);
-        settings.ToggleHideModifiers = NormalizeModifiers(settings.ToggleHideModifiers);
-        settings.SeekBackwardModifiers = NormalizeModifiers(settings.SeekBackwardModifiers);
-        settings.SeekForwardModifiers = NormalizeModifiers(settings.SeekForwardModifiers);
+        foreach (var slot in HotkeySlots.All)
+        {
+            var (key, modifiers) = settings.GetHotkey(slot);
+            settings.SetHotkey(slot, new HotkeyBinding(
+                IsValidHotkey(key) ? key : defaults.GetHotkey(slot).Key,
+                NormalizeModifiers(modifiers)));
+        }
+
         ResolveHotkeyConflicts(settings, defaults);
 
         settings.ThemeMode = ThemeService.Normalize(settings.ThemeMode);
@@ -240,8 +232,13 @@ public sealed class SettingsService : IDisposable
     private static double NormalizeDimension(double value, double fallback) =>
         double.IsFinite(value) && value is >= 100 and <= 10_000 ? value : fallback;
 
+    /// <summary>
+    /// 能作热键主键的键：不是修饰键，也不是 ImeProcessed / DeadCharProcessed 这类占位键——
+    /// 中文输入法开着时 WPF 把字母键报成 ImeProcessed，旧版录制会把它存下来，这种热键永远不触发，加载时恢复默认。
+    /// </summary>
     private static bool IsValidHotkey(System.Windows.Input.Key key) =>
-        key != System.Windows.Input.Key.None && Enum.IsDefined(key) && !IsModifierKey(key);
+        key is not (System.Windows.Input.Key.None or System.Windows.Input.Key.ImeProcessed or System.Windows.Input.Key.DeadCharProcessed) &&
+        Enum.IsDefined(key) && !IsModifierKey(key);
 
     /// <summary>
     /// 修饰键不能作热键主键：其 KeyDown 到来时对应修饰状态必然为按下，
@@ -282,12 +279,10 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>
-    /// 五组热键槽位（模式 / 播放 / 隐藏 / 倒退 / 快进）的统一冲突消解。
+    /// 五组热键槽位的统一冲突消解（槽位顺序即优先级，见 <see cref="HotkeySlot"/>）。
     /// 前位保留、后位让位：让位者先恢复默认；默认位仍被占用时依次泊到
     /// F9/F10/F11/F12/F6 空闲键。保证 Sanitize 后任意两组 (Key, Modifiers) 不重复。
     /// </summary>
-    private const int HotkeySlotCount = 5;
-
     private static readonly System.Windows.Input.Key[] HotkeyFallbackKeys =
     {
         System.Windows.Input.Key.F9,
@@ -299,25 +294,24 @@ public sealed class SettingsService : IDisposable
 
     private static void ResolveHotkeyConflicts(AppSettings settings, AppSettings defaults)
     {
-        for (var attempt = 0; attempt < HotkeySlotCount * HotkeySlotCount; attempt++)
+        for (var attempt = 0; attempt < HotkeySlots.All.Count * HotkeySlots.All.Count; attempt++)
         {
-            var (first, second) = FindFirstHotkeyConflict(settings);
-            if (first < 0)
+            var conflict = FindFirstHotkeyConflict(settings);
+            if (conflict is null)
             {
                 return;
             }
 
+            var (first, second) = conflict.Value;
             // 后位让位：先回默认；若默认位仍被前位占用（前位用户值恰为后位默认），
             // 把前位也拉回其默认；仍冲突才把后位泊到空闲备用键。
-            SetHotkeySlot(settings, second,
-                GetHotkeySlotKey(defaults, second), GetHotkeySlotModifiers(defaults, second));
+            settings.SetHotkey(second, defaults.GetHotkey(second));
             if (!SlotConflictsWithAny(settings, second))
             {
                 continue;
             }
 
-            SetHotkeySlot(settings, first,
-                GetHotkeySlotKey(defaults, first), GetHotkeySlotModifiers(defaults, first));
+            settings.SetHotkey(first, defaults.GetHotkey(first));
             if (!SlotConflictsWithAny(settings, first) && !SlotConflictsWithAny(settings, second))
             {
                 continue;
@@ -328,103 +322,36 @@ public sealed class SettingsService : IDisposable
     }
 
     /// <summary>指定槽位当前组合是否与任一其它槽位冲突。</summary>
-    private static bool SlotConflictsWithAny(AppSettings settings, int slot)
-    {
-        for (var i = 0; i < HotkeySlotCount; i++)
-        {
-            if (i != slot &&
-                GetHotkeySlotKey(settings, i) == GetHotkeySlotKey(settings, slot) &&
-                GetHotkeySlotModifiers(settings, i) == GetHotkeySlotModifiers(settings, slot))
-            {
-                return true;
-            }
-        }
+    private static bool SlotConflictsWithAny(AppSettings settings, HotkeySlot slot) =>
+        HotkeySlots.All.Any(other => other != slot && settings.GetHotkey(other) == settings.GetHotkey(slot));
 
-        return false;
-    }
-
-    private static (int First, int Second) FindFirstHotkeyConflict(AppSettings settings)
+    private static (HotkeySlot First, HotkeySlot Second)? FindFirstHotkeyConflict(AppSettings settings)
     {
-        for (var i = 0; i < HotkeySlotCount; i++)
+        var slots = HotkeySlots.All;
+        for (var i = 0; i < slots.Count; i++)
         {
-            for (var j = i + 1; j < HotkeySlotCount; j++)
+            for (var j = i + 1; j < slots.Count; j++)
             {
-                if (GetHotkeySlotKey(settings, i) == GetHotkeySlotKey(settings, j) &&
-                    GetHotkeySlotModifiers(settings, i) == GetHotkeySlotModifiers(settings, j))
+                if (settings.GetHotkey(slots[i]) == settings.GetHotkey(slots[j]))
                 {
-                    return (i, j);
+                    return (slots[i], slots[j]);
                 }
             }
         }
 
-        return (-1, -1);
+        return null;
     }
 
     /// <summary>把槽位泊到第一个当前无人使用的备用键（无修饰键）。</summary>
-    private static void ParkHotkeySlot(AppSettings settings, int slot)
+    private static void ParkHotkeySlot(AppSettings settings, HotkeySlot slot)
     {
         foreach (var fallback in HotkeyFallbackKeys)
         {
-            var taken = false;
-            for (var i = 0; i < HotkeySlotCount; i++)
+            if (!HotkeySlots.All.Any(other => other != slot && settings.GetHotkey(other).Key == fallback))
             {
-                if (i != slot && GetHotkeySlotKey(settings, i) == fallback)
-                {
-                    taken = true;
-                    break;
-                }
-            }
-
-            if (!taken)
-            {
-                SetHotkeySlot(settings, slot, fallback, System.Windows.Input.ModifierKeys.None);
+                settings.SetHotkey(slot, new HotkeyBinding(fallback, System.Windows.Input.ModifierKeys.None));
                 return;
             }
-        }
-    }
-
-    private static System.Windows.Input.Key GetHotkeySlotKey(AppSettings settings, int slot) => slot switch
-    {
-        0 => settings.ToggleModeKey,
-        1 => settings.TogglePlaybackKey,
-        2 => settings.ToggleHideKey,
-        3 => settings.SeekBackwardKey,
-        _ => settings.SeekForwardKey,
-    };
-
-    private static System.Windows.Input.ModifierKeys GetHotkeySlotModifiers(AppSettings settings, int slot) => slot switch
-    {
-        0 => settings.ToggleModeModifiers,
-        1 => settings.TogglePlaybackModifiers,
-        2 => settings.ToggleHideModifiers,
-        3 => settings.SeekBackwardModifiers,
-        _ => settings.SeekForwardModifiers,
-    };
-
-    private static void SetHotkeySlot(AppSettings settings, int slot, System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers)
-    {
-        switch (slot)
-        {
-            case 0:
-                settings.ToggleModeKey = key;
-                settings.ToggleModeModifiers = modifiers;
-                break;
-            case 1:
-                settings.TogglePlaybackKey = key;
-                settings.TogglePlaybackModifiers = modifiers;
-                break;
-            case 2:
-                settings.ToggleHideKey = key;
-                settings.ToggleHideModifiers = modifiers;
-                break;
-            case 3:
-                settings.SeekBackwardKey = key;
-                settings.SeekBackwardModifiers = modifiers;
-                break;
-            default:
-                settings.SeekForwardKey = key;
-                settings.SeekForwardModifiers = modifiers;
-                break;
         }
     }
 

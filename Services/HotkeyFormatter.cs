@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using GenshinBrowser.Models;
 
 namespace GenshinBrowser.Services;
 
@@ -7,6 +8,8 @@ namespace GenshinBrowser.Services;
 /// </summary>
 public static class HotkeyFormatter
 {
+    public static string Format(HotkeyBinding binding) => Format(binding.Key, binding.Modifiers);
+
     public static string Format(Key key, ModifierKeys modifiers)
     {
         if (key == Key.None)
