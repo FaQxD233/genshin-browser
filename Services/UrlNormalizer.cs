@@ -27,6 +27,15 @@ public static class UrlNormalizer
     };
 
     /// <summary>
+    /// YouTube 的跳转时间 t：与 B 站一样不进浏览记录 / 收藏 / 上次页面（续播时程序自己再加上，见 <see cref="Utils.PlaybackResume"/>），
+    /// 免得同一视频因为时间不同存成好几条。
+    /// </summary>
+    private static readonly HashSet<string> YoutubeTimeParameters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "t",
+    };
+
+    /// <summary>
     /// 规范化 URL。无法解析为绝对 URI 时原样返回，保证不丢数据。
     /// </summary>
     public static string Normalize(string? url)
@@ -53,11 +62,13 @@ public static class UrlNormalizer
             return uri.ToString();
         }
 
-        var isBilibili = IsBilibiliHost(uri.Host);
+        var hostParameters = IsBilibiliHost(uri.Host) ? BilibiliTrackingParameters
+            : IsYoutubeHost(uri.Host) ? YoutubeTimeParameters
+            : null;
         // 两遍扫描策略：第一遍仅检测是否存在需剥除的参数（零分配）；
         // 仅当确实需要剥除时，第二遍才分配 StringBuilder 重建 query。
         // 避免 Split 出 string[] + List，且常见 URL（无追踪参数）完全不分配。
-        if (!HasTrackingParameter(query.AsSpan(1), isBilibili))
+        if (!HasTrackingParameter(query.AsSpan(1), hostParameters))
         {
             return uri.ToString();
         }
@@ -87,9 +98,7 @@ public static class UrlNormalizer
                 continue;
             }
 
-            var name = TryGetParamName(pair);
-            if (GlobalTrackingParameters.Contains(name) ||
-                (isBilibili && BilibiliTrackingParameters.Contains(name)))
+            if (ShouldStrip(TryGetParamName(pair), hostParameters))
             {
                 continue;
             }
@@ -109,7 +118,11 @@ public static class UrlNormalizer
         return builder.Uri.ToString();
     }
 
-    private static bool HasTrackingParameter(ReadOnlySpan<char> querySpan, bool isBilibili)
+    /// <summary>通用追踪参数处处剥；<paramref name="hostParameters"/> 是该站点额外要剥的（B 站 / YouTube），其它站点为 null。</summary>
+    private static bool ShouldStrip(string name, HashSet<string>? hostParameters) =>
+        GlobalTrackingParameters.Contains(name) || (hostParameters?.Contains(name) ?? false);
+
+    private static bool HasTrackingParameter(ReadOnlySpan<char> querySpan, HashSet<string>? hostParameters)
     {
         while (!querySpan.IsEmpty)
         {
@@ -131,9 +144,7 @@ public static class UrlNormalizer
                 continue;
             }
 
-            var name = TryGetParamName(pair);
-            if (GlobalTrackingParameters.Contains(name) ||
-                (isBilibili && BilibiliTrackingParameters.Contains(name)))
+            if (ShouldStrip(TryGetParamName(pair), hostParameters))
             {
                 return true;
             }
@@ -162,5 +173,12 @@ public static class UrlNormalizer
                host.EndsWith(".bilibili.com", StringComparison.OrdinalIgnoreCase) ||
                host.Equals("b23.tv", StringComparison.OrdinalIgnoreCase) ||
                host.EndsWith(".b23.tv", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsYoutubeHost(string host)
+    {
+        return host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase) ||
+               host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase);
     }
 }

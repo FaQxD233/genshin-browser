@@ -12,6 +12,15 @@ public sealed class AppSettings
 
     public string LastUrl { get; set; } = string.Empty;
 
+    /// <summary>
+    /// 上次记下进度的视频页（归一后的网址，见 <see cref="Utils.PlaybackResume"/>），与 <see cref="LastPlaybackSeconds"/> 成对；空表示没有。
+    /// 再打开的正是这一页时（启动、浏览器崩溃恢复、页面卡死重新加载）带上 t= 接着放。
+    /// </summary>
+    public string LastPlaybackUrl { get; set; } = string.Empty;
+
+    /// <summary><see cref="LastPlaybackUrl"/> 上次的播放进度（整秒）。</summary>
+    public double LastPlaybackSeconds { get; set; }
+
     public WindowMode WindowMode { get; set; } = WindowMode.Free;
 
     public double WindowLeft { get; set; } = 100;

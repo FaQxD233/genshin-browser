@@ -97,6 +97,8 @@ public sealed class SettingsService : IDisposable
             // WPF 始终以 Key 枚举落盘（schema 1），避免 WinUI 写入的 VK（schema 2）被二次误迁移。
             SchemaVersion = 1,
             LastUrl = settings.LastUrl,
+            LastPlaybackUrl = settings.LastPlaybackUrl,
+            LastPlaybackSeconds = settings.LastPlaybackSeconds,
             WindowMode = settings.WindowMode,
             WindowLeft = settings.WindowLeft,
             WindowTop = settings.WindowTop,
@@ -171,6 +173,18 @@ public sealed class SettingsService : IDisposable
         settings.LastUrl = EntryText.TryNormalizeHttpUrl(settings.LastUrl, out var lastUrl)
             ? lastUrl
             : string.Empty;
+        // 视频进度：网址须是能用 t= 续播的视频页、秒数有限且不为负，否则整对清掉
+        if (EntryText.TryNormalizeHttpUrl(settings.LastPlaybackUrl, out var playbackUrl) &&
+            PlaybackResume.SupportsTimeParameter(playbackUrl) &&
+            double.IsFinite(settings.LastPlaybackSeconds) && settings.LastPlaybackSeconds >= 0)
+        {
+            settings.LastPlaybackUrl = playbackUrl;
+        }
+        else
+        {
+            settings.LastPlaybackUrl = string.Empty;
+            settings.LastPlaybackSeconds = 0;
+        }
         settings.WindowMode = Enum.IsDefined(settings.WindowMode) ? settings.WindowMode : defaults.WindowMode;
         settings.WindowLeft = NormalizeCoordinate(settings.WindowLeft, defaults.WindowLeft);
         settings.WindowTop = NormalizeCoordinate(settings.WindowTop, defaults.WindowTop);

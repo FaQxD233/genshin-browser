@@ -70,6 +70,12 @@ public partial class MainWindow : Window, IControlBrowser
     // 浮窗模式下热键临时隐藏：再按一次恢复；切回浏览模式时自动恢复显示
     private bool _hiddenByHotkey;
 
+    // 视频进度取样：播放中定时读、退出前再读一次，下次打开同一视频页时带 t= 接着放（见 PlaybackResume）
+    private static readonly TimeSpan PlaybackSampleInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PlaybackFinalSampleTimeout = TimeSpan.FromMilliseconds(800);
+    private DispatcherTimer? _playbackSampleTimer;
+    private bool _playbackSampleInFlight;
+
     // 鼠标移出窗口检测：光标离开后向页面补发鼠标事件，避免播放器控件停在移出前的位置常驻
     private DispatcherTimer? _mouseLeaveWatchTimer;
     private bool _mouseOutsideNotified;
@@ -355,6 +361,7 @@ public partial class MainWindow : Window, IControlBrowser
             _keyboardHookService.HotkeyPressed += KeyboardHookService_OnHotkeyPressed;
             StartKeyboardHook();
             EnsureMouseLeaveWatchStarted();
+            EnsurePlaybackSamplingStarted();
 
             // 跟踪应用前台状态：浏览模式下离开前台时禁用全局 K，避免影响其它软件输入
             Application.Current.Activated += App_OnActivated;
@@ -570,7 +577,8 @@ public partial class MainWindow : Window, IControlBrowser
             AttachBrowserEvents(browser, core);
             AttachCursorGuard(browser);
 
-            var startUrl = NavigationTarget.GetStartupUrl(requestedStartUrl ?? _settings.LastUrl);
+            // 启动与浏览器进程崩溃重建都走这里：上次的视频页带 t= 接着放
+            var startUrl = WithRememberedPosition(NavigationTarget.GetStartupUrl(requestedStartUrl ?? _settings.LastUrl));
             _currentAddress = startUrl;
             _browserReady = true;
             SetNavigating(true);
@@ -753,7 +761,7 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             SetStatusMessage(LocalizationService.Get("Status.RendererRecovering", "页面渲染进程异常，正在重新加载..."), StatusLevel.Warning);
-            BrowserView.Reload();
+            ReloadAtRememberedPosition();
         }
         catch (Exception ex)
         {
@@ -780,7 +788,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             SetStatusMessage(LocalizationService.Get("Status.RendererUnresponsive", "页面长时间无响应，正在重新加载..."), StatusLevel.Warning);
             BrowserView.CoreWebView2.Stop();
-            BrowserView.Reload();
+            ReloadAtRememberedPosition();
         }
         catch (Exception ex)
         {
@@ -1806,7 +1814,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var result = await EvaluateVideoHotkeyScriptAsync(core, BuildSeekScript(deltaSeconds));
+            var result = await EvaluateVideoScriptAsync(core, BuildSeekScript(deltaSeconds), userGesture: true);
             var secondsText = Math.Abs(deltaSeconds).ToString("0");
             var backward = deltaSeconds < 0;
             switch (result)
@@ -1885,7 +1893,7 @@ public partial class MainWindow : Window, IControlBrowser
 """;
 
     /// <summary>
-    /// 播放/暂停脚本。play() 返回 Promise，由 <see cref="EvaluateVideoHotkeyScriptAsync"/> 等待其结算：
+    /// 播放/暂停脚本。play() 返回 Promise，由 <see cref="EvaluateVideoScriptAsync"/> 等待其结算：
     /// 被自动播放策略拦截（NotAllowedError）时返回 'play-blocked'，不误报为已播放；
     /// 缓冲中又被暂停等操作打断（AbortError 等）返回 'play-interrupted'，以后一次操作的结果为准。
     /// </summary>
@@ -1935,19 +1943,26 @@ public partial class MainWindow : Window, IControlBrowser
 })()
 """;
 
+    /// <summary>读当前视频的进度，返回「当前秒|总时长」（总时长未知时为 NaN）；找不到视频返回 'no-video'。只读不改，后台取样用。</summary>
+    private const string PlaybackPositionScript = "(() => {\n" + FindVideoScript + "\n" + """
+  return video.currentTime + '|' + video.duration;
+})()
+""";
+
     /// <summary>
-    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频脚本（热键、标题栏视频铺满），返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
-    /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"。awaitPromise 取结算值；
-    /// userGesture 让本次执行视为用户操作（热键、按钮本就是用户操作），play() 不被自动播放策略拦截，requestFullscreen() 也需要它。
+    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频脚本，返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
+    /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"。awaitPromise 取结算值。
+    /// <paramref name="userGesture"/>：热键、标题栏按钮本就是用户操作，传 true，play() 不被自动播放策略拦截，requestFullscreen() 也需要它；
+    /// 读播放进度这类后台取样必须传 false，否则每次取样都给页面一次用户激活，页面能借机弹窗、全屏或唤起外部程序。
     /// </summary>
-    private static async Task<string?> EvaluateVideoHotkeyScriptAsync(CoreWebView2 core, string script)
+    private static async Task<string?> EvaluateVideoScriptAsync(CoreWebView2 core, string script, bool userGesture)
     {
         var parameters = JsonSerializer.Serialize(new
         {
             expression = script,
             awaitPromise = true,
             returnByValue = true,
-            userGesture = true,
+            userGesture,
         });
         var response = await core.CallDevToolsProtocolMethodAsync("Runtime.evaluate", parameters);
         using var document = JsonDocument.Parse(response);
@@ -2041,6 +2056,116 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _mouseOutsideNotified = true;
             _ = DispatchMouseLeftPageAsync();
+        }
+    }
+
+    private void EnsurePlaybackSamplingStarted()
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        _playbackSampleTimer ??= new DispatcherTimer { Interval = PlaybackSampleInterval };
+        _playbackSampleTimer.Tick -= PlaybackSampleTimer_OnTick;
+        _playbackSampleTimer.Tick += PlaybackSampleTimer_OnTick;
+        _playbackSampleTimer.Start();
+    }
+
+    private void PlaybackSampleTimer_OnTick(object? sender, EventArgs e) => _ = SamplePlaybackPositionAsync();
+
+    /// <summary>
+    /// 读当前页视频的进度记进设置。只读 B 站 / YouTube 视频页（见 <see cref="PlaybackResume"/>）；
+    /// 读不到（没有视频、时长还未知、页面正在跳转）时不动已记的，免得刚打开、播放器还没跳到 t= 时把进度清掉。
+    /// </summary>
+    private async Task SamplePlaybackPositionAsync()
+    {
+        if (!_browserReady || _playbackSampleInFlight)
+        {
+            return;
+        }
+
+        CoreWebView2? core;
+        string source;
+        try
+        {
+            core = BrowserView.CoreWebView2;
+            source = core?.Source ?? string.Empty;
+        }
+        catch
+        {
+            return;
+        }
+
+        if (core is null || !EntryText.TryNormalizeHttpUrl(source, out var url) || !PlaybackResume.SupportsTimeParameter(url))
+        {
+            return;
+        }
+
+        _playbackSampleInFlight = true;
+        try
+        {
+            var parts = (await EvaluateVideoScriptAsync(core, PlaybackPositionScript, userGesture: false).ConfigureAwait(true))?.Split('|');
+            if (parts is { Length: 2 } &&
+                double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var position) &&
+                double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var duration) &&
+                double.IsFinite(position) && double.IsFinite(duration))
+            {
+                RememberPlaybackPosition(url, position, duration);
+            }
+        }
+        catch
+        {
+            // 浏览器进程退出、页面正在跳转等：这次不记，下一次取样再来（每 10 秒一次，不写日志免得刷屏）
+        }
+        finally
+        {
+            _playbackSampleInFlight = false;
+        }
+    }
+
+    /// <summary>记下进度；开头 / 结尾附近（见 <see cref="PlaybackResume.ShouldRemember"/>）清掉，下次从头放。</summary>
+    private void RememberPlaybackPosition(string url, double position, double duration)
+    {
+        var (playbackUrl, seconds) = PlaybackResume.ShouldRemember(position, duration)
+            ? (url, Math.Floor(position))
+            : (string.Empty, 0d);
+        if (string.Equals(playbackUrl, _settings.LastPlaybackUrl, StringComparison.Ordinal) &&
+            seconds.Equals(_settings.LastPlaybackSeconds))
+        {
+            return;
+        }
+
+        _settings.LastPlaybackUrl = playbackUrl;
+        _settings.LastPlaybackSeconds = seconds;
+        if (!_isShuttingDown)
+        {
+            QueueSettingsSave();
+        }
+    }
+
+    /// <summary>打开的正是上次记下进度的视频页时，带上 t= 接着放；否则原样返回。</summary>
+    private string WithRememberedPosition(string url) =>
+        _settings.LastPlaybackSeconds > 0 &&
+        EntryText.TryNormalizeHttpUrl(url, out var normalized) &&
+        string.Equals(normalized, _settings.LastPlaybackUrl, StringComparison.Ordinal)
+            ? PlaybackResume.WithTime(url, _settings.LastPlaybackSeconds)
+            : url;
+
+    /// <summary>
+    /// 重新加载当前页（渲染进程崩溃 / 卡死后恢复用）。是上次记下进度的视频页时改为带 t= 打开，
+    /// 接着刚才的位置放，而不是从头或从启动时网址里的旧 t 放。
+    /// </summary>
+    private void ReloadAtRememberedPosition()
+    {
+        var resumeUrl = WithRememberedPosition(_currentAddress);
+        if (string.Equals(resumeUrl, _currentAddress, StringComparison.Ordinal))
+        {
+            BrowserView.Reload();
+        }
+        else
+        {
+            BrowserView.CoreWebView2.Navigate(resumeUrl);
         }
     }
 
@@ -2291,7 +2416,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var result = await EvaluateVideoHotkeyScriptAsync(core, TogglePlaybackScript);
+            var result = await EvaluateVideoScriptAsync(core, TogglePlaybackScript, userGesture: true);
             switch (result)
             {
                 case "typing":
@@ -2338,7 +2463,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var result = await EvaluateVideoHotkeyScriptAsync(core, ToggleVideoFillScript);
+            var result = await EvaluateVideoScriptAsync(core, ToggleVideoFillScript, userGesture: true);
             switch (result)
             {
                 case "fill":
@@ -3660,6 +3785,13 @@ public partial class MainWindow : Window, IControlBrowser
             _mouseLeaveWatchTimer = null;
         }
 
+        if (_playbackSampleTimer is not null)
+        {
+            _playbackSampleTimer.Stop();
+            _playbackSampleTimer.Tick -= PlaybackSampleTimer_OnTick;
+            _playbackSampleTimer = null;
+        }
+
         _keyboardHookService.HotkeyPressed -= KeyboardHookService_OnHotkeyPressed;
 
         if (_windowBoundsUiDebounceTimer is not null)
@@ -3701,6 +3833,9 @@ public partial class MainWindow : Window, IControlBrowser
 
         // 保存窗口位置到内存（最大化时保留还原前的边界）
         SaveWindowBounds();
+
+        // 退出前再读一次视频进度（最多等 0.8 秒，读不到就用最近一次取样），下次启动接着放
+        await Task.WhenAny(SamplePlaybackPositionAsync(), Task.Delay(PlaybackFinalSampleTimeout));
 
         // 退出前强制用当前页面 URL 刷新 LastUrl，避免 SPA 导航 / 防抖取消导致恢复到旧地址
         CaptureCurrentUrlToSettings();
