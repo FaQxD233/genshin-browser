@@ -2463,6 +2463,14 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
+            // WebView2 运行时 157（Chromium 157）起，网页所在视图没有键盘焦点时全屏请求一律被拒，带用户手势也不行
+            // （SuppressFullscreenFromUnfocusedView）。点标题栏按钮时焦点在 WPF 上：进入前先把焦点交给网页，退出不需要。
+            // 旧版运行时不检查焦点，多给一次焦点不影响
+            if (!_isVideoFilled)
+            {
+                BrowserView.Focus();
+            }
+
             var result = await EvaluateVideoScriptAsync(core, ToggleVideoFillScript, userGesture: true);
             switch (result)
             {

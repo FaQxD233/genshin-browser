@@ -192,3 +192,9 @@
 - T3 改为键帽不加投影，与普通按钮一样只有四边 1px 描边；投影只留给分段控件的选中块。
 - 键盘焦点框替换系统默认虚线框，只在键盘导航时出现：`FocusRing`（外扩 2px、圆角 8，按钮 / 分段项 / 键帽 / 标签页）、`FocusRingInset`（画在边界内侧，用于挨着排的标题栏按钮和列表项）、`FocusRingSwitch`（只套开关轨道）。设置面板滚动区的上、右各挪出 2px，首行「应用」和右缘贴边按钮的焦点框不被滚动区裁掉，内容位置不变。
 - 自检：编译 0 警告，52/52 测试通过，format 无改动；离屏预览各处焦点框完整、未被裁。
+
+T8 修复（2026-11-11，用户反馈点按钮提示「页面没有响应全屏操作」）：
+
+- 原因：WebView2 运行时 11 月初自动升到 157。Chromium 157 把 `SuppressFullscreenFromUnfocusedView` 转为默认开启（CL 8527266），浏览器进程在 `RenderFrameHostImpl::EnterFullscreen` 里要求发起全屏的视图有焦点，带用户手势也不行，页面得到 `TypeError: not granted`。点标题栏按钮时焦点在 WPF 上，所以一律被拒。
+- 修复：`ToggleVideoFillAsync` 进入前先 `BrowserView.Focus()`，退出不变。旧版运行时不检查焦点，多给一次焦点不影响。
+- 自检：离屏真主窗在 157 上，仿 B 站页与真 B 站页从按钮入口都能铺满，Esc 能退出；启动参数加 `--disable-features=SuppressFullscreenFromUnfocusedView` 模拟旧版，同样能铺满、退出。
