@@ -53,6 +53,8 @@ public partial class MainWindow : Window, IControlBrowser
     // 启动预加载的 WebView2 环境：OnLoaded 一开始就并行拉起浏览器进程
     //（启动最慢一环），首次初始化消费一次；失败/缺运行时返回 null 走原路径
     private Task<CoreWebView2Environment?>? _environmentPreloadTask;
+    // 完整版发布包内置的 WebView2 固定版本运行时目录；标准版与开发构建为 null，用系统的 Evergreen 运行时
+    private readonly string? _bundledWebView2Runtime = WebView2RuntimeLocator.FindBundledRuntime(AppContext.BaseDirectory);
     /// <summary>
     /// 为 false 时忽略 Location/SizeChanged 对边界的写回，
     /// 防止启动默认坐标在配置恢复前覆盖 settings.json。
@@ -456,18 +458,45 @@ public partial class MainWindow : Window, IControlBrowser
         {
             try
             {
-                if (!IsWebView2RuntimeInstalled())
+                var runtimeFolder = PrepareBundledWebView2Runtime();
+                if (runtimeFolder is null && !IsWebView2RuntimeInstalled())
                 {
                     return null;
                 }
 
-                return await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+                return await CoreWebView2Environment.CreateAsync(runtimeFolder, userDataFolder);
             }
             catch
             {
                 return null;
             }
         });
+    }
+
+    /// <summary>
+    /// 有内置运行时就确保 Windows 10 上渲染进程能读取它（见 <see cref="WebView2RuntimeLocator.EnsureAppContainerAccess"/>），
+    /// 返回运行时目录；没有返回 null，调用方走系统 Evergreen 运行时。授权失败只记日志：Windows 11 不受影响。
+    /// </summary>
+    private string? PrepareBundledWebView2Runtime()
+    {
+        if (_bundledWebView2Runtime is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (WebView2RuntimeLocator.EnsureAppContainerAccess(_bundledWebView2Runtime))
+            {
+                FileLogger.LogDebug($"Granted AppContainer read access to bundled WebView2 runtime: {_bundledWebView2Runtime}");
+            }
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Grant AppContainer access to bundled WebView2 runtime");
+        }
+
+        return _bundledWebView2Runtime;
     }
 
     /// <summary>
@@ -487,10 +516,15 @@ public partial class MainWindow : Window, IControlBrowser
             }
         }
 
-        await EnsureWebView2RuntimeAsync();
+        var runtimeFolder = PrepareBundledWebView2Runtime();
+        if (runtimeFolder is null)
+        {
+            await EnsureWebView2RuntimeAsync();
+        }
+
         var userDataFolder = AppPaths.WebViewProfile;
         _webViewUserDataFolder = userDataFolder;
-        return await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+        return await CoreWebView2Environment.CreateAsync(runtimeFolder, userDataFolder);
     }
 
     private bool IsWebView2RuntimeInstalled()
@@ -546,6 +580,8 @@ public partial class MainWindow : Window, IControlBrowser
         try
         {
             var environment = await GetOrCreateBrowserEnvironmentAsync();
+            FileLogger.LogDebug(
+                $"WebView2 runtime {environment.BrowserVersionString} ({(_bundledWebView2Runtime is null ? "system" : "bundled")})");
             await browser.EnsureCoreWebView2Async(environment);
             if (_isShuttingDown || !ReferenceEquals(browser, BrowserView))
             {
@@ -1814,7 +1850,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var result = await EvaluateVideoScriptAsync(core, BuildSeekScript(deltaSeconds), userGesture: true);
+            var result = await EvaluatePageScriptAsync(core, BuildSeekScript(deltaSeconds), userGesture: true);
             var secondsText = Math.Abs(deltaSeconds).ToString("0");
             var backward = deltaSeconds < 0;
             switch (result)
@@ -1893,7 +1929,7 @@ public partial class MainWindow : Window, IControlBrowser
 """;
 
     /// <summary>
-    /// 播放/暂停脚本。play() 返回 Promise，由 <see cref="EvaluateVideoScriptAsync"/> 等待其结算：
+    /// 播放/暂停脚本。play() 返回 Promise，由 <see cref="EvaluatePageScriptAsync"/> 等待其结算：
     /// 被自动播放策略拦截（NotAllowedError）时返回 'play-blocked'，不误报为已播放；
     /// 缓冲中又被暂停等操作打断（AbortError 等）返回 'play-interrupted'，以后一次操作的结果为准。
     /// </summary>
@@ -1950,12 +1986,13 @@ public partial class MainWindow : Window, IControlBrowser
 """;
 
     /// <summary>
-    /// 经 CDP Runtime.evaluate 在页面主上下文执行视频脚本，返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
-    /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"。awaitPromise 取结算值。
+    /// 经 CDP Runtime.evaluate 在页面主上下文执行脚本，返回脚本的字符串结果；脚本异常或结果非字符串时返回 null。
+    /// 不用 ExecuteScriptAsync：它不等待 Promise，play() 的结果会变成 "{}"（awaitPromise 取结算值）；
+    /// 而且 WebView2 把它当成用户操作，每次都给页面一次用户激活。
     /// <paramref name="userGesture"/>：热键、标题栏按钮本就是用户操作，传 true，play() 不被自动播放策略拦截，requestFullscreen() 也需要它；
-    /// 读播放进度这类后台取样必须传 false，否则每次取样都给页面一次用户激活，页面能借机弹窗、全屏或唤起外部程序。
+    /// 读播放进度、鼠标移出 / 移回窗口这类后台行为必须传 false，否则每次都给页面一次用户激活，页面能借机弹窗、全屏或唤起外部程序。
     /// </summary>
-    private static async Task<string?> EvaluateVideoScriptAsync(CoreWebView2 core, string script, bool userGesture)
+    private static async Task<string?> EvaluatePageScriptAsync(CoreWebView2 core, string script, bool userGesture)
     {
         var parameters = JsonSerializer.Serialize(new
         {
@@ -2105,7 +2142,7 @@ public partial class MainWindow : Window, IControlBrowser
         _playbackSampleInFlight = true;
         try
         {
-            var parts = (await EvaluateVideoScriptAsync(core, PlaybackPositionScript, userGesture: false).ConfigureAwait(true))?.Split('|');
+            var parts = (await EvaluatePageScriptAsync(core, PlaybackPositionScript, userGesture: false).ConfigureAwait(true))?.Split('|');
             if (parts is { Length: 2 } &&
                 double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var position) &&
                 double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var duration) &&
@@ -2238,7 +2275,8 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            await core.ExecuteScriptAsync(MouseLeftPageScript);
+            // 后台行为：不带用户手势（见 EvaluatePageScriptAsync），鼠标移出窗口不给页面用户激活
+            await EvaluatePageScriptAsync(core, MouseLeftPageScript, userGesture: false);
         }
         catch (Exception ex)
         {
@@ -2285,7 +2323,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            await core.ExecuteScriptAsync(MouseReenteredPageScript);
+            await EvaluatePageScriptAsync(core, MouseReenteredPageScript, userGesture: false);
         }
         catch (Exception ex)
         {
@@ -2416,7 +2454,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         try
         {
-            var result = await EvaluateVideoScriptAsync(core, TogglePlaybackScript, userGesture: true);
+            var result = await EvaluatePageScriptAsync(core, TogglePlaybackScript, userGesture: true);
             switch (result)
             {
                 case "typing":
@@ -2471,7 +2509,7 @@ public partial class MainWindow : Window, IControlBrowser
                 BrowserView.Focus();
             }
 
-            var result = await EvaluateVideoScriptAsync(core, ToggleVideoFillScript, userGesture: true);
+            var result = await EvaluatePageScriptAsync(core, ToggleVideoFillScript, userGesture: true);
             switch (result)
             {
                 case "fill":

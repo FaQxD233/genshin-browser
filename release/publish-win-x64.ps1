@@ -1,13 +1,28 @@
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$Version = "0.0.0-local"
+    [string]$Version = "0.0.0-local",
+
+    # Also produce the full package with the bundled WebView2 Fixed Version runtime (dist/<Runtime>-full);
+    # the version is pinned in webview2-fixed-runtime.json.
+    [switch]$BundleWebView2,
+
+    # Skip restore when CI has already restored (with TreatWarningsAsErrors).
+    [switch]$NoRestore,
+
+    # Cache directory for the Fixed Version .cab (default in add-webview2-runtime.ps1); CI passes RUNNER_TEMP.
+    [string]$WebView2CacheDirectory
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 
 if ($Runtime -notmatch '^win-(x64|x86|arm64)$') {
     throw "Unsupported runtime '$Runtime'. Expected win-x64, win-x86, or win-arm64."
+}
+
+if ($BundleWebView2 -and $Runtime -ne "win-x64") {
+    throw "The bundled WebView2 runtime is only configured for win-x64 (see webview2-fixed-runtime.json)."
 }
 
 $semanticVersion = $Version.Trim().TrimStart('v')
@@ -19,12 +34,15 @@ $projectRoot = (Resolve-Path (Split-Path -Parent $PSScriptRoot)).Path
 $projectPath = Join-Path $projectRoot "GenshinBrowser.csproj"
 $distRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot "dist"))
 $outputPath = [System.IO.Path]::GetFullPath((Join-Path $distRoot "$Runtime-self-contained"))
+$fullOutputPath = [System.IO.Path]::GetFullPath((Join-Path $distRoot "$Runtime-full"))
 $dotnetCommand = Get-Command "dotnet" -ErrorAction SilentlyContinue
 
-if (-not $outputPath.StartsWith(
-        $distRoot + [System.IO.Path]::DirectorySeparatorChar,
-        [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Refusing to publish outside the dist directory: $outputPath"
+foreach ($path in @($outputPath, $fullOutputPath)) {
+    if (-not $path.StartsWith(
+            $distRoot + [System.IO.Path]::DirectorySeparatorChar,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to publish outside the dist directory: $path"
+    }
 }
 
 if ($dotnetCommand) {
@@ -37,22 +55,42 @@ if ($dotnetCommand) {
 }
 
 # Ensure repeated local publishes cannot retain stale files from an older package/runtime.
-if (Test-Path -LiteralPath $outputPath) {
-    Remove-Item -LiteralPath $outputPath -Recurse -Force
+foreach ($path in @($outputPath, $fullOutputPath)) {
+    if (Test-Path -LiteralPath $path) {
+        Remove-Item -LiteralPath $path -Recurse -Force
+    }
 }
 
-& $dotnetPath publish $projectPath `
-    -c $Configuration `
-    -r $Runtime `
-    --self-contained true `
-    -p:PublishSingleFile=false `
-    -p:PublishTrimmed=false `
-    -p:DebugSymbols=false `
-    -p:DebugType=None `
-    "-p:Version=$semanticVersion" `
-    -o $outputPath
+$publishArguments = @(
+    "publish", $projectPath,
+    "-c", $Configuration,
+    "-r", $Runtime,
+    "--self-contained", "true",
+    "-p:PublishSingleFile=false",
+    "-p:PublishTrimmed=false",
+    "-p:DebugSymbols=false",
+    "-p:DebugType=None",
+    "-p:Version=$semanticVersion",
+    "-o", $outputPath
+)
+if ($NoRestore) {
+    $publishArguments += "--no-restore"
+}
+
+& $dotnetPath @publishArguments
 if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE."
+}
+
+# The full package is a copy of the published app (taken before the Evergreen bootstrapper is added) plus the bundled runtime.
+if ($BundleWebView2) {
+    Copy-Item -LiteralPath $outputPath -Destination $fullOutputPath -Recurse
+    $runtimeArguments = @{ PackageDirectory = $fullOutputPath }
+    if ($WebView2CacheDirectory) {
+        $runtimeArguments.CacheDirectory = $WebView2CacheDirectory
+    }
+
+    & (Join-Path $PSScriptRoot "add-webview2-runtime.ps1") @runtimeArguments
 }
 
 $bootstrapperUrl = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
@@ -60,53 +98,14 @@ $bootstrapperPath = Join-Path $outputPath "MicrosoftEdgeWebview2Setup.exe"
 Write-Host "Downloading WebView2 Evergreen Bootstrapper..."
 Invoke-WebRequest -Uri $bootstrapperUrl -OutFile $bootstrapperPath -UseBasicParsing
 
-$signature = Get-AuthenticodeSignature -LiteralPath $bootstrapperPath
-$subject = $signature.SignerCertificate.Subject
-if ($signature.Status -ne 'Valid' -or $subject -notmatch 'O=Microsoft Corporation') {
-    Remove-Item -LiteralPath $bootstrapperPath -Force
-    throw "WebView2 installer signature validation failed: status=$($signature.Status), subject=$subject"
+$packages = @(@{ Path = $outputPath; Variant = "Standard" })
+if ($BundleWebView2) {
+    $packages += @{ Path = $fullOutputPath; Variant = "Full" }
 }
 
-Write-Host "Verified Microsoft-signed WebView2 Bootstrapper: $([math]::Round((Get-Item $bootstrapperPath).Length / 1KB, 1)) KiB"
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $outputPath "README.txt") -Force
-
-$expectedExecutables = @("GenshinBrowser.exe", "MicrosoftEdgeWebview2Setup.exe")
-$executables = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File -Filter "*.exe")
-$unexpectedExecutables = @($executables | Where-Object { $_.Name -notin $expectedExecutables })
-if ($executables.Count -ne $expectedExecutables.Count -or $unexpectedExecutables.Count -ne 0) {
-    throw "Unexpected executables in publish output: $($executables.Name -join ', ')"
+foreach ($package in $packages) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "README.txt") -Destination (Join-Path $package.Path "README.txt") -Force
+    & (Join-Path $PSScriptRoot "verify-package.ps1") -PackageDirectory $package.Path -Version $semanticVersion -Variant $package.Variant
 }
 
-$forbiddenFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File | Where-Object {
-    $_.Name -like "*Forms*" -or $_.Name -eq "System.Design.dll" -or $_.Name -eq "createdump.exe"
-})
-if ($forbiddenFiles.Count -ne 0) {
-    throw "Unused publish files remain: $($forbiddenFiles.Name -join ', ')"
-}
-
-$depsFiles = @(Get-ChildItem -LiteralPath $outputPath -File -Filter "*.deps.json")
-if ($depsFiles.Count -ne 1) {
-    throw "Expected one .deps.json file, found $($depsFiles.Count)."
-}
-
-$null = Get-Content -LiteralPath $depsFiles[0].FullName -Raw | ConvertFrom-Json
-$staleReference = Select-String -LiteralPath $depsFiles[0].FullName `
-    -Pattern 'Forms|System\.Design\.dll|createdump\.exe' `
-    -Quiet
-if ($staleReference) {
-    throw "Removed publish assets are still referenced by $($depsFiles[0].Name)."
-}
-
-$pdbFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File -Filter "*.pdb")
-if ($pdbFiles.Count -ne 0) {
-    throw "Release output contains debug symbols: $($pdbFiles.Name -join ', ')"
-}
-
-$application = Get-Item -LiteralPath (Join-Path $outputPath "GenshinBrowser.exe")
-if (-not $application.VersionInfo.ProductVersion.StartsWith($semanticVersion, [StringComparison]::Ordinal)) {
-    throw "Application version '$($application.VersionInfo.ProductVersion)' does not match '$semanticVersion'."
-}
-
-$files = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File)
-$totalMiB = [math]::Round((($files | Measure-Object Length -Sum).Sum / 1MB), 2)
-Write-Host "Publish completed and verified: $outputPath ($($files.Count) files, $totalMiB MiB)"
+Write-Host "Publish completed: $($packages.Path -join ', ')"

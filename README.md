@@ -47,9 +47,9 @@
 
 ## 🖥️ 运行要求
 
-- Windows 10/11
-- Edge WebView2 Runtime（Windows 11 自带）
-- .NET 8 Runtime（自包含版本无需安装）
+- Windows 10/11 x64
+- Edge WebView2 Runtime：标准版用系统里的（Windows 11 自带，缺了首次启动自动安装）；完整版内置固定版本，不需要
+- .NET 8 Runtime：两种发布包都已内置，无需安装
 
 ## 📦 发布与使用
 
@@ -58,12 +58,18 @@
 dotnet test tests/GenshinBrowser.Tests/GenshinBrowser.Tests.csproj
 ```
 
-### 自包含版本（推荐）
-- 本地发布：`./release/publish-win-x64.ps1 -Version v0.2.1`
-- 发布目录：`dist/win-x64-self-contained/`
-- 无需安装 .NET，开箱即用
-- 首次启动自动检测并安装 WebView2 Runtime（如需）
-- GitHub Actions 仅支持手动触发（Actions → CI and Release）：可只跑构建/测试，或完整发布 win-x64
+### 发布包（两种，都已内置 .NET，开箱即用）
+- 标准版 `GenshinBrowser-vX-win-x64.zip`：用系统里的 WebView2 运行时，体积小；首次启动自动检测并安装 WebView2 Runtime（如需）
+- 完整版 `GenshinBrowser-vX-win-x64-full.zip`：`WebView2Runtime\` 里内置 WebView2 固定版本运行时（版本见 `release/webview2-fixed-runtime.json`），不依赖系统里的 WebView2，系统更新不会改变它的行为；体积大，安全补丁随本项目发版更新；不能放在网络共享路径上运行
+- 本地发布：`./release/publish-win-x64.ps1 -Version v0.2.1`，加 `-BundleWebView2` 同时输出完整版
+- 发布目录：`dist/win-x64-self-contained/`（标准版）、`dist/win-x64-full/`（完整版）
+- GitHub Actions 仅支持手动触发（Actions → CI and Release）：可只跑构建/测试，或完整发布 win-x64；勾选 `bundle_webview2`（默认勾上）时同时生成完整版
+
+### 升级内置的 WebView2 运行时
+1. 在 [WebView2 下载页](https://developer.microsoft.com/microsoft-edge/webview2/) 的 Fixed Version 里取新版本 x64 .cab 的下载链接（官网只提供最近两个大版本）
+2. 改 `release/webview2-fixed-runtime.json` 的 `version`、`url`，`sha256` 先留空
+3. 运行 `./release/publish-win-x64.ps1 -BundleWebView2`：脚本下载后报 SHA-256 不符并给出实际值，填进 `sha256` 再运行一次；自检会校验运行时里的 exe 都是微软签名、版本号与配置一致
+4. 用完整版实测视频播放、视频铺满、浮窗后再发版；只往新版本升，建议至少一两个月或微软发安全更新时升一次
 
 ### 应用图标
 - 源图：`Resources/AppIcon/keqing-sticker.png`（完整贴纸，用于 48px 及以上）与 `keqing-head.png`（头部特写，用于 40px 及以下和主窗标题栏）

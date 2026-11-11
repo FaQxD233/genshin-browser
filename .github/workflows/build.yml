@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: true
+      bundle_webview2:
+        description: "Also build the full package with bundled WebView2 (fixed version)"
+        required: true
+        type: boolean
+        default: true
       release_notes:
         description: "Release notes"
         required: false
@@ -66,7 +71,7 @@ jobs:
     if: ${{ !inputs.run_quality_only }}
     needs: quality
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -95,119 +100,56 @@ jobs:
       - name: Restore win-x64 runtime
         run: dotnet restore GenshinBrowser.csproj -r win-x64 -p:TreatWarningsAsErrors=true
 
-      - name: Publish self-contained application
+      # 与本地发布同一个脚本：发布、加 Evergreen 安装程序 / 内置固定版本运行时、两种包的自检
+      - name: Publish and verify packages
         shell: pwsh
+        env:
+          BUNDLE_WEBVIEW2: ${{ inputs.bundle_webview2 }}
         run: |
-          dotnet publish GenshinBrowser.csproj `
-            -c Release `
-            -r win-x64 `
-            --self-contained true `
-            --no-restore `
-            -p:PublishSingleFile=false `
-            -p:PublishTrimmed=false `
-            -p:DebugSymbols=false `
-            -p:DebugType=None `
-            -p:Version="$env:RELEASE_SEMVER" `
-            -o dist/win-x64-self-contained
+          ./release/publish-win-x64.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -NoRestore `
+            -BundleWebView2:($env:BUNDLE_WEBVIEW2 -eq 'true') `
+            -WebView2CacheDirectory $env:RUNNER_TEMP
 
-      - name: Add and verify WebView2 installer
-        shell: pwsh
-        run: |
-          $url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
-          $output = "dist/win-x64-self-contained/MicrosoftEdgeWebview2Setup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $output -UseBasicParsing
-
-          $signature = Get-AuthenticodeSignature -LiteralPath $output
-          $subject = $signature.SignerCertificate.Subject
-          if ($signature.Status -ne 'Valid' -or $subject -notmatch 'O=Microsoft Corporation') {
-              Remove-Item -LiteralPath $output -Force
-              throw "WebView2 installer signature validation failed: status=$($signature.Status), subject=$subject"
-          }
-
-          $size = [math]::Round((Get-Item -LiteralPath $output).Length / 1KB, 1)
-          Write-Host "Verified Microsoft-signed WebView2 installer: $size KiB"
-          Copy-Item -LiteralPath "release/README.txt" -Destination "dist/win-x64-self-contained/README.txt" -Force
-
-      - name: Verify publish output
-        shell: pwsh
-        run: |
-          $output = (Resolve-Path "dist/win-x64-self-contained").Path
-          $expectedExecutables = @("GenshinBrowser.exe", "MicrosoftEdgeWebview2Setup.exe")
-          $executables = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter "*.exe")
-          $unexpectedExecutables = @($executables | Where-Object { $_.Name -notin $expectedExecutables })
-          if ($executables.Count -ne $expectedExecutables.Count -or $unexpectedExecutables.Count -ne 0) {
-              throw "Unexpected executables in publish output: $($executables.Name -join ', ')"
-          }
-
-          $application = Get-Item -LiteralPath (Join-Path $output "GenshinBrowser.exe")
-          if (-not $application.VersionInfo.ProductVersion.StartsWith($env:RELEASE_SEMVER, [StringComparison]::Ordinal)) {
-              throw "Application version '$($application.VersionInfo.ProductVersion)' does not match '$env:RELEASE_SEMVER'."
-          }
-
-          $forbiddenFiles = @(Get-ChildItem -LiteralPath $output -Recurse -File | Where-Object {
-              $_.Name -like "*Forms*" -or $_.Name -eq "System.Design.dll" -or $_.Name -eq "createdump.exe"
-          })
-          if ($forbiddenFiles.Count -ne 0) {
-              throw "Unused publish files remain: $($forbiddenFiles.Name -join ', ')"
-          }
-
-          $depsFiles = @(Get-ChildItem -LiteralPath $output -File -Filter "*.deps.json")
-          if ($depsFiles.Count -ne 1) {
-              throw "Expected one .deps.json file, found $($depsFiles.Count)."
-          }
-
-          $null = Get-Content -LiteralPath $depsFiles[0].FullName -Raw | ConvertFrom-Json
-          $staleReference = Select-String -LiteralPath $depsFiles[0].FullName `
-              -Pattern 'Forms|System\.Design\.dll|createdump\.exe' `
-              -Quiet
-          if ($staleReference) {
-              throw "Removed publish assets are still referenced by $($depsFiles[0].Name)."
-          }
-
-          $pdbFiles = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter "*.pdb")
-          if ($pdbFiles.Count -ne 0) {
-              throw "Release output contains debug symbols: $($pdbFiles.Name -join ', ')"
-          }
-
-          $files = @(Get-ChildItem -LiteralPath $output -Recurse -File)
-          $totalMiB = [math]::Round((($files | Measure-Object Length -Sum).Sum / 1MB), 2)
-          Write-Host "Publish verification passed: $($files.Count) files, $totalMiB MiB."
-
-      - name: Write version information
-        shell: pwsh
-        run: |
-          $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
-          $info = @(
-              "Genshin Browser - Windows x64 self-contained"
-              "Version: $env:RELEASE_VERSION"
-              "Build time: $buildTime"
-              "Commit: $env:GITHUB_SHA"
-              "Branch: $env:GITHUB_REF_NAME"
-          ) -join "`n"
-
-          $info | Out-File -FilePath "dist/win-x64-self-contained/VERSION.txt" -Encoding utf8
-          Write-Host $info
+          $webView2Version = (Get-Content -LiteralPath release/webview2-fixed-runtime.json -Raw | ConvertFrom-Json).version
+          "WEBVIEW2_FIXED_VERSION=$webView2Version" >> $env:GITHUB_ENV
 
       - name: Package release
         shell: pwsh
         run: |
-          $zipName = "GenshinBrowser-$env:RELEASE_VERSION-win-x64.zip"
-          Compress-Archive -Path "dist/win-x64-self-contained/*" -DestinationPath $zipName -CompressionLevel Optimal
-          $size = [math]::Round((Get-Item -LiteralPath $zipName).Length / 1MB, 2)
-          $checksumName = "$zipName.sha256"
-          $checksum = (Get-FileHash -LiteralPath $zipName -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$checksum  $zipName" | Out-File -FilePath $checksumName -Encoding ascii
-          "RELEASE_ZIP=$zipName" >> $env:GITHUB_ENV
-          "RELEASE_CHECKSUM=$checksumName" >> $env:GITHUB_ENV
-          Write-Host "Created ${zipName}: $size MiB"
+          $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+          $packages = @(
+              @{ Path = "dist/win-x64-self-contained"; Zip = "GenshinBrowser-$env:RELEASE_VERSION-win-x64.zip"; Edition = "standard"; WebView2 = "system WebView2 Runtime (Evergreen)" }
+              @{ Path = "dist/win-x64-full"; Zip = "GenshinBrowser-$env:RELEASE_VERSION-win-x64-full.zip"; Edition = "full"; WebView2 = "bundled fixed version $env:WEBVIEW2_FIXED_VERSION" }
+          )
+
+          New-Item -ItemType Directory -Force -Path release-assets | Out-Null
+          foreach ($package in @($packages | Where-Object { Test-Path -LiteralPath $_.Path })) {
+              $info = @(
+                  "Genshin Browser - Windows x64 self-contained ($($package.Edition))"
+                  "Version: $env:RELEASE_VERSION"
+                  "WebView2: $($package.WebView2)"
+                  "Build time: $buildTime"
+                  "Commit: $env:GITHUB_SHA"
+                  "Branch: $env:GITHUB_REF_NAME"
+              ) -join "`n"
+              $info | Out-File -FilePath (Join-Path $package.Path "VERSION.txt") -Encoding utf8
+              Write-Host $info
+
+              $zipPath = Join-Path "release-assets" $package.Zip
+              Compress-Archive -Path "$($package.Path)/*" -DestinationPath $zipPath -CompressionLevel Optimal
+              $checksum = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$checksum  $($package.Zip)" | Out-File -FilePath "$zipPath.sha256" -Encoding ascii
+              $size = [math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 2)
+              Write-Host "Created $($package.Zip): $size MiB"
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: GenshinBrowser-${{ inputs.version }}-win-x64
-          path: |
-            ${{ env.RELEASE_ZIP }}
-            ${{ env.RELEASE_CHECKSUM }}
+          path: release-assets/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 90
@@ -225,8 +167,10 @@ jobs:
 
             ### 下载说明
 
-            下载 `GenshinBrowser-${{ env.RELEASE_VERSION }}-win-x64.zip`，解压后运行 `GenshinBrowser.exe`。
-            首次启动时，如果系统未安装 WebView2 Runtime，应用会自动静默安装。
+            - `GenshinBrowser-${{ env.RELEASE_VERSION }}-win-x64.zip`（标准版）：使用系统里的 WebView2 运行时，没有安装时首次启动会自动静默安装。
+            ${{ inputs.bundle_webview2 && format('- `GenshinBrowser-{0}-win-x64-full.zip`（完整版）：内置 WebView2 运行时（固定版本 {1}），不依赖系统里的 WebView2，系统更新也不会改变它的行为；下载包较大。', env.RELEASE_VERSION, env.WEBVIEW2_FIXED_VERSION) || '' }}
+
+            解压后运行 `GenshinBrowser.exe`。
 
             **系统要求：** Windows 10/11 x64
 
@@ -239,9 +183,7 @@ jobs:
             - 提交：`${{ github.sha }}`
             - 分支：`${{ github.ref_name }}`
             - 工作流：`${{ github.run_id }}`
-          files: |
-            ${{ env.RELEASE_ZIP }}
-            ${{ env.RELEASE_CHECKSUM }}
+          files: release-assets/*
           fail_on_unmatched_files: true
           draft: false
           prerelease: ${{ contains(env.RELEASE_SEMVER, '-') }}
@@ -253,7 +195,8 @@ jobs:
         run: |
           "## Genshin Browser $env:RELEASE_VERSION" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
-          "- Artifact: ``$env:RELEASE_ZIP``" >> $env:GITHUB_STEP_SUMMARY
-          "- SHA-256: ``$env:RELEASE_CHECKSUM``" >> $env:GITHUB_STEP_SUMMARY
+          foreach ($asset in @(Get-ChildItem -LiteralPath release-assets -File)) {
+              "- ``$($asset.Name)``: $([math]::Round($asset.Length / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
+          }
           "- GitHub Release: ``$env:CREATE_RELEASE``" >> $env:GITHUB_STEP_SUMMARY
           "- Commit: ``$env:GITHUB_SHA``" >> $env:GITHUB_STEP_SUMMARY
