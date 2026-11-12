@@ -82,6 +82,32 @@
                    VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis"
                    MaxWidth="360"/>
+        <!-- 穿透时的控制按钮：开着鼠标穿透并打开「控制按钮」时替换标题文字，点按经 TitleBarClickLayer 转发；
+             比右侧窗口按钮宽一些，方便触屏点按 -->
+        <StackPanel x:Name="TitleBarControls"
+                    Grid.Column="1"
+                    Margin="4,0,8,0"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+          <Button x:Name="TitleBarSeekBackwardButton" Width="48" Height="30" Margin="0"
+                  Style="{StaticResource TitleBarButton}" Click="TitleBarSeekBackwardButton_OnClick"
+                  AutomationProperties.Name="{DynamicResource Settings.SeekBackward}">
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xEB9E;" FontSize="14" />
+          </Button>
+          <!-- E768 播放 / E769 暂停：显示点下去会做的事，按上一次播放 / 暂停的结果切换 -->
+          <Button x:Name="TitleBarPlaybackButton" Width="48" Height="30" Margin="0"
+                  Style="{StaticResource TitleBarButton}" Click="TitleBarPlaybackButton_OnClick"
+                  AutomationProperties.Name="{DynamicResource Settings.Playback}">
+            <TextBlock x:Name="TitleBarPlaybackIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE768;" FontSize="14" />
+          </Button>
+          <Button x:Name="TitleBarSeekForwardButton" Width="48" Height="30" Margin="0"
+                  Style="{StaticResource TitleBarButton}" Click="TitleBarSeekForwardButton_OnClick"
+                  AutomationProperties.Name="{DynamicResource Settings.SeekForward}">
+            <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xEB9D;" FontSize="14" />
+          </Button>
+        </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Button x:Name="ModeToggleButton" Width="40" Height="30" Margin="0"
                   Style="{StaticResource TitleBarButton}" Click="ModeToggleButton_OnClick"

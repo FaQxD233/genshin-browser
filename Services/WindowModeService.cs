@@ -42,8 +42,14 @@ public sealed class WindowModeService
             return;
         }
 
+        UpdateExtendedStyle(handle, set: enabled ? WsExTransparent : 0, clear: enabled ? 0 : WsExTransparent);
+    }
+
+    /// <summary>置位 / 清除窗口扩展样式的若干位；结果不变时不写。</summary>
+    internal static void UpdateExtendedStyle(IntPtr handle, int set, int clear)
+    {
         var exStyle = GetWindowLong(handle, GwlExStyle);
-        var updated = enabled ? exStyle | WsExTransparent : exStyle & ~WsExTransparent;
+        var updated = (exStyle | set) & ~clear;
         if (updated != exStyle)
         {
             SetWindowLong(handle, GwlExStyle, updated);

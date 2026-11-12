@@ -57,8 +57,10 @@
   <sys:String x:Key="Settings.HotkeyScopeAllAppsTooltip">Respond in every app, including blacklisted ones</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeOff">Off</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeOffTooltip">Disable all global hotkeys; a window hidden by hotkey can still be restored with the hide key</sys:String>
+  <sys:String x:Key="Settings.RemoteKeys">Remote keys</sys:String>
+  <sys:String x:Key="Settings.RemoteKeysTooltip">When on, keys sent by remote-control apps (UU Remote, Parsec, …) and key-mapping tools also trigger hotkeys (these keys are simulated; by default only keys actually pressed on a keyboard count). Keys typed by a password manager's auto-type will trigger them too.</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">Restore defaults</sys:String>
-  <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, hotkeys, and click-through to defaults</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaultsTooltip">Restore opacity, zoom, hotkeys, click-through and title bar to defaults</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">Clear cache</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingDataTooltip">Clear disk cache, site data, and service workers (login cookies, browsing history, downloads, favorites, autofill, and saved passwords are preserved)</sys:String>
   <sys:String x:Key="Settings.Theme">Theme</sys:String>
@@ -101,7 +103,12 @@
   <!-- Generic switch state text (right of ToggleSwitch) -->
   <sys:String x:Key="Toggle.Off">Off</sys:String>
   <sys:String x:Key="Toggle.On">On</sys:String>
-  <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged; press {0} to return to Browsing and adjust.</sys:String>
+  <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged (except its title bar when Controls on the right is on); press {0} to return to Browsing and adjust.</sys:String>
+  <!-- Sub-option right of click-through, shown only while click-through is on -->
+  <sys:String x:Key="Settings.ClickThroughControls">Controls</sys:String>
+  <sys:String x:Key="Settings.ClickThroughControlsTooltip">While click-through is on, the Floating title bar stays visible and its title is replaced by Back 5s, Play / Pause and Forward 5s buttons; the whole title bar can be clicked while the video area still lets clicks through.</sys:String>
+  <sys:String x:Key="Settings.AutoHideTitleBar">Hide title bar</sys:String>
+  <sys:String x:Key="Settings.AutoHideTitleBarTooltip">In Floating mode the title bar hides and appears when the mouse reaches the top of the window; turn off to keep it visible.</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">Moved to top-left</sys:String>
   <sys:String x:Key="Toast.MovedBottomLeft">Moved to bottom-left</sys:String>
   <sys:String x:Key="Toast.MovedBottomRight">Moved to bottom-right</sys:String>
@@ -211,6 +218,12 @@
   <sys:String x:Key="Toast.HotkeyScopeOff">Hotkey scope: off</sys:String>
   <sys:String x:Key="Toast.ClickThroughOn">Floating click-through: on (press {0} to return to Browsing and adjust)</sys:String>
   <sys:String x:Key="Toast.ClickThroughOff">Floating click-through: off</sys:String>
+  <sys:String x:Key="Toast.ClickThroughControlsOn">Click-through controls: on</sys:String>
+  <sys:String x:Key="Toast.ClickThroughControlsOff">Click-through controls: off</sys:String>
+  <sys:String x:Key="Toast.AutoHideTitleBarOn">Floating title bar: auto-hide</sys:String>
+  <sys:String x:Key="Toast.AutoHideTitleBarOff">Floating title bar: always shown</sys:String>
+  <sys:String x:Key="Toast.RemoteKeysOn">Remote keys: on</sys:String>
+  <sys:String x:Key="Toast.RemoteKeysOff">Remote keys: off</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
   <sys:String x:Key="Toast.ThemeLight">Switched to light theme</sys:String>
   <sys:String x:Key="Toast.ThemeSystem">Switched to system theme</sys:String>

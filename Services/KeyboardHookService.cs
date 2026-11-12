@@ -194,6 +194,20 @@ public sealed class KeyboardHookService : IDisposable
     private volatile HotkeyScope _hotkeyScope = HotkeyScope.Blacklist;
     // 浮窗被热键隐藏时置 true：此时隐藏键是唯一恢复入口，不受范围/前台限制
     private volatile bool _alwaysAllowHideToggle;
+    // 「远程按键」：为 true 时注入的按键也触发热键，由 MainWindow 同步自设置
+    private volatile bool _acceptInjectedInput;
+    // 开关关着时注入的按键命中热键：每次运行只记一条日志（只在钩子线程读写），用来确认远程软件发的是不是注入的键
+    private bool _hasLoggedIgnoredInjectedKey;
+
+    /// <summary>
+    /// 为 true 时注入的按键（SendInput / keybd_event 合成：远程控制软件、按键映射工具）也触发热键；
+    /// 默认 false 只认键盘上实际按下的键。
+    /// </summary>
+    public bool AcceptInjectedInput
+    {
+        get => _acceptInjectedInput;
+        set => _acceptInjectedInput = value;
+    }
 
     /// <summary>全局热键生效范围。改变后立即对全部内置热键生效。</summary>
     public HotkeyScope HotkeyScope
@@ -469,18 +483,26 @@ public sealed class KeyboardHookService : IDisposable
             // 回调经安装线程（UI）的消息泵派发，与 _hookHealthTimer 同线程，无需原子读。
             _lastHookEventUtc = DateTime.UtcNow;
 
-            // 忽略注入事件（SendInput/keybd_event 合成）：密码管理器自动填充、输入法、
-            // 远程控制软件注入的按键不应触发热键——热键只响应用户物理按键。
-            var flags = Marshal.ReadInt32(lParam, 8);
-            if ((flags & (LlkhfInjected | LlkhfLowerIlInjected)) != 0)
-            {
-                return CallNextHookEx(_hookId, nCode, wParam, lParam);
-            }
-
             var vkCode = Marshal.ReadInt32(lParam);
             var snapshot = Volatile.Read(ref _hotkeySnapshot);
             if (!snapshot.ByVirtualKey.TryGetValue(vkCode, out var registrations))
             {
+                return CallNextHookEx(_hookId, nCode, wParam, lParam);
+            }
+
+            // 注入事件（SendInput/keybd_event 合成）默认不触发热键，只认实际按下的键：密码管理器自动输入、
+            // 输入法合成的同名键不该触发。远程控制软件（UU 远程、Parsec 等）和按键映射工具发的键也是注入的，
+            // 用户打开「远程按键」（AcceptInjectedInput）后照常处理。
+            var flags = Marshal.ReadInt32(lParam, 8);
+            if ((flags & (LlkhfInjected | LlkhfLowerIlInjected)) != 0 && !_acceptInjectedInput)
+            {
+                if (!_hasLoggedIgnoredInjectedKey && (wParam == (IntPtr)WmKeyDown || wParam == (IntPtr)WmSysKeyDown))
+                {
+                    _hasLoggedIgnoredInjectedKey = true;
+                    FileLogger.LogDebug(
+                        $"Ignored injected hotkey key VK=0x{vkCode:X2} flags=0x{flags:X2} (remote keys off; logged once per run).");
+                }
+
                 return CallNextHookEx(_hookId, nCode, wParam, lParam);
             }
 
@@ -560,7 +582,7 @@ public sealed class KeyboardHookService : IDisposable
     }
 
     /// <summary>
-    /// 判断某虚拟键当前是否处于物理按下状态。用于区分「长按中的重复 KeyDown」
+    /// 判断某虚拟键当前是否处于按下状态（异步键状态，注入的按键同样会更新它）。用于区分「长按中的重复 KeyDown」
     /// 与「上次 KeyUp 丢失后的残留状态」。
     /// </summary>
     private static bool IsKeyPhysicallyDown(int vkCode) => (GetAsyncKeyState(vkCode) & 0x8000) != 0;

@@ -102,6 +102,48 @@ public sealed class JsonAndEntryServiceTests
     }
 
     [Fact]
+    public async Task SettingsSave_PersistsTitleBarAndRemoteKeySettings()
+    {
+        // 同上：控制按钮、隐藏标题栏、远程按键三个开关都要进快照
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+
+        using (var settingsService = new SettingsService(settingsPath))
+        {
+            var settings = settingsService.Load();
+            Assert.False(settings.FloatingClickThroughControls);
+            Assert.True(settings.FloatingAutoHideTitleBar);
+            Assert.False(settings.HotkeysAcceptInjectedInput);
+
+            settings.FloatingClickThroughControls = true;
+            settings.FloatingAutoHideTitleBar = false;
+            settings.HotkeysAcceptInjectedInput = true;
+            await settingsService.SaveAsync(settings);
+        }
+
+        using var reloadedSettingsService = new SettingsService(settingsPath);
+        var reloaded = reloadedSettingsService.Load();
+        Assert.True(reloaded.FloatingClickThroughControls);
+        Assert.False(reloaded.FloatingAutoHideTitleBar);
+        Assert.True(reloaded.HotkeysAcceptInjectedInput);
+    }
+
+    [Fact]
+    public void SettingsLoad_OldFileWithoutTitleBarSetting_KeepsAutoHide()
+    {
+        // 旧版 settings.json 没有这个字段：浮窗标题栏照旧自动隐藏，不能被当成 false 变成常驻
+        using var directory = new TestDirectory();
+        var settingsPath = directory.GetPath("settings.json");
+        File.WriteAllText(settingsPath, """{"SchemaVersion":1,"FloatingClickThrough":true}""");
+
+        using var settingsService = new SettingsService(settingsPath);
+        var settings = settingsService.Load();
+        Assert.True(settings.FloatingAutoHideTitleBar);
+        Assert.False(settings.FloatingClickThroughControls);
+        Assert.False(settings.HotkeysAcceptInjectedInput);
+    }
+
+    [Fact]
     public void SettingsSanitize_ResolvesHotkeyConflictWhenModeIsDefaultPlayback()
     {
         using var directory = new TestDirectory();

@@ -97,7 +97,7 @@ public interface IControlBrowser
     bool RestoreControlWindowBounds(Window controlWindow);
 
     /// <summary>
-    /// 恢复浮窗设置（不透明度、快捷键、缩放、鼠标穿透）为默认值。
+    /// 恢复浮窗设置（不透明度、快捷键、缩放、鼠标穿透、标题栏）为默认值。
     /// </summary>
     void RestoreDefaultSettings();
 
@@ -132,9 +132,24 @@ public interface IControlBrowser
     HotkeyScope HotkeyScope { get; set; }
 
     /// <summary>
+    /// 远程按键（默认关）：开启后远程控制软件、按键映射工具发出的（注入的）按键也触发全局热键。
+    /// </summary>
+    bool HotkeysAcceptInjectedInput { get; set; }
+
+    /// <summary>
     /// 浮窗模式鼠标穿透（默认关）：开启后浮窗不接收鼠标，点击落到下层窗口；浏览模式不受影响。
     /// </summary>
     bool FloatingClickThrough { get; set; }
+
+    /// <summary>
+    /// 穿透时的控制按钮（默认关）：浮窗开着鼠标穿透时标题栏常驻、标题换成三个视频控制按钮，整条标题栏可点。
+    /// </summary>
+    bool FloatingClickThroughControls { get; set; }
+
+    /// <summary>
+    /// 浮窗模式自动隐藏标题栏（默认开）；关闭后浮窗标题栏常驻。
+    /// </summary>
+    bool FloatingAutoHideTitleBar { get; set; }
 
     /// <summary>
     /// 浏览器主窗当前宽度（逻辑像素）。

@@ -1488,11 +1488,47 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
 
     public bool IsHotkeyScopeOff => _browser.HotkeyScope == HotkeyScope.Off;
 
+    /// <summary>「远程按键」开关（双向绑定 ToggleSwitch）；写入含 Toast。</summary>
+    public bool IsRemoteKeysOn
+    {
+        get => _browser.HotkeysAcceptInjectedInput;
+        set => SetToggle(
+            _browser.HotkeysAcceptInjectedInput,
+            value,
+            enabled => _browser.HotkeysAcceptInjectedInput = enabled,
+            "Toast.RemoteKeysOn",
+            "Toast.RemoteKeysOff");
+    }
+
     /// <summary>浮窗鼠标穿透开关（双向绑定 ToggleSwitch）；写入走 <see cref="SetFloatingClickThrough"/>，含 Toast。</summary>
     public bool IsClickThroughOn
     {
         get => _browser.FloatingClickThrough;
         set => SetFloatingClickThrough(value);
+    }
+
+    /// <summary>穿透时的控制按钮（鼠标穿透右侧的子选项，穿透开启时才显示）；写入含 Toast。</summary>
+    public bool IsClickThroughControlsOn
+    {
+        get => _browser.FloatingClickThroughControls;
+        set => SetToggle(
+            _browser.FloatingClickThroughControls,
+            value,
+            enabled => _browser.FloatingClickThroughControls = enabled,
+            "Toast.ClickThroughControlsOn",
+            "Toast.ClickThroughControlsOff");
+    }
+
+    /// <summary>浮窗自动隐藏标题栏开关；写入含 Toast。</summary>
+    public bool IsAutoHideTitleBarOn
+    {
+        get => _browser.FloatingAutoHideTitleBar;
+        set => SetToggle(
+            _browser.FloatingAutoHideTitleBar,
+            value,
+            enabled => _browser.FloatingAutoHideTitleBar = enabled,
+            "Toast.AutoHideTitleBarOn",
+            "Toast.AutoHideTitleBarOff");
     }
 
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
@@ -1535,6 +1571,22 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsHotkeyScopeBlacklist));
         OnPropertyChanged(nameof(IsHotkeyScopeAllApps));
         OnPropertyChanged(nameof(IsHotkeyScopeOff));
+        OnPropertyChanged(nameof(IsRemoteKeysOn));
+    }
+
+    /// <summary>
+    /// 布尔设置开关的统一写入：值没变不动；变了交给浏览器侧写入并弹 Toast。
+    /// 开关状态由浏览器侧的 Mode 状态通知刷新（见 <see cref="RefreshFromBrowser(BrowserStateChangeKind)"/>）。
+    /// </summary>
+    private void SetToggle(bool current, bool value, Action<bool> apply, string onToastKey, string offToastKey)
+    {
+        if (current == value)
+        {
+            return;
+        }
+
+        apply(value);
+        ShowToast(LocalizationService.Get(value ? onToastKey : offToastKey), StatusLevel.Success);
     }
 
     private void SetFloatingClickThrough(bool enabled)
@@ -1556,6 +1608,8 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private void RefreshClickThroughFlags()
     {
         OnPropertyChanged(nameof(IsClickThroughOn));
+        OnPropertyChanged(nameof(IsClickThroughControlsOn));
+        OnPropertyChanged(nameof(IsAutoHideTitleBarOn));
     }
 
     private void SetLanguage(string language)

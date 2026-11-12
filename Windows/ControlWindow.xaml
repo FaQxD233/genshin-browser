@@ -367,10 +367,11 @@
                         AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
               </Grid>
 
-              <!-- 浮窗鼠标穿透：布尔项用开关 -->
+              <!-- 浮窗鼠标穿透：布尔项用开关；开启后右边出现子选项「控制按钮」 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
+                  <ColumnDefinition Width="Auto"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ClickThrough}" Foreground="{DynamicResource TextSecondary}"
@@ -381,6 +382,32 @@
                           IsChecked="{Binding IsClickThroughOn}"
                           ToolTip="{Binding ClickThroughTooltip}"
                           AutomationProperties.Name="{DynamicResource Settings.ClickThrough}"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0"
+                            Visibility="{Binding IsClickThroughOn, Converter={StaticResource BoolToVisibility}}">
+                  <TextBlock Text="{DynamicResource Settings.ClickThroughControls}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                             ToolTip="{DynamicResource Settings.ClickThroughControlsTooltip}"/>
+                  <CheckBox Style="{StaticResource ToggleSwitch}"
+                            IsChecked="{Binding IsClickThroughControlsOn}"
+                            ToolTip="{DynamicResource Settings.ClickThroughControlsTooltip}"
+                            AutomationProperties.Name="{DynamicResource Settings.ClickThroughControls}"/>
+                </StackPanel>
+              </Grid>
+
+              <!-- 浮窗标题栏自动隐藏（默认开）；关闭后浮窗标题栏常驻 -->
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.AutoHideTitleBar}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                           ToolTip="{DynamicResource Settings.AutoHideTitleBarTooltip}"/>
+                <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                          HorizontalAlignment="Left"
+                          IsChecked="{Binding IsAutoHideTitleBarOn}"
+                          ToolTip="{DynamicResource Settings.AutoHideTitleBarTooltip}"
+                          AutomationProperties.Name="{DynamicResource Settings.AutoHideTitleBar}"/>
               </Grid>
 
               <!-- 显示：不透明度 / 页面缩放同一行：− 数值 % + 重置 -->
@@ -624,6 +651,22 @@
                               ToolTip="{DynamicResource Settings.HotkeyScopeOffTooltip}"/>
                     </StackPanel>
                   </Border>
+                </Grid>
+
+                <!-- 远程按键：远程控制软件 / 按键映射工具发出的（注入的）按键也触发热键 -->
+                <Grid Margin="0,0,0,8">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="KeyLabel"/>
+                    <ColumnDefinition Width="*"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{DynamicResource Settings.RemoteKeys}" Foreground="{DynamicResource TextSecondary}"
+                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                             ToolTip="{DynamicResource Settings.RemoteKeysTooltip}"/>
+                  <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                            HorizontalAlignment="Left"
+                            IsChecked="{Binding IsRemoteKeysOn}"
+                            ToolTip="{DynamicResource Settings.RemoteKeysTooltip}"
+                            AutomationProperties.Name="{DynamicResource Settings.RemoteKeys}"/>
                 </Grid>
         </StackPanel>
         </ScrollViewer>

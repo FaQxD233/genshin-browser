@@ -87,9 +87,26 @@ public sealed class AppSettings
     public HotkeyScope HotkeyScope { get; set; } = HotkeyScope.Blacklist;
 
     /// <summary>
+    /// 注入的按键（远程控制软件、按键映射工具经 SendInput 等发出的键）是否也触发全局热键。
+    /// 默认关：只认键盘上实际按下的键，免得密码管理器自动输入、输入法合成的同名键误触发。
+    /// </summary>
+    public bool HotkeysAcceptInjectedInput { get; set; }
+
+    /// <summary>
     /// 浮窗模式鼠标穿透：开启后浮窗不接收鼠标，点击落到下层窗口（如游戏）；浏览模式不受影响。默认关闭。
     /// </summary>
     public bool FloatingClickThrough { get; set; }
+
+    /// <summary>
+    /// 浮窗穿透时的控制按钮：开启后，浮窗开着鼠标穿透时标题栏常驻，标题换成倒退 / 播放暂停 / 快进三个按钮，
+    /// 整条标题栏可点，视频区照旧穿透。默认关闭。
+    /// </summary>
+    public bool FloatingClickThroughControls { get; set; }
+
+    /// <summary>
+    /// 浮窗模式自动隐藏标题栏（鼠标移到窗口顶部时出现）。默认开启；关闭后浮窗标题栏常驻。
+    /// </summary>
+    public bool FloatingAutoHideTitleBar { get; set; } = true;
 
     /// <summary>
     /// 是否已展示过「首次进入浮窗」引导 toast。

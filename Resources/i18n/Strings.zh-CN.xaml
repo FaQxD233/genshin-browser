@@ -57,8 +57,10 @@
   <sys:String x:Key="Settings.HotkeyScopeAllAppsTooltip">任何前台程序都响应，包括黑名单软件</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeOff">关闭</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeOffTooltip">全局热键全部停用；热键隐藏中的窗口仍可用隐藏键恢复</sys:String>
+  <sys:String x:Key="Settings.RemoteKeys">远程按键</sys:String>
+  <sys:String x:Key="Settings.RemoteKeysTooltip">开启后，UU 远程、Parsec 等远程控制软件和按键映射工具发出的按键也能触发热键（这类按键是软件模拟的，默认只认键盘上实际按下的键）。密码管理器自动输入的同名键也会触发。</sys:String>
   <sys:String x:Key="Settings.RestoreDefaults">恢复默认</sys:String>
-  <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放、快捷键与鼠标穿透为默认值</sys:String>
+  <sys:String x:Key="Settings.RestoreDefaultsTooltip">恢复不透明度、缩放、快捷键、鼠标穿透与标题栏为默认值</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingData">清理缓存</sys:String>
   <sys:String x:Key="Settings.ClearBrowsingDataTooltip">清理磁盘缓存、站点本地数据与 Service Worker（保留登录 Cookie、浏览历史、下载记录、收藏夹、自动填充与已保存密码）</sys:String>
   <sys:String x:Key="Settings.Theme">主题</sys:String>
@@ -101,7 +103,12 @@
   <!-- 通用开关状态文字（ToggleSwitch 右侧） -->
   <sys:String x:Key="Toggle.Off">关闭</sys:String>
   <sys:String x:Key="Toggle.On">开启</sys:String>
-  <sys:String x:Key="Settings.ClickThroughTooltip">浮窗模式下点击直接落到下层窗口（如游戏）。开启后浮窗内无法点击和拖动，按 {0} 回到浏览模式调整。</sys:String>
+  <sys:String x:Key="Settings.ClickThroughTooltip">浮窗模式下点击直接落到下层窗口（如游戏）。开启后浮窗内无法点击和拖动（打开右边的「控制按钮」时标题栏除外），按 {0} 回到浏览模式调整。</sys:String>
+  <!-- 鼠标穿透右侧的子选项，穿透开启时才显示 -->
+  <sys:String x:Key="Settings.ClickThroughControls">控制按钮</sys:String>
+  <sys:String x:Key="Settings.ClickThroughControlsTooltip">开着鼠标穿透时，浮窗标题栏常驻，标题换成倒退 5 秒、播放 / 暂停、快进 5 秒三个按钮；整条标题栏可以点，视频区域照旧穿透。</sys:String>
+  <sys:String x:Key="Settings.AutoHideTitleBar">隐藏标题栏</sys:String>
+  <sys:String x:Key="Settings.AutoHideTitleBarTooltip">浮窗模式下标题栏自动隐藏，鼠标移到窗口顶部时出现；关闭后浮窗标题栏常驻。</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">已移动到左上角</sys:String>
   <sys:String x:Key="Toast.MovedBottomLeft">已移动到左下角</sys:String>
   <sys:String x:Key="Toast.MovedBottomRight">已移动到右下角</sys:String>
@@ -211,6 +218,12 @@
   <sys:String x:Key="Toast.HotkeyScopeOff">热键范围：已关闭</sys:String>
   <sys:String x:Key="Toast.ClickThroughOn">浮窗鼠标穿透：已开启（按 {0} 回浏览模式调整）</sys:String>
   <sys:String x:Key="Toast.ClickThroughOff">浮窗鼠标穿透：已关闭</sys:String>
+  <sys:String x:Key="Toast.ClickThroughControlsOn">穿透时的控制按钮：已开启</sys:String>
+  <sys:String x:Key="Toast.ClickThroughControlsOff">穿透时的控制按钮：已关闭</sys:String>
+  <sys:String x:Key="Toast.AutoHideTitleBarOn">浮窗标题栏：自动隐藏</sys:String>
+  <sys:String x:Key="Toast.AutoHideTitleBarOff">浮窗标题栏：常驻</sys:String>
+  <sys:String x:Key="Toast.RemoteKeysOn">远程按键：已开启</sys:String>
+  <sys:String x:Key="Toast.RemoteKeysOff">远程按键：已关闭</sys:String>
   <sys:String x:Key="Toast.ThemeDark">已切换到暗色主题</sys:String>
   <sys:String x:Key="Toast.ThemeLight">已切换到亮色主题</sys:String>
   <sys:String x:Key="Toast.ThemeSystem">已切换到跟随系统主题</sys:String>

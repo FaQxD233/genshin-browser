@@ -28,7 +28,10 @@ public sealed class ConfigBackupServiceTests
             WindowHeight = 450,
             ToggleModeKey = Key.F6,
             HotkeyScope = HotkeyScope.AllApps,
+            HotkeysAcceptInjectedInput = true,
             FloatingClickThrough = true,
+            FloatingClickThroughControls = true,
+            FloatingAutoHideTitleBar = false,
             LastUrl = "https://www.bilibili.com/video/BV1keqing01",
             WindowMode = WindowMode.Fixed,
             HasSeenFloatingModeHint = true,
@@ -54,7 +57,10 @@ public sealed class ConfigBackupServiceTests
         Assert.Equal((20d, 30d, 800d, 450d), (imported.WindowLeft, imported.WindowTop, imported.WindowWidth, imported.WindowHeight));
         Assert.Equal(Key.F6, imported.ToggleModeKey);
         Assert.Equal(HotkeyScope.AllApps, imported.HotkeyScope);
+        Assert.True(imported.HotkeysAcceptInjectedInput);
         Assert.True(imported.FloatingClickThrough);
+        Assert.True(imported.FloatingClickThroughControls);
+        Assert.False(imported.FloatingAutoHideTitleBar);
         Assert.Equal("https://www.bilibili.com/video/BV1keqing01", imported.LastUrl);
         // 本机运行状态不随配置迁移
         Assert.Equal(WindowMode.Free, imported.WindowMode);

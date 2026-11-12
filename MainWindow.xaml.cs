@@ -99,7 +99,8 @@ public partial class MainWindow : Window, IControlBrowser
     private EventHandler? _cursorForceArrowHandler;
     private WebView2CompositionControl? _cursorGuardBrowser;
 
-    // 标题栏：浏览模式常驻；浮窗模式自动隐藏（顶部感应唤出）。
+    // 标题栏：浏览模式常驻；浮窗模式默认自动隐藏（顶部感应唤出），可设为常驻；
+    // 开着鼠标穿透并打开「控制按钮」时常驻并换成视频控制按钮（规则见 TitleBarLayout）。
     // 显示时窗口向下 +30，不挤占 WebView 内容高度。
     // 内容区高度是尺寸真源：标题栏显隐只做 Height = content ± 30 的绝对赋值，
     // 禁止用 ActualHeight 累加减，否则 DPI/布局取整会每次漂移 1px。
@@ -107,6 +108,8 @@ public partial class MainWindow : Window, IControlBrowser
     private bool _adjustingTitleBarBounds;
     private double _contentAreaHeight = 370;
     private DispatcherTimer? _titleBarHideTimer;
+    // 穿透时盖在标题栏上接收点击的不激活窗口，按需创建
+    private TitleBarClickLayer? _titleBarClickLayer;
     private DispatcherTimer? _mainToastTimer;
     private bool _isApplyingZoom;
 
@@ -291,6 +294,8 @@ public partial class MainWindow : Window, IControlBrowser
         // 首帧渲染完成后再允许持久化边界，避免启动过程中的默认坐标写回磁盘
         _persistWindowBounds = true;
         ContentRendered -= MainWindow_OnContentRendered;
+        // 点击层要对齐已显示的标题栏，窗口出现后才能放
+        UpdateTitleBarClickLayer();
     }
 
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
@@ -324,6 +329,7 @@ public partial class MainWindow : Window, IControlBrowser
             }
             _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
             _keyboardHookService.HotkeyScope = _settings.HotkeyScope;
+            _keyboardHookService.AcceptInjectedInput = _settings.HotkeysAcceptInjectedInput;
             UpdateWindowTitle();
 
             // 异步初始化历史/收藏/下载服务（构造函数不再同步读盘）。
@@ -401,6 +407,9 @@ public partial class MainWindow : Window, IControlBrowser
             _keyboardHookService.AlwaysAllowHideToggle = false;
             UpdateControlWindowVisibility();
         }
+
+        // 最小化（含 F7 隐藏）时收起点击层，恢复后重新对齐显示
+        UpdateTitleBarClickLayer();
     }
 
     /// <summary>
@@ -2461,6 +2470,8 @@ public partial class MainWindow : Window, IControlBrowser
                     // 正在页面输入框中打字，静默忽略
                     break;
                 case "play":
+                    // 标题栏播放键显示点下去会做的事：播放中显示暂停，暂停后显示播放
+                    TitleBarPlaybackIcon.Text = OsdGlyphPause;
                     ReportVideoHotkeyResult(
                         LocalizationService.Get("Status.Played"), StatusLevel.Success, OsdGlyphPlay, LocalizationService.Get("Osd.Play"));
                     break;
@@ -2471,6 +2482,7 @@ public partial class MainWindow : Window, IControlBrowser
                     // 缓冲中被随后的暂停等操作打断：后一次操作已更新状态，这里不覆盖
                     break;
                 case "pause":
+                    TitleBarPlaybackIcon.Text = OsdGlyphPlay;
                     ReportVideoHotkeyResult(
                         LocalizationService.Get("Status.Paused"), StatusLevel.Success, OsdGlyphPause, LocalizationService.Get("Osd.Pause"));
                     break;
@@ -2756,11 +2768,15 @@ public partial class MainWindow : Window, IControlBrowser
 
     public void RestoreDefaultSettings()
     {
+        var defaults = new AppSettings();
         WindowOpacity = 1.0;
         ApplyWindowOpacity(1.0);
-        FloatingClickThrough = false;
-        // 生效范围与热键同属「快捷键」设置，一并恢复默认
-        HotkeyScope = HotkeyScope.Blacklist;
+        FloatingClickThrough = defaults.FloatingClickThrough;
+        FloatingClickThroughControls = defaults.FloatingClickThroughControls;
+        FloatingAutoHideTitleBar = defaults.FloatingAutoHideTitleBar;
+        // 生效范围、远程按键与热键同属「快捷键」设置，一并恢复默认
+        HotkeyScope = defaults.HotkeyScope;
+        HotkeysAcceptInjectedInput = defaults.HotkeysAcceptInjectedInput;
         RestoreDefaultHotkeys();
         SetZoom(1.0);
         QueueSettingsSave();
@@ -2920,7 +2936,10 @@ public partial class MainWindow : Window, IControlBrowser
         WindowOpacity = imported.WindowOpacity;
         SetZoom(imported.ZoomFactor);
         FloatingClickThrough = imported.FloatingClickThrough;
+        FloatingClickThroughControls = imported.FloatingClickThroughControls;
+        FloatingAutoHideTitleBar = imported.FloatingAutoHideTitleBar;
         HotkeyScope = imported.HotkeyScope;
+        HotkeysAcceptInjectedInput = imported.HotkeysAcceptInjectedInput;
         ApplyHotkeys(imported);
 
         if (applyWindowBounds)
@@ -3029,6 +3048,24 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
+    /// <summary>远程按键（默认关）：远程控制软件、按键映射工具发出的（注入的）按键也触发全局热键。</summary>
+    public bool HotkeysAcceptInjectedInput
+    {
+        get => _settings.HotkeysAcceptInjectedInput;
+        set
+        {
+            if (_settings.HotkeysAcceptInjectedInput == value)
+            {
+                return;
+            }
+
+            _settings.HotkeysAcceptInjectedInput = value;
+            _keyboardHookService.AcceptInjectedInput = value;
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
     /// <summary>浮窗模式鼠标穿透（默认关）。开启后浮窗不接收鼠标，点击落到下层窗口；浏览模式不受影响。</summary>
     public bool FloatingClickThrough
     {
@@ -3042,6 +3079,47 @@ public partial class MainWindow : Window, IControlBrowser
 
             _settings.FloatingClickThrough = value;
             _windowModeService.ApplyMode(_settings.WindowMode, value);
+            // 穿透与「控制按钮」一起决定标题栏是否常驻、是否换成控制按钮
+            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
+    /// <summary>
+    /// 穿透时的控制按钮（默认关）：浮窗开着鼠标穿透时标题栏常驻、标题换成三个视频控制按钮，
+    /// 经点击层整条标题栏可点。
+    /// </summary>
+    public bool FloatingClickThroughControls
+    {
+        get => _settings.FloatingClickThroughControls;
+        set
+        {
+            if (_settings.FloatingClickThroughControls == value)
+            {
+                return;
+            }
+
+            _settings.FloatingClickThroughControls = value;
+            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
+    /// <summary>浮窗模式自动隐藏标题栏（默认开）；关闭后浮窗标题栏常驻。</summary>
+    public bool FloatingAutoHideTitleBar
+    {
+        get => _settings.FloatingAutoHideTitleBar;
+        set
+        {
+            if (_settings.FloatingAutoHideTitleBar == value)
+            {
+                return;
+            }
+
+            _settings.FloatingAutoHideTitleBar = value;
+            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
             QueueSettingsSave();
             NotifyBrowserState(BrowserStateChangeKind.Mode);
         }
@@ -3953,6 +4031,9 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void MainWindow_OnLocationOrSizeChanged(object? sender, EventArgs e)
     {
+        // 点击层跟着标题栏走：最大化、标题栏扩展窗口时也要对齐，放在下面的守卫之前
+        _titleBarClickLayer?.AlignToTitleBar();
+
         // 启动恢复 / 最大化 / 标题栏扩展窗口期间不写回边界
         if (!_persistWindowBounds || _isMaximized || _isShuttingDown || _adjustingTitleBarBounds)
         {
@@ -4008,11 +4089,12 @@ public partial class MainWindow : Window, IControlBrowser
     private void RestoreWindowBounds()
     {
         var width = _settings.WindowWidth > 0 ? _settings.WindowWidth : Width;
-        // settings 存的是内容区高度；标题栏显示时窗口额外 +30
+        // settings 存的是内容区高度；标题栏常驻时窗口额外 +30（浮窗自动隐藏时启动先收起）
         var contentHeight = _settings.WindowHeight > 0 ? _settings.WindowHeight : GetContentAreaHeight();
         contentHeight = Math.Max(MinHeight, contentHeight);
         _contentAreaHeight = contentHeight;
-        var showTitleBar = _settings.WindowMode == WindowMode.Free;
+        var titleBarLayout = CurrentTitleBarLayout;
+        var showTitleBar = titleBarLayout.Pinned;
         var height = contentHeight + (showTitleBar ? TitleBarExpandedHeight : 0);
         var left = _settings.WindowLeft;
         var top = _settings.WindowTop;
@@ -4038,6 +4120,8 @@ public partial class MainWindow : Window, IControlBrowser
         {
             TitleBarHitZone.IsHitTestVisible = !showTitleBar;
         }
+
+        ShowTitleBarControls(titleBarLayout.ShowControls);
 
         Width = width;
         Height = height;
@@ -4280,31 +4364,81 @@ public partial class MainWindow : Window, IControlBrowser
 })();
 """;
 
+    /// <summary>标题栏当前该怎么显示（常驻 / 换成控制按钮 / 要不要点击层），按模式与设置算出。</summary>
+    private TitleBarLayout CurrentTitleBarLayout => TitleBarLayout.For(
+        _settings.WindowMode,
+        _settings.FloatingAutoHideTitleBar,
+        _settings.FloatingClickThrough,
+        _settings.FloatingClickThroughControls);
+
     /// <summary>
-    /// 按窗口模式应用标题栏：浏览常驻，浮窗默认隐藏。
+    /// 按模式与设置应用标题栏：常驻（浏览模式、浮窗设为常驻、穿透时的控制按钮）或浮窗自动隐藏，
+    /// 并同步标题 / 控制按钮的切换与点击层。
     /// </summary>
     private void ApplyTitleBarForCurrentMode(bool forceHideInFixed)
     {
-        if (_settings.WindowMode == WindowMode.Free)
+        var layout = CurrentTitleBarLayout;
+        ShowTitleBarControls(layout.ShowControls);
+
+        if (layout.Pinned)
         {
             _titleBarHideTimer?.Stop();
             SetTitleBarVisible(true);
-            return;
         }
-
-        // 浮窗模式：默认隐藏；若鼠标已在顶部带内则保持显示
-        if (forceHideInFixed && !IsMouseOnTitleBar())
+        // 浮窗自动隐藏：默认收起；若鼠标已在顶部带内则保持显示
+        else if (forceHideInFixed && !IsMouseOnTitleBar())
         {
             _titleBarHideTimer?.Stop();
             SetTitleBarVisible(false);
-            return;
         }
-
-        if (!IsMouseOnTitleBar())
+        else if (!IsMouseOnTitleBar())
         {
             ScheduleTitleBarAutoHide();
         }
+
+        UpdateTitleBarClickLayer();
     }
+
+    /// <summary>标题文字与三个视频控制按钮二选一显示。</summary>
+    private void ShowTitleBarControls(bool show)
+    {
+        TitleBarControls.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        TitleBarTitleText.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// 浮窗开着穿透、标题栏又要能点时，显示盖在标题栏上的点击层（主窗整窗穿透，标题栏本身收不到点击）；
+    /// 其余情况、最小化（含 F7 隐藏）或窗口还没出现时隐藏。
+    /// </summary>
+    private void UpdateTitleBarClickLayer()
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        var needed = CurrentTitleBarLayout.NeedsClickLayer && _isTitleBarVisible &&
+                     IsVisible && WindowState != WindowState.Minimized;
+        if (!needed)
+        {
+            _titleBarClickLayer?.Hide();
+            return;
+        }
+
+        if (_titleBarClickLayer is null)
+        {
+            _titleBarClickLayer = new TitleBarClickLayer(this, DragBar, ToggleMaximize, () => !_isMaximized);
+            _titleBarClickLayer.Closed += (_, _) => _titleBarClickLayer = null;
+        }
+
+        _titleBarClickLayer.ShowOverTitleBar();
+    }
+
+    private void TitleBarSeekBackwardButton_OnClick(object sender, RoutedEventArgs e) => _ = SeekVideoAsync(-5);
+
+    private void TitleBarPlaybackButton_OnClick(object sender, RoutedEventArgs e) => _ = ToggleVideoPlaybackAsync();
+
+    private void TitleBarSeekForwardButton_OnClick(object sender, RoutedEventArgs e) => _ = SeekVideoAsync(5);
 
     private void TitleBarArea_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
@@ -4322,8 +4456,8 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        // 浏览模式：标题栏常驻，离开也不收回
-        if (_settings.WindowMode == WindowMode.Free)
+        // 标题栏常驻（浏览模式、浮窗设为常驻等）：离开也不收回
+        if (CurrentTitleBarLayout.Pinned)
         {
             _titleBarHideTimer?.Stop();
             return;
@@ -4334,7 +4468,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     private void ScheduleTitleBarAutoHide()
     {
-        if (_settings.WindowMode != WindowMode.Fixed)
+        if (CurrentTitleBarLayout.Pinned)
         {
             return;
         }
@@ -4356,8 +4490,8 @@ public partial class MainWindow : Window, IControlBrowser
     {
         _titleBarHideTimer?.Stop();
 
-        // 浏览模式始终常驻
-        if (_settings.WindowMode == WindowMode.Free)
+        // 计时期间切成了常驻（如切回浏览模式）：保持显示
+        if (CurrentTitleBarLayout.Pinned)
         {
             SetTitleBarVisible(true);
             return;
