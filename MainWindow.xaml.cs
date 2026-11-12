@@ -100,7 +100,7 @@ public partial class MainWindow : Window, IControlBrowser
     private WebView2CompositionControl? _cursorGuardBrowser;
 
     // 标题栏：浏览模式常驻；浮窗模式默认自动隐藏（顶部感应唤出），可设为常驻；
-    // 开着鼠标穿透并打开「控制按钮」时常驻并换成视频控制按钮（规则见 TitleBarLayout）。
+    // 触屏模式的浮窗常驻并换成视频控制按钮（规则见 TitleBarLayout）。
     // 显示时窗口向下 +30，不挤占 WebView 内容高度。
     // 内容区高度是尺寸真源：标题栏显隐只做 Height = content ± 30 的绝对赋值，
     // 禁止用 ActualHeight 累加减，否则 DPI/布局取整会每次漂移 1px。
@@ -110,6 +110,14 @@ public partial class MainWindow : Window, IControlBrowser
     private DispatcherTimer? _titleBarHideTimer;
     // 穿透时盖在标题栏上接收点击的不激活窗口，按需创建
     private TitleBarClickLayer? _titleBarClickLayer;
+
+    // 收到手指触摸时提示切触屏模式：浏览模式在控制台提示一次，浮窗模式弹询问卡片一次（每次运行各一次，拒绝或超时后不再问）
+    private readonly List<TouchInputWatcher> _touchWatchers = new();
+    private bool _touchHintShownInBrowse;
+    private bool _touchPromptShownInFloat;
+    private DispatcherTimer? _touchPromptTimer;
+    private static readonly TimeSpan TouchPromptTimeout = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan TouchHintDuration = TimeSpan.FromSeconds(6);
     private DispatcherTimer? _mainToastTimer;
     private bool _isApplyingZoom;
 
@@ -154,7 +162,7 @@ public partial class MainWindow : Window, IControlBrowser
         ThemeService.Apply(_settings.ThemeMode);
         LocalizationService.Apply(_settings.Language);
         ApplyWindowOpacity(_settings.WindowOpacity);
-        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
+        ApplyWindowMode();
         UpdateTitleBarButtons();
 
         Loaded += MainWindow_OnLoaded;
@@ -181,6 +189,7 @@ public partial class MainWindow : Window, IControlBrowser
         SizeChanged += MainWindow_OnLocationOrSizeChanged;
         SourceInitialized += MainWindow_OnSourceInitialized;
         ContentRendered += MainWindow_OnContentRendered;
+        _touchWatchers.Add(new TouchInputWatcher(this, OnTouchInputDetected));
     }
 
     public WindowMode CurrentMode => _settings.WindowMode;
@@ -286,7 +295,7 @@ public partial class MainWindow : Window, IControlBrowser
         // HWND / DPI 已就绪：再 clamp 一次，确保高分屏上位置不偏移
         RestoreWindowBounds();
         // 鼠标穿透是 Win32 扩展样式，构造函数里句柄未创建时应用不上，这里补一次
-        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
+        ApplyWindowMode();
     }
 
     private void MainWindow_OnContentRendered(object? sender, EventArgs e)
@@ -355,6 +364,7 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _controlWindow = new ControlWindow(this);
+            _touchWatchers.Add(new TouchInputWatcher(_controlWindow, OnTouchInputDetected));
             UpdateControlWindowVisibility();
             NotifyBrowserState(BrowserStateChangeKind.All);
 
@@ -2028,6 +2038,8 @@ public partial class MainWindow : Window, IControlBrowser
     private const string OsdGlyphFastForward = "\uEB9D";
     private const string OsdGlyphWarning = "\uE7BA";
     private const string OsdGlyphInfo = "\uE946";
+    // TouchPointer 字形：触屏模式切换的 OSD 用
+    private const string OsdGlyphTouch = "\uE7C9";
     private static readonly TimeSpan OsdShortDuration = TimeSpan.FromSeconds(0.9);
     private static readonly TimeSpan OsdNoticeDuration = TimeSpan.FromSeconds(1.2);
     private static readonly TimeSpan OsdWarningDuration = TimeSpan.FromSeconds(2);
@@ -2568,24 +2580,25 @@ public partial class MainWindow : Window, IControlBrowser
 
         _settings.WindowMode = mode;
 
-        _windowModeService.ApplyMode(_settings.WindowMode, _settings.FloatingClickThrough);
+        // 置顶、穿透与标题栏（浏览常驻；浮窗按状态表，向下延长策略不改内容区高度）
+        ApplyWindowMode();
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateBrowserAcceleratorKeys();
-        // 浏览：标题栏常驻；浮窗：自动隐藏（向下延长策略不改内容区高度）
-        ApplyTitleBarForCurrentMode(forceHideInFixed: true);
         UpdateTitleBarButtons();
 
         var enteringFloating = _settings.WindowMode == WindowMode.Fixed;
-        // 鼠标穿透时浮窗点不到、标题栏也唤不出，提示里写明只能按模式快捷键回浏览调整
-        var clickThrough = IsClickThroughActive;
+        // 键鼠开着鼠标穿透时浮窗点不到、标题栏也唤不出，提示里写明只能按模式快捷键回浏览调整；触屏模式的标题栏可点
+        var (firstHintKey, floatingToastKey) = _settings.TouchMode
+            ? ("Mode.FirstFloatingHintTouch", "Mode.ToastFloatingTouch")
+            : IsClickThroughActive
+                ? ("Mode.FirstFloatingHintClickThrough", "Mode.ToastFloatingClickThrough")
+                : ("Mode.FirstFloatingHint", "Mode.ToastFloating");
         // 首次进入浮窗：较长引导；之后仅短 toast + 描边闪
         if (enteringFloating && !_settings.HasSeenFloatingModeHint)
         {
             _settings.HasSeenFloatingModeHint = true;
             ShowMainToast(
-                LocalizationService.Format(
-                    clickThrough ? "Mode.FirstFloatingHintClickThrough" : "Mode.FirstFloatingHint",
-                    FormatHotkey(HotkeySlot.ToggleMode)),
+                LocalizationService.Format(firstHintKey, FormatHotkey(HotkeySlot.ToggleMode)),
                 TimeSpan.FromSeconds(3.2));
             SetStatusMessage(
                 LocalizationService.Format("Mode.FixedOn", FormatHotkey(HotkeySlot.ToggleMode)),
@@ -2595,9 +2608,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             ShowMainToast(
                 enteringFloating
-                    ? clickThrough
-                        ? LocalizationService.Get("Mode.ToastFloatingClickThrough", "浮窗 · 鼠标穿透")
-                        : LocalizationService.Get("Mode.ToastFloating", "浮窗")
+                    ? LocalizationService.Get(floatingToastKey)
                     : LocalizationService.Get("Mode.ToastBrowsing", "浏览"),
                 TimeSpan.FromSeconds(1.1));
             SetStatusMessage(
@@ -2772,7 +2783,7 @@ public partial class MainWindow : Window, IControlBrowser
         WindowOpacity = 1.0;
         ApplyWindowOpacity(1.0);
         FloatingClickThrough = defaults.FloatingClickThrough;
-        FloatingClickThroughControls = defaults.FloatingClickThroughControls;
+        TouchMode = defaults.TouchMode;
         FloatingAutoHideTitleBar = defaults.FloatingAutoHideTitleBar;
         // 生效范围、远程按键与热键同属「快捷键」设置，一并恢复默认
         HotkeyScope = defaults.HotkeyScope;
@@ -2936,7 +2947,6 @@ public partial class MainWindow : Window, IControlBrowser
         WindowOpacity = imported.WindowOpacity;
         SetZoom(imported.ZoomFactor);
         FloatingClickThrough = imported.FloatingClickThrough;
-        FloatingClickThroughControls = imported.FloatingClickThroughControls;
         FloatingAutoHideTitleBar = imported.FloatingAutoHideTitleBar;
         HotkeyScope = imported.HotkeyScope;
         HotkeysAcceptInjectedInput = imported.HotkeysAcceptInjectedInput;
@@ -3078,30 +3088,36 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _settings.FloatingClickThrough = value;
-            _windowModeService.ApplyMode(_settings.WindowMode, value);
-            // 穿透与「控制按钮」一起决定标题栏是否常驻、是否换成控制按钮
-            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+            ApplyWindowMode();
             QueueSettingsSave();
             NotifyBrowserState(BrowserStateChangeKind.Mode);
         }
     }
 
     /// <summary>
-    /// 穿透时的控制按钮（默认关）：浮窗开着鼠标穿透时标题栏常驻、标题换成三个视频控制按钮，
-    /// 经点击层整条标题栏可点。
+    /// 触屏模式（默认关）：浮窗固定为鼠标穿透、标题栏常驻并换成三个视频控制按钮（经点击层整条标题栏可点）；
+    /// 不改键鼠用的鼠标穿透与隐藏标题栏，关掉即回到它们。浮窗模式下切换时用 OSD 提示。
     /// </summary>
-    public bool FloatingClickThroughControls
+    public bool TouchMode
     {
-        get => _settings.FloatingClickThroughControls;
+        get => _settings.TouchMode;
         set
         {
-            if (_settings.FloatingClickThroughControls == value)
+            if (_settings.TouchMode == value)
             {
                 return;
             }
 
-            _settings.FloatingClickThroughControls = value;
-            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+            _settings.TouchMode = value;
+            ApplyWindowMode();
+            if (_settings.WindowMode == WindowMode.Fixed && WindowState != WindowState.Minimized)
+            {
+                ShowMainToast(
+                    LocalizationService.Get(value ? "Osd.TouchModeOn" : "Osd.TouchModeOff"),
+                    TimeSpan.FromSeconds(1.6),
+                    OsdGlyphTouch);
+            }
+
             QueueSettingsSave();
             NotifyBrowserState(BrowserStateChangeKind.Mode);
         }
@@ -3125,9 +3141,82 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    /// <summary>当前是否鼠标穿透中（浮窗模式且开启穿透）：窗口收不到鼠标，悬停相关逻辑一律按「光标不在窗口上」处理。</summary>
+    /// <summary>浮窗要不要穿透：键鼠看「鼠标穿透」设置，触屏模式固定穿透。</summary>
+    private bool EffectiveClickThrough => _settings.FloatingClickThrough || _settings.TouchMode;
+
+    /// <summary>当前是否鼠标穿透中（浮窗模式且穿透）：窗口收不到鼠标，悬停相关逻辑一律按「光标不在窗口上」处理。</summary>
     private bool IsClickThroughActive =>
-        _settings.WindowMode == WindowMode.Fixed && _settings.FloatingClickThrough;
+        _settings.WindowMode == WindowMode.Fixed && EffectiveClickThrough;
+
+    /// <summary>
+    /// 按当前模式应用置顶、缩放策略与穿透，再按状态表应用标题栏（常驻 / 控制按钮 / 点击层）。
+    /// 穿透是 Win32 扩展样式：构造函数里句柄还没创建时应用不上，SourceInitialized 再调一次。
+    /// </summary>
+    private void ApplyWindowMode()
+    {
+        // 模式或穿透变了，浮窗的触屏询问卡片不再适用
+        HideTouchPrompt();
+        _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
+        ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+    }
+
+    /// <summary>
+    /// 主窗或控制窗收到手指触摸（在窗口过程里调用，只改标记、把界面改动投递出去）：还不是触屏模式时，
+    /// 浮窗模式弹询问卡片，浏览模式在控制台提示，每次运行各一次。键鼠浮窗开着穿透时收不到触摸，不会走到这里。
+    /// </summary>
+    private void OnTouchInputDetected()
+    {
+        if (_isShuttingDown || _settings.TouchMode)
+        {
+            return;
+        }
+
+        if (_settings.WindowMode == WindowMode.Fixed)
+        {
+            if (!_touchPromptShownInFloat)
+            {
+                _touchPromptShownInFloat = true;
+                _ = Dispatcher.InvokeAsync(ShowTouchPrompt, DispatcherPriority.Background);
+            }
+        }
+        else if (!_touchHintShownInBrowse)
+        {
+            _touchHintShownInBrowse = true;
+            _ = Dispatcher.InvokeAsync(
+                () => _controlWindow?.ShowNotice(LocalizationService.Get("TouchHint.Browse"), StatusLevel.Info, TouchHintDuration),
+                DispatcherPriority.Background);
+        }
+    }
+
+    /// <summary>浮窗模式的询问卡片：切到触屏模式？一段时间没回应按「继续用键鼠」处理。</summary>
+    private void ShowTouchPrompt()
+    {
+        if (_isShuttingDown || _settings.TouchMode || _settings.WindowMode != WindowMode.Fixed ||
+            WindowState == WindowState.Minimized)
+        {
+            return;
+        }
+
+        TouchPromptCard.Visibility = Visibility.Visible;
+        if (_touchPromptTimer is null)
+        {
+            _touchPromptTimer = new DispatcherTimer { Interval = TouchPromptTimeout };
+            _touchPromptTimer.Tick += (_, _) => HideTouchPrompt();
+        }
+
+        _touchPromptTimer.Stop();
+        _touchPromptTimer.Start();
+    }
+
+    private void HideTouchPrompt()
+    {
+        _touchPromptTimer?.Stop();
+        TouchPromptCard.Visibility = Visibility.Collapsed;
+    }
+
+    private void TouchPromptAcceptButton_OnClick(object sender, RoutedEventArgs e) => TouchMode = true;
+
+    private void TouchPromptDeclineButton_OnClick(object sender, RoutedEventArgs e) => HideTouchPrompt();
 
     public string ThemeMode
     {
@@ -3932,6 +4021,8 @@ public partial class MainWindow : Window, IControlBrowser
             _titleBarHideTimer = null;
         }
 
+        _touchPromptTimer?.Stop();
+
         if (_mainToastTimer is not null)
         {
             _mainToastTimer.Stop();
@@ -4368,11 +4459,10 @@ public partial class MainWindow : Window, IControlBrowser
     private TitleBarLayout CurrentTitleBarLayout => TitleBarLayout.For(
         _settings.WindowMode,
         _settings.FloatingAutoHideTitleBar,
-        _settings.FloatingClickThrough,
-        _settings.FloatingClickThroughControls);
+        _settings.TouchMode);
 
     /// <summary>
-    /// 按模式与设置应用标题栏：常驻（浏览模式、浮窗设为常驻、穿透时的控制按钮）或浮窗自动隐藏，
+    /// 按模式与设置应用标题栏：常驻（浏览模式、浮窗设为常驻、触屏模式）或浮窗自动隐藏，
     /// 并同步标题 / 控制按钮的切换与点击层。
     /// </summary>
     private void ApplyTitleBarForCurrentMode(bool forceHideInFixed)
@@ -4407,7 +4497,7 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 浮窗开着穿透、标题栏又要能点时，显示盖在标题栏上的点击层（主窗整窗穿透，标题栏本身收不到点击）；
+    /// 触屏模式的浮窗（整窗穿透、标题栏又要能点）显示盖在标题栏上的点击层（标题栏本身收不到点击）；
     /// 其余情况、最小化（含 F7 隐藏）或窗口还没出现时隐藏。
     /// </summary>
     private void UpdateTitleBarClickLayer()

@@ -64,6 +64,12 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         ToggleSettingsCommand = new RelayCommand(ToggleSettings);
         ToggleDownloadsCommand = new RelayCommand(ToggleDownloads);
         ToggleKeyBindingsCommand = new RelayCommand(ToggleKeyBindings);
+        ToggleTouchModeCommand = new RelayCommand(() => SetToggle(
+            _browser.TouchMode,
+            !_browser.TouchMode,
+            enabled => _browser.TouchMode = enabled,
+            "Toast.TouchModeOn",
+            "Toast.TouchModeOff"));
 
         ZoomInCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor + 0.1, 0.25, 5.0));
         ZoomOutCommand = new RelayCommand(() => _browser.ZoomFactor = Math.Clamp(_browser.ZoomFactor - 0.1, 0.25, 5.0));
@@ -92,7 +98,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         ApplyOpacityCommand = new RelayCommand(ApplyOpacityFromInput);
         ApplyZoomCommand = new RelayCommand(ApplyZoomFromInput);
 
-        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
+        _toastTimer = new DispatcherTimer { Interval = DefaultToastDuration };
         _toastTimer.Tick += ToastTimer_OnTick;
         // 相对时间文案（今天/昨天）跨天后不会随时间戳变化自动刷新：
         // 每分钟比对一次本地日期，跨天时全量重算两个列表的 TimeDisplay。
@@ -229,9 +235,14 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     public string PlaybackTooltip =>
         LocalizationService.Format("Toolbar.PlaybackTooltip", FormatHotkey(HotkeySlot.Playback));
 
-    /// <summary>鼠标穿透说明 tooltip（含模式快捷键：穿透时只能按它回浏览模式调整）。</summary>
-    public string ClickThroughTooltip =>
-        LocalizationService.Format("Settings.ClickThroughTooltip", FormatHotkey(HotkeySlot.ToggleMode));
+    /// <summary>鼠标穿透说明 tooltip（含模式快捷键：穿透时只能按它回浏览模式调整）；触屏模式下说明这项不生效。</summary>
+    public string ClickThroughTooltip => _browser.TouchMode
+        ? LocalizationService.Get("Settings.TouchModeOverrides")
+        : LocalizationService.Format("Settings.ClickThroughTooltip", FormatHotkey(HotkeySlot.ToggleMode));
+
+    /// <summary>隐藏标题栏说明 tooltip；触屏模式下说明这项不生效。</summary>
+    public string AutoHideTitleBarTooltip => LocalizationService.Get(
+        _browser.TouchMode ? "Settings.TouchModeOverrides" : "Settings.AutoHideTitleBarTooltip");
 
     public string StatusMessage
     {
@@ -1158,17 +1169,21 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>控制窗代码里的操作结果提示（如更改数据目录时的校验）。</summary>
-    public void ShowNotice(string message, StatusLevel level) => ShowToast(message, level);
+    /// <param name="duration">显示多久；null 用默认时长（较长的说明性提示可以给长一些）。</param>
+    public void ShowNotice(string message, StatusLevel level, TimeSpan? duration = null) => ShowToast(message, level, duration);
+
+    private static readonly TimeSpan DefaultToastDuration = TimeSpan.FromSeconds(2.4);
 
     private void ShowToast(string message) => ShowToast(message, StatusLevel.Info);
 
-    private void ShowToast(string message, StatusLevel severity)
+    private void ShowToast(string message, StatusLevel severity, TimeSpan? duration = null)
     {
         ToastMessage = message;
         ToastSeverity = severity;
         IsToastVisible = true;
         ToastVisibility = Visibility.Visible;
         _toastTimer.Stop();
+        _toastTimer.Interval = duration ?? DefaultToastDuration;
         _toastTimer.Start();
     }
 
@@ -1507,17 +1522,13 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         set => SetFloatingClickThrough(value);
     }
 
-    /// <summary>穿透时的控制按钮（鼠标穿透右侧的子选项，穿透开启时才显示）；写入含 Toast。</summary>
-    public bool IsClickThroughControlsOn
-    {
-        get => _browser.FloatingClickThroughControls;
-        set => SetToggle(
-            _browser.FloatingClickThroughControls,
-            value,
-            enabled => _browser.FloatingClickThroughControls = enabled,
-            "Toast.ClickThroughControlsOn",
-            "Toast.ClickThroughControlsOff");
-    }
+    /// <summary>触屏模式（右上角第五个按钮，按下态 = 开）。</summary>
+    public bool IsTouchModeOn => _browser.TouchMode;
+
+    /// <summary>键鼠浮窗的鼠标穿透、隐藏标题栏只在键鼠模式生效：触屏模式下置灰。</summary>
+    public bool IsKeyMouseFloatOptionsEnabled => !_browser.TouchMode;
+
+    public RelayCommand ToggleTouchModeCommand { get; }
 
     /// <summary>浮窗自动隐藏标题栏开关；写入含 Toast。</summary>
     public bool IsAutoHideTitleBarOn
@@ -1608,8 +1619,11 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private void RefreshClickThroughFlags()
     {
         OnPropertyChanged(nameof(IsClickThroughOn));
-        OnPropertyChanged(nameof(IsClickThroughControlsOn));
         OnPropertyChanged(nameof(IsAutoHideTitleBarOn));
+        OnPropertyChanged(nameof(IsTouchModeOn));
+        OnPropertyChanged(nameof(IsKeyMouseFloatOptionsEnabled));
+        OnPropertyChanged(nameof(ClickThroughTooltip));
+        OnPropertyChanged(nameof(AutoHideTitleBarTooltip));
     }
 
     private void SetLanguage(string language)
@@ -1674,6 +1688,8 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SwitchToFloatingTooltip));
         OnPropertyChanged(nameof(PlaybackTooltip));
         OnPropertyChanged(nameof(ClickThroughTooltip));
+        // 不含快捷键，但和上面一样随语言切换刷新
+        OnPropertyChanged(nameof(AutoHideTitleBarTooltip));
     }
 
     private string FormatHotkey(HotkeySlot slot) => HotkeyFormatter.Format(_browser.GetHotkey(slot));

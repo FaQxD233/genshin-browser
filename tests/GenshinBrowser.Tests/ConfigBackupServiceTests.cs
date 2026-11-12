@@ -30,7 +30,7 @@ public sealed class ConfigBackupServiceTests
             HotkeyScope = HotkeyScope.AllApps,
             HotkeysAcceptInjectedInput = true,
             FloatingClickThrough = true,
-            FloatingClickThroughControls = true,
+            TouchMode = true,
             FloatingAutoHideTitleBar = false,
             LastUrl = "https://www.bilibili.com/video/BV1keqing01",
             WindowMode = WindowMode.Fixed,
@@ -59,11 +59,11 @@ public sealed class ConfigBackupServiceTests
         Assert.Equal(HotkeyScope.AllApps, imported.HotkeyScope);
         Assert.True(imported.HotkeysAcceptInjectedInput);
         Assert.True(imported.FloatingClickThrough);
-        Assert.True(imported.FloatingClickThroughControls);
         Assert.False(imported.FloatingAutoHideTitleBar);
         Assert.Equal("https://www.bilibili.com/video/BV1keqing01", imported.LastUrl);
         // 本机运行状态不随配置迁移
         Assert.Equal(WindowMode.Free, imported.WindowMode);
+        Assert.False(imported.TouchMode);
         Assert.False(imported.HasSeenFloatingModeHint);
 
         Assert.Equal(favorites.Select(e => (e.Url, e.Title, e.SavedAt)), bundle.Favorites!.Select(e => (e.Url, e.Title, e.SavedAt)));

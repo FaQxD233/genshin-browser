@@ -82,7 +82,7 @@
                    VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis"
                    MaxWidth="360"/>
-        <!-- 穿透时的控制按钮：开着鼠标穿透并打开「控制按钮」时替换标题文字，点按经 TitleBarClickLayer 转发；
+        <!-- 触屏模式的控制按钮：浮窗在触屏模式下替换标题文字，点按经 TitleBarClickLayer 转发；
              比右侧窗口按钮宽一些，方便触屏点按 -->
         <StackPanel x:Name="TitleBarControls"
                     Grid.Column="1"
@@ -192,6 +192,41 @@
                    MaxWidth="420"
                    TextAlignment="Center"
                    VerticalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+
+    <!-- 浮窗模式收到手指触摸时的询问卡片：切到触屏模式？（键鼠浮窗没开穿透时才收得到触摸）
+         按钮做大，串流到手机上也好点 -->
+    <Border x:Name="TouchPromptCard"
+            Grid.Row="0"
+            Grid.RowSpan="2"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Margin="16"
+            Padding="18,14"
+            CornerRadius="10"
+            Background="{DynamicResource BackgroundTertiary}"
+            BorderBrush="{DynamicResource BorderColor}"
+            BorderThickness="1"
+            Panel.ZIndex="10"
+            Visibility="Collapsed">
+      <StackPanel MaxWidth="440">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7C9;" FontSize="18" Margin="0,0,10,0"
+                     Foreground="{DynamicResource AccentPrimary}"/>
+          <TextBlock Text="{DynamicResource TouchPrompt.Title}" FontSize="14" FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+        </StackPanel>
+        <TextBlock Text="{DynamicResource TouchPrompt.Body}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,14"
+                   Foreground="{DynamicResource TextSecondary}"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="TouchPromptDeclineButton" Style="{StaticResource ModernButton}"
+                  MinWidth="112" Height="40" Margin="0,0,10,0" FontSize="13"
+                  Content="{DynamicResource TouchPrompt.Decline}" Click="TouchPromptDeclineButton_OnClick"/>
+          <Button x:Name="TouchPromptAcceptButton" Style="{StaticResource PrimaryButton}"
+                  MinWidth="112" Height="40" FontSize="13"
+                  Content="{DynamicResource TouchPrompt.Accept}" Click="TouchPromptAcceptButton_OnClick"/>
+        </StackPanel>
       </StackPanel>
     </Border>
   </Grid>

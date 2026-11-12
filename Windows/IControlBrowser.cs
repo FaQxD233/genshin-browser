@@ -142,9 +142,10 @@ public interface IControlBrowser
     bool FloatingClickThrough { get; set; }
 
     /// <summary>
-    /// 穿透时的控制按钮（默认关）：浮窗开着鼠标穿透时标题栏常驻、标题换成三个视频控制按钮，整条标题栏可点。
+    /// 触屏模式（默认关）：浮窗固定为鼠标穿透、标题栏常驻并换成三个视频控制按钮（整条标题栏可点）；
+    /// 不改键鼠用的鼠标穿透与隐藏标题栏设置。
     /// </summary>
-    bool FloatingClickThroughControls { get; set; }
+    bool TouchMode { get; set; }
 
     /// <summary>
     /// 浮窗模式自动隐藏标题栏（默认开）；关闭后浮窗标题栏常驻。

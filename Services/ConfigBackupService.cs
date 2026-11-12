@@ -49,7 +49,7 @@ internal static class ConfigBackupService
         $"GenshinBrowser-config-{localNow.ToString("yyyyMMdd-HHmm", System.Globalization.CultureInfo.InvariantCulture)}.json";
 
     /// <summary>
-    /// 生成导出内容。窗口模式、首次浮窗引导、缓存检查时间、视频进度属于本机运行状态，清成默认值；导入时也不使用。
+    /// 生成导出内容。窗口模式、触屏模式、首次浮窗引导、缓存检查时间、视频进度属于本机运行状态，清成默认值；导入时也不使用。
     /// </summary>
     public static ConfigBundle Create(
         AppSettings settings,
@@ -59,6 +59,7 @@ internal static class ConfigBackupService
     {
         var snapshot = SettingsService.CreateSnapshot(settings);
         snapshot.WindowMode = WindowMode.Free;
+        snapshot.TouchMode = false;
         snapshot.HasSeenFloatingModeHint = false;
         snapshot.LastWebView2CacheCheckUtc = DateTime.MinValue;
         snapshot.LastPlaybackUrl = string.Empty;

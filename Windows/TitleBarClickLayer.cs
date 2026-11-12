@@ -10,9 +10,10 @@ using GenshinBrowser.Services;
 namespace GenshinBrowser.Windows;
 
 /// <summary>
-/// 浮窗开着鼠标穿透、标题栏又要能点时，盖在主窗标题栏上的点击层。
+/// 触屏模式的浮窗整窗穿透、标题栏又要能点时，盖在主窗标题栏上的点击层。
 /// 主窗整窗带 WS_EX_TRANSPARENT，标题栏本身收不到点击；这层是独立的不激活窗口，按物理像素对齐标题栏，
 /// 自己不画任何东西：点到按钮就触发主窗标题栏上的同一个按钮，点到空白处拖动主窗，双击空白处交给调用方（最大化 / 还原）。
+/// 鼠标走 WPF 的鼠标事件；触摸 / 笔在窗口过程里用系统转出来的鼠标消息处理（见 <see cref="WndProc"/>）。
 /// </summary>
 internal sealed class TitleBarClickLayer : Window
 {
@@ -26,11 +27,15 @@ internal sealed class TitleBarClickLayer : Window
     private readonly FrameworkElement _titleBar;
     private readonly Action _onDoubleClick;
     private readonly Func<bool> _canDrag;
+    // HwndSource 只弱引用钩子：用实例字段保住委托
+    private readonly HwndSourceHook _hook;
 
     private ButtonBase? _pressedButton;
     private bool _isDragging;
     private Point _dragStartCursor;
     private NativeRect _dragStartOwnerRect;
+    // 这次按下来自触摸 / 笔、由窗口过程处理，并用 SetCapture 接住之后的移动与抬起
+    private bool _isTouchPress;
 
     public TitleBarClickLayer(Window owner, FrameworkElement titleBar, Action onDoubleClick, Func<bool> canDrag)
     {
@@ -50,14 +55,68 @@ internal sealed class TitleBarClickLayer : Window
         Focusable = false;
         // 只在浮窗模式（主窗置顶）显示；作为被拥有窗口本来就在主窗之上
         Topmost = true;
+        _hook = WndProc;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
         // 点它不激活（游戏不丢焦点），也不进 Alt-Tab
-        WindowModeService.UpdateExtendedStyle(
-            new WindowInteropHelper(this).Handle, set: WsExNoActivate | WsExToolWindow, clear: 0);
+        var handle = new WindowInteropHelper(this).Handle;
+        WindowModeService.UpdateExtendedStyle(handle, set: WsExNoActivate | WsExToolWindow, clear: 0);
+        // 按句柄取 HwndSource：这时 PresentationSource.FromVisual 还取不到（根视觉在 SourceInitialized 之后才挂上）
+        HwndSource.FromHwnd(handle)?.AddHook(_hook);
+    }
+
+    /// <summary>
+    /// 窗口过程：
+    /// 1. 激活一律拒绝：WS_EX_NOACTIVATE 挡不住触摸带来的激活（2026-11-12 实测，手指点一下点击层就成了前台，游戏丢焦点）。
+    /// 2. 触摸 / 笔用系统转出来的鼠标消息处理：WPF 的触摸栈会漏掉进程里的第一次触摸（第一下点控制按钮没反应），
+    ///    转出来的鼠标消息每次都有。WPF 那边由触摸产生的鼠标事件在下面的重写里忽略，免得同一下处理两次。
+    /// </summary>
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        switch (msg)
+        {
+            case PointerMessages.WmPointerActivate:
+                handled = true;
+                return PointerMessages.PaNoActivate;
+            case PointerMessages.WmMouseActivate:
+                handled = true;
+                return PointerMessages.MaNoActivate;
+            case PointerMessages.WmLButtonDown when PointerMessages.IsPromotedFromPenOrTouch():
+                handled = true;
+                // 触摸不认双击（双击空白处最大化只给鼠标）
+                if (BeginPress(PointerMessages.ClientToScreen(hwnd, lParam), clickCount: 1))
+                {
+                    _isTouchPress = true;
+                    SetCapture(hwnd);
+                }
+
+                break;
+            case PointerMessages.WmMouseMove when _isTouchPress:
+                handled = true;
+                MovePress(PointerMessages.ClientToScreen(hwnd, lParam));
+                break;
+            case PointerMessages.WmLButtonUp when _isTouchPress:
+                handled = true;
+                EndTouchPress(PointerMessages.ClientToScreen(hwnd, lParam));
+                break;
+            case PointerMessages.WmCaptureChanged when _isTouchPress:
+                // 捕获被收走（切窗口等）：结束这次按下，不算点击
+                EndTouchPress(screenPoint: null);
+                break;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void EndTouchPress(Point? screenPoint)
+    {
+        // 先清标记再释放捕获：ReleaseCapture 会同步发 WM_CAPTURECHANGED
+        _isTouchPress = false;
+        ReleaseCapture();
+        EndPress(screenPoint);
     }
 
     /// <summary>对齐到标题栏后显示：先建句柄、定好位置再显示，不会在默认位置闪一下。</summary>
@@ -96,12 +155,13 @@ internal sealed class TitleBarClickLayer : Window
             SwpNoZOrder | SwpNoActivate);
     }
 
-    // 鼠标事件只负责换算屏幕坐标与捕获鼠标，逻辑在 BeginPress / MovePress / EndPress（端到端测试按屏幕坐标直接驱动）
+    // 鼠标事件只负责换算屏幕坐标与捕获鼠标，逻辑在 BeginPress / MovePress / EndPress（端到端测试按屏幕坐标直接驱动）。
+    // 由触摸 / 笔产生的鼠标事件（StylusDevice 不为空）已在窗口过程里处理，这里忽略
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
         e.Handled = true;
-        if (BeginPress(PointToScreen(e.GetPosition(this)), e.ClickCount) && !CaptureMouse())
+        if (e.StylusDevice is null && BeginPress(PointToScreen(e.GetPosition(this)), e.ClickCount) && !CaptureMouse())
         {
             EndPress(screenPoint: null);
         }
@@ -110,7 +170,7 @@ internal sealed class TitleBarClickLayer : Window
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_isDragging)
+        if (_isDragging && !_isTouchPress && e.StylusDevice is null)
         {
             MovePress(PointToScreen(e.GetPosition(this)));
         }
@@ -120,7 +180,7 @@ internal sealed class TitleBarClickLayer : Window
     {
         base.OnMouseLeftButtonUp(e);
         e.Handled = true;
-        if (_isDragging || _pressedButton is not null)
+        if (!_isTouchPress && e.StylusDevice is null && (_isDragging || _pressedButton is not null))
         {
             EndPress(PointToScreen(e.GetPosition(this)));
         }
@@ -129,8 +189,8 @@ internal sealed class TitleBarClickLayer : Window
     protected override void OnLostMouseCapture(MouseEventArgs e)
     {
         base.OnLostMouseCapture(e);
-        // 捕获被系统收走（切窗口等）：结束拖动 / 按下状态，不算点击
-        if (_isDragging || _pressedButton is not null)
+        // 捕获被系统收走（切窗口等）：结束拖动 / 按下状态，不算点击；触摸的按下由窗口过程的 WM_CAPTURECHANGED 处理
+        if (!_isTouchPress && (_isDragging || _pressedButton is not null))
         {
             EndPress(screenPoint: null);
         }
@@ -251,4 +311,11 @@ internal sealed class TitleBarClickLayer : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCapture(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ReleaseCapture();
 }

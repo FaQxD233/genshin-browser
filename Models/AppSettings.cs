@@ -98,10 +98,10 @@ public sealed class AppSettings
     public bool FloatingClickThrough { get; set; }
 
     /// <summary>
-    /// 浮窗穿透时的控制按钮：开启后，浮窗开着鼠标穿透时标题栏常驻，标题换成倒退 / 播放暂停 / 快进三个按钮，
-    /// 整条标题栏可点，视频区照旧穿透。默认关闭。
+    /// 触屏模式：开启后浮窗固定为鼠标穿透、标题栏常驻并把标题换成倒退 / 播放暂停 / 快进三个按钮（整条标题栏可点，
+    /// 视频区穿透）。不改键鼠用的「鼠标穿透」「隐藏标题栏」，关掉即回到它们。属于本机运行状态，不随配置导出。默认关闭。
     /// </summary>
-    public bool FloatingClickThroughControls { get; set; }
+    public bool TouchMode { get; set; }
 
     /// <summary>
     /// 浮窗模式自动隐藏标题栏（鼠标移到窗口顶部时出现）。默认开启；关闭后浮窗标题栏常驻。

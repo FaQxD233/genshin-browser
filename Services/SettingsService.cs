@@ -116,7 +116,7 @@ public sealed class SettingsService : IDisposable
             HotkeyScope = settings.HotkeyScope,
             HotkeysAcceptInjectedInput = settings.HotkeysAcceptInjectedInput,
             FloatingClickThrough = settings.FloatingClickThrough,
-            FloatingClickThroughControls = settings.FloatingClickThroughControls,
+            TouchMode = settings.TouchMode,
             FloatingAutoHideTitleBar = settings.FloatingAutoHideTitleBar,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,

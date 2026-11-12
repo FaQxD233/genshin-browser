@@ -6,7 +6,7 @@
         Title="{DynamicResource Control.Title}"
         Width="560"
         Height="640"
-        MinWidth="400"
+        MinWidth="420"
         MinHeight="440"
         Background="{DynamicResource BackgroundPrimary}"
         Foreground="{DynamicResource TextPrimary}"
@@ -151,6 +151,14 @@
                 Command="{Binding ToggleKeyBindingsCommand}"
                 ToolTip="{DynamicResource Toolbar.KeysTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.KeysName}">
           <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE765;" FontSize="13"/>
+        </Button>
+        <!-- 触屏模式：按下态 = 开（E7C9 TouchPointer）。多了这个按钮，控制窗最小宽度从 400 提到 420，
+             最窄时英文「Browsing | Floating」和按钮之间仍留约 10 像素 -->
+        <Button x:Name="TouchModeButton" Style="{StaticResource ToolbarToggleButton}" Tag="{Binding IsTouchModeOn}"
+                Width="34" Height="30" Margin="0,0,6,0"
+                Command="{Binding ToggleTouchModeCommand}"
+                ToolTip="{DynamicResource Toolbar.TouchModeTooltip}" AutomationProperties.Name="{DynamicResource Toolbar.TouchModeName}">
+          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7C9;" FontSize="14"/>
         </Button>
         <Button x:Name="DownloadsButton" Style="{StaticResource ToolbarToggleButton}" Tag="{Binding IsDownloadsExpanded}"
                 Width="34" Height="30"
@@ -367,11 +375,10 @@
                         AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
               </Grid>
 
-              <!-- 浮窗鼠标穿透：布尔项用开关；开启后右边出现子选项「控制按钮」 -->
+              <!-- 浮窗鼠标穿透（键鼠用）：布尔项用开关；触屏模式下浮窗固定穿透，这里置灰 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
-                  <ColumnDefinition Width="Auto"/>
                   <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.ClickThrough}" Foreground="{DynamicResource TextSecondary}"
@@ -380,21 +387,13 @@
                 <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                           HorizontalAlignment="Left"
                           IsChecked="{Binding IsClickThroughOn}"
+                          IsEnabled="{Binding IsKeyMouseFloatOptionsEnabled}"
                           ToolTip="{Binding ClickThroughTooltip}"
+                          ToolTipService.ShowOnDisabled="True"
                           AutomationProperties.Name="{DynamicResource Settings.ClickThrough}"/>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0,0,0"
-                            Visibility="{Binding IsClickThroughOn, Converter={StaticResource BoolToVisibility}}">
-                  <TextBlock Text="{DynamicResource Settings.ClickThroughControls}" Foreground="{DynamicResource TextSecondary}"
-                             FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
-                             ToolTip="{DynamicResource Settings.ClickThroughControlsTooltip}"/>
-                  <CheckBox Style="{StaticResource ToggleSwitch}"
-                            IsChecked="{Binding IsClickThroughControlsOn}"
-                            ToolTip="{DynamicResource Settings.ClickThroughControlsTooltip}"
-                            AutomationProperties.Name="{DynamicResource Settings.ClickThroughControls}"/>
-                </StackPanel>
               </Grid>
 
-              <!-- 浮窗标题栏自动隐藏（默认开）；关闭后浮窗标题栏常驻 -->
+              <!-- 浮窗标题栏自动隐藏（键鼠用，默认开）；关闭后浮窗标题栏常驻；触屏模式下标题栏固定常驻，这里置灰 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
@@ -402,11 +401,13 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{DynamicResource Settings.AutoHideTitleBar}" Foreground="{DynamicResource TextSecondary}"
                            FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
-                           ToolTip="{DynamicResource Settings.AutoHideTitleBarTooltip}"/>
+                           ToolTip="{Binding AutoHideTitleBarTooltip}"/>
                 <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
                           HorizontalAlignment="Left"
                           IsChecked="{Binding IsAutoHideTitleBarOn}"
-                          ToolTip="{DynamicResource Settings.AutoHideTitleBarTooltip}"
+                          IsEnabled="{Binding IsKeyMouseFloatOptionsEnabled}"
+                          ToolTip="{Binding AutoHideTitleBarTooltip}"
+                          ToolTipService.ShowOnDisabled="True"
                           AutomationProperties.Name="{DynamicResource Settings.AutoHideTitleBar}"/>
               </Grid>
 

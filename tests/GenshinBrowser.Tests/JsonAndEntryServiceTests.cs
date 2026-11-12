@@ -102,20 +102,20 @@ public sealed class JsonAndEntryServiceTests
     }
 
     [Fact]
-    public async Task SettingsSave_PersistsTitleBarAndRemoteKeySettings()
+    public async Task SettingsSave_PersistsTouchModeTitleBarAndRemoteKeySettings()
     {
-        // 同上：控制按钮、隐藏标题栏、远程按键三个开关都要进快照
+        // 同上：触屏模式、隐藏标题栏、远程按键三个开关都要进快照
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
 
         using (var settingsService = new SettingsService(settingsPath))
         {
             var settings = settingsService.Load();
-            Assert.False(settings.FloatingClickThroughControls);
+            Assert.False(settings.TouchMode);
             Assert.True(settings.FloatingAutoHideTitleBar);
             Assert.False(settings.HotkeysAcceptInjectedInput);
 
-            settings.FloatingClickThroughControls = true;
+            settings.TouchMode = true;
             settings.FloatingAutoHideTitleBar = false;
             settings.HotkeysAcceptInjectedInput = true;
             await settingsService.SaveAsync(settings);
@@ -123,15 +123,15 @@ public sealed class JsonAndEntryServiceTests
 
         using var reloadedSettingsService = new SettingsService(settingsPath);
         var reloaded = reloadedSettingsService.Load();
-        Assert.True(reloaded.FloatingClickThroughControls);
+        Assert.True(reloaded.TouchMode);
         Assert.False(reloaded.FloatingAutoHideTitleBar);
         Assert.True(reloaded.HotkeysAcceptInjectedInput);
     }
 
     [Fact]
-    public void SettingsLoad_OldFileWithoutTitleBarSetting_KeepsAutoHide()
+    public void SettingsLoad_OldFileWithoutNewSettings_KeepsDefaults()
     {
-        // 旧版 settings.json 没有这个字段：浮窗标题栏照旧自动隐藏，不能被当成 false 变成常驻
+        // 旧版 settings.json 没有这些字段：浮窗标题栏照旧自动隐藏（不能被当成 false 变成常驻），触屏模式、远程按键关
         using var directory = new TestDirectory();
         var settingsPath = directory.GetPath("settings.json");
         File.WriteAllText(settingsPath, """{"SchemaVersion":1,"FloatingClickThrough":true}""");
@@ -139,7 +139,7 @@ public sealed class JsonAndEntryServiceTests
         using var settingsService = new SettingsService(settingsPath);
         var settings = settingsService.Load();
         Assert.True(settings.FloatingAutoHideTitleBar);
-        Assert.False(settings.FloatingClickThroughControls);
+        Assert.False(settings.TouchMode);
         Assert.False(settings.HotkeysAcceptInjectedInput);
     }
 

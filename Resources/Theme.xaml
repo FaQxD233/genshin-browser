@@ -256,6 +256,13 @@
         </ControlTemplate>
       </Setter.Value>
     </Setter>
+    <!-- 不可用（如触屏模式下的键鼠浮窗开关）：整体变淡、不显示手形光标 -->
+    <Style.Triggers>
+      <Trigger Property="IsEnabled" Value="False">
+        <Setter Property="Opacity" Value="0.45"/>
+        <Setter Property="Cursor" Value="Arrow"/>
+      </Trigger>
+    </Style.Triggers>
   </Style>
 
   <!-- 下载角标：小胶囊，无任务时由 Visibility 隐藏 -->
