@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using Application = System.Windows.Application;
 using GenshinBrowser.Services;
@@ -34,10 +35,22 @@ public partial class App : Application
             createdNew = WaitForPreviousInstance(_singleInstanceMutex);
         }
 
-        // 已有实例在运行：激活它并退出当前进程
+        // 已有实例在运行：带命令（任务栏跳转列表的菜单项）就把命令转给它，否则激活它；然后退出当前进程
         if (!createdNew)
         {
-            ActivateExistingInstance();
+            var existingWindow = FindExistingInstanceWindow();
+            if (existingWindow != IntPtr.Zero)
+            {
+                if (AppCommands.TryParse(e.Args, out var command))
+                {
+                    AppCommands.Post(existingWindow, command);
+                }
+                else
+                {
+                    ActivateWindow(existingWindow);
+                }
+            }
+
             Shutdown();
             return;
         }
@@ -46,6 +59,14 @@ public partial class App : Application
         AppPaths.RunPendingMove(CopyDataWithProgress);
 
         base.OnStartup(e);
+
+        // 任务栏跳转列表：界面语言在主窗构造时才定下，启动完再设，之后切换语言时重设。
+        // 程序没在运行时点菜单项只是打开程序，带的命令不执行
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            ApplyJumpList();
+            LocalizationService.LanguageChanged += (_, _) => ApplyJumpList();
+        }, DispatcherPriority.ApplicationIdle);
 
         // 启动时清理旧日志与 stale .tmp 文件，延后到后台线程避免阻塞首帧；
         // 之后定时重复：本应用定位为随游戏常驻数周，只在启动清理会让日志
@@ -156,7 +177,11 @@ public partial class App : Application
         e.SetObserved();
     }
 
-    private static void ActivateExistingInstance()
+    /// <summary>
+    /// 已在运行的实例的主窗句柄（同名进程的主窗口），没找到时为 IntPtr.Zero。
+    /// F7 隐藏是最小化，主窗仍算可见；控制台、标题栏点击层都有 Owner，不会被当成主窗。
+    /// </summary>
+    private static IntPtr FindExistingInstanceWindow()
     {
         var currentId = Environment.ProcessId;
         foreach (var process in Process.GetProcessesByName(Process.GetCurrentProcess().ProcessName))
@@ -171,24 +196,51 @@ public partial class App : Application
                 try
                 {
                     var handle = process.MainWindowHandle;
-                    if (handle == IntPtr.Zero)
+                    if (handle != IntPtr.Zero)
                     {
-                        continue;
+                        return handle;
                     }
-
-                    if (IsIconic(handle))
-                    {
-                        ShowWindow(handle, SwRestore);
-                    }
-
-                    SetForegroundWindow(handle);
-                    break;
                 }
                 catch
                 {
-                    // 激活失败时静默忽略，避免影响现有实例
+                    // 进程已退出等：看下一个
                 }
             }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static void ActivateWindow(IntPtr handle)
+    {
+        if (IsIconic(handle))
+        {
+            ShowWindow(handle, SwRestore);
+        }
+
+        SetForegroundWindow(handle);
+    }
+
+    /// <summary>设置任务栏跳转列表（右键程序图标的菜单），失败只记日志。</summary>
+    private void ApplyJumpList()
+    {
+        var path = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var jumpList = AppCommands.CreateJumpList(path);
+            jumpList.JumpItemsRejected += (_, args) =>
+                FileLogger.LogDebug($"Jump list rejected {args.RejectedItems.Count} item(s): {string.Join(", ", args.RejectionReasons)}.");
+            // 列表有内容、又不在 BeginInit / EndInit 之间时，SetJumpList 当场交给系统
+            JumpList.SetJumpList(this, jumpList);
+        }
+        catch (Exception ex)
+        {
+            FileLogger.LogException(ex, "Apply jump list");
         }
     }
 

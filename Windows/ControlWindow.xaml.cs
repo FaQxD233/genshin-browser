@@ -57,13 +57,13 @@ public partial class ControlWindow : Window
 
     public bool AllowClose { get; set; }
 
+    /// <summary>在控制台弹一条提示（主窗用：浏览模式收到触摸时提示可以切触屏模式、任务栏菜单切触屏模式）；不给时长时用默认时长。</summary>
+    public void ShowNotice(string message, StatusLevel level, TimeSpan? duration = null) => _viewModel.ShowNotice(message, level, duration);
+
     /// <summary>
     /// 取消进行中的热键录制并恢复钩子。程序化隐藏控制窗前调用——
     /// Hide() 不经过 OnClosing 的取消逻辑，否则 SuspendBuiltInHotkeys 会残留。
     /// </summary>
-    /// <summary>在控制台弹一条提示（主窗用，如浏览模式收到触摸时提示可以切触屏模式）。</summary>
-    public void ShowNotice(string message, StatusLevel level, TimeSpan duration) => _viewModel.ShowNotice(message, level, duration);
-
     public void CancelHotkeyRecordingIfActive()
     {
         _viewModel.CancelActiveRecording();

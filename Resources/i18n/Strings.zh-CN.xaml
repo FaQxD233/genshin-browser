@@ -272,6 +272,11 @@
   <sys:String x:Key="TouchPrompt.Accept">切到触屏</sys:String>
   <sys:String x:Key="TouchPrompt.Decline">继续用键鼠</sys:String>
   <sys:String x:Key="TouchHint.Browse">检测到触屏操作。要用触屏玩，点右上角的触屏按钮：进浮窗后自动穿透，标题栏显示控制按钮。</sys:String>
+  <!-- 任务栏跳转列表：右键（触屏长按）任务栏里的程序图标出现的菜单项 -->
+  <sys:String x:Key="JumpList.ToggleMode">切换 浏览 / 浮窗</sys:String>
+  <sys:String x:Key="JumpList.ToggleTouchMode">触屏模式 开 / 关</sys:String>
+  <sys:String x:Key="JumpList.ToggleHide">隐藏 / 显示窗口</sys:String>
+  <sys:String x:Key="JumpList.TogglePlayback">播放 / 暂停</sys:String>
   <sys:String x:Key="Status.WindowHidden">窗口已隐藏，按 {0} 恢复显示（视频继续播放）。</sys:String>
   <sys:String x:Key="Status.WindowShown">窗口已恢复显示。</sys:String>
   <sys:String x:Key="Status.PlaybackBlocked">浏览器拦截了自动播放，请点击页面内的播放按钮后再试。</sys:String>

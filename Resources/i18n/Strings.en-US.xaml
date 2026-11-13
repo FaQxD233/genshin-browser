@@ -272,6 +272,11 @@
   <sys:String x:Key="TouchPrompt.Accept">Use touch</sys:String>
   <sys:String x:Key="TouchPrompt.Decline">Keep mouse</sys:String>
   <sys:String x:Key="TouchHint.Browse">Touch input detected. To play by touch, use the touch button at the top right: Floating will let clicks through and show control buttons in its title bar.</sys:String>
+  <!-- Taskbar jump list: menu items shown when right-clicking (long-pressing on touch) the program's taskbar icon -->
+  <sys:String x:Key="JumpList.ToggleMode">Switch Browsing / Floating</sys:String>
+  <sys:String x:Key="JumpList.ToggleTouchMode">Touch mode on / off</sys:String>
+  <sys:String x:Key="JumpList.ToggleHide">Hide / show window</sys:String>
+  <sys:String x:Key="JumpList.TogglePlayback">Play / pause</sys:String>
   <sys:String x:Key="Status.WindowHidden">Window hidden. Press {0} to show it again (video keeps playing).</sys:String>
   <sys:String x:Key="Status.WindowShown">Window shown.</sys:String>
   <sys:String x:Key="Status.PlaybackBlocked">The browser blocked autoplay. Please click the in-page play button first.</sys:String>

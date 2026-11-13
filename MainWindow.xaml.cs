@@ -296,6 +296,8 @@ public partial class MainWindow : Window, IControlBrowser
         RestoreWindowBounds();
         // 鼠标穿透是 Win32 扩展样式，构造函数里句柄未创建时应用不上，这里补一次
         ApplyWindowMode();
+        // 任务栏跳转列表的菜单项：新起的进程把命令转到主窗
+        System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(AppCommandHook);
     }
 
     private void MainWindow_OnContentRendered(object? sender, EventArgs e)
@@ -1794,6 +1796,54 @@ public partial class MainWindow : Window, IControlBrowser
             System.Windows.Controls.ComboBox { IsEditable: true } => true,
             _ => false,
         };
+
+    /// <summary>
+    /// 任务栏跳转列表的命令：点菜单项时新起的进程把命令转成注册窗口消息投到主窗（见 <see cref="AppCommands"/>）。
+    /// 窗口过程里只认消息，执行投递出去，不在窗口过程里切模式、改窗口。
+    /// </summary>
+    private IntPtr AppCommandHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (AppCommands.TryRead(msg, wParam, out var command))
+        {
+            handled = true;
+            _ = Dispatcher.InvokeAsync(() => ExecuteAppCommand(command));
+        }
+
+        return IntPtr.Zero;
+    }
+
+    /// <summary>执行任务栏跳转列表的命令：和对应的热键、控制台按钮走同一套方法。</summary>
+    private void ExecuteAppCommand(AppCommand command)
+    {
+        if (_isShuttingDown)
+        {
+            return;
+        }
+
+        FileLogger.LogDebug($"Jump list command: {command}.");
+        switch (command)
+        {
+            case AppCommand.ToggleMode:
+                ToggleWindowMode();
+                break;
+            case AppCommand.ToggleTouchMode:
+                TouchMode = !TouchMode;
+                // 浮窗里 TouchMode 自己弹 OSD；浏览模式在控制台提示，和点工具栏的触屏按钮一样
+                if (_settings.WindowMode != WindowMode.Fixed)
+                {
+                    _controlWindow?.ShowNotice(
+                        LocalizationService.Get(TouchMode ? "Toast.TouchModeOn" : "Toast.TouchModeOff"), StatusLevel.Success);
+                }
+
+                break;
+            case AppCommand.ToggleHide:
+                ToggleFloatingHidden();
+                break;
+            case AppCommand.TogglePlayback:
+                _ = ToggleVideoPlaybackAsync();
+                break;
+        }
+    }
 
     /// <summary>
     /// 临时隐藏/恢复显示窗口（热键 F7 默认），浏览与浮窗模式均可用。
