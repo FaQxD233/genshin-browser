@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls.Primitives;
@@ -13,7 +15,7 @@ namespace GenshinBrowser.Windows;
 /// <summary>
 /// 触屏模式的浮窗整窗穿透、标题栏又要能点时，盖在主窗标题栏上的点击层。
 /// 主窗整窗带 WS_EX_TRANSPARENT，标题栏本身收不到点击；这层是独立的不激活窗口，按物理像素对齐标题栏，
-/// 自己不画任何东西：点到按钮就触发主窗标题栏上的同一个按钮，点到空白处拖动主窗，双击空白处交给调用方（最大化 / 还原）。
+/// 自己不画任何东西：点到按钮就触发主窗标题栏上的同一个按钮（按住时那个按钮显示按下效果），点到空白处拖动主窗，双击空白处交给调用方（最大化 / 还原）。
 /// 鼠标走 WPF 的鼠标事件；触摸 / 笔在窗口过程里用系统转出来的鼠标消息处理（见 <see cref="WndProc"/>）。
 /// </summary>
 internal sealed class TitleBarClickLayer : Window
@@ -28,8 +30,18 @@ internal sealed class TitleBarClickLayer : Window
     private readonly FrameworkElement _titleBar;
     private readonly Action _onDoubleClick;
     private readonly Func<bool> _canDrag;
-    // HwndSource 只弱引用钩子：用实例字段保住委托
+    // 窗口过程钩子，OnSourceInitialized 里挂上
     private readonly HwndSourceHook _hook;
+
+    // 标题栏按钮的按下样式靠 IsPressed 触发器；主窗穿透时按钮自己收不到按下，由这层代为设置，触摸和鼠标点都有按下效果。
+    // IsPressed 的 setter 是给派生类用的受保护成员（标题栏按钮是普通 Button），经反射调用；取不到时只是没有按下效果
+    private static readonly MethodInfo? IsPressedSetter =
+        typeof(ButtonBase).GetProperty(nameof(ButtonBase.IsPressed))?.GetSetMethod(nonPublic: true);
+    // 按下效果至少显示这么久：快点一下（串流时按下、抬起可能挨得很近）也看得见
+    private static readonly TimeSpan MinPressedVisual = TimeSpan.FromMilliseconds(150);
+    private ButtonBase? _shownPressed;
+    private long _shownPressedSince;
+    private DispatcherTimer? _pressedVisualTimer;
 
     private ButtonBase? _pressedButton;
     private bool _isDragging;
@@ -67,6 +79,9 @@ internal sealed class TitleBarClickLayer : Window
         Focusable = false;
         // 只在浮窗模式（主窗置顶）显示；作为被拥有窗口本来就在主窗之上
         Topmost = true;
+        // 关掉「长按右键」：开着时系统要等手指抬起才把触摸转成鼠标按下（按住时显示不了按下效果），
+        // 按住约 0.5 秒以上还会转成右键、按钮点不到（2026-11-13 实测）。WPF 按命中元素上的这个属性回答系统的询问
+        Stylus.SetIsPressAndHoldEnabled(this, false);
         _hook = WndProc;
     }
 
@@ -172,7 +187,8 @@ internal sealed class TitleBarClickLayer : Window
         EndPress(_pendingTouchPoint);
     }
 
-    // WPF 自己那份触摸事件：开始了就等它抬起（最多 WispContactWait），抬起后执行等着的点击
+    // WPF 自己那份触摸事件：开始了就等它抬起（最多 WispContactWait），抬起后执行等着的点击。
+    // 系统转出来的鼠标按下要晚约 0.13 秒、快点时抬起才到（2026-11-13 实测），WPF 这份按下先到：先显示按下效果
     protected override void OnPreviewStylusDown(StylusDownEventArgs e)
     {
         base.OnPreviewStylusDown(e);
@@ -184,13 +200,25 @@ internal sealed class TitleBarClickLayer : Window
                 DeferTouchRelease(_pendingTouchPoint, WispContactWait);
             }
         }
+        else if (_pressedButton is null && !_isDragging)
+        {
+            ShowPressed(FindTitleBarButton(PointToScreen(e.GetPosition(this))));
+        }
     }
 
     protected override void OnPreviewStylusUp(StylusEventArgs e)
     {
         base.OnPreviewStylusUp(e);
         _wispContactOpen = false;
-        CompletePendingTouchRelease();
+        if (_hasPendingTouchRelease)
+        {
+            CompletePendingTouchRelease();
+        }
+        else if (!_isTouchPress && _pressedButton is null)
+        {
+            // 只有 WPF 这份触摸、没等到系统转出的鼠标按下：收起按下效果
+            ShowPressed(null, keepBriefly: true);
+        }
     }
 
     /// <summary>对齐到标题栏后显示：先建句柄、定好位置再显示，不会在默认位置闪一下。</summary>
@@ -244,7 +272,7 @@ internal sealed class TitleBarClickLayer : Window
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (_isDragging && !_isTouchPress && e.StylusDevice is null)
+        if ((_isDragging || _pressedButton is not null) && !_isTouchPress && !_hasPendingTouchRelease && e.StylusDevice is null)
         {
             MovePress(PointToScreen(e.GetPosition(this)));
         }
@@ -274,6 +302,7 @@ internal sealed class TitleBarClickLayer : Window
     internal bool BeginPress(Point screenPoint, int clickCount)
     {
         _pressedButton = FindTitleBarButton(screenPoint);
+        ShowPressed(_pressedButton);
         if (_pressedButton is not null)
         {
             return true;
@@ -297,9 +326,18 @@ internal sealed class TitleBarClickLayer : Window
         return true;
     }
 
-    /// <summary>拖动中：按屏幕物理像素移动主窗（这层拖动时不动，见 <see cref="AlignToTitleBar"/>）。</summary>
+    /// <summary>
+    /// 按住移动：按的是按钮时，和普通按钮一样移出按钮就不显示按下、移回来再显示；
+    /// 拖动中按屏幕物理像素移动主窗（这层拖动时不动，见 <see cref="AlignToTitleBar"/>）。
+    /// </summary>
     internal void MovePress(Point screenPoint)
     {
+        if (_pressedButton is not null)
+        {
+            ShowPressed(ReferenceEquals(_pressedButton, FindTitleBarButton(screenPoint)) ? _pressedButton : null);
+            return;
+        }
+
         if (!_isDragging)
         {
             return;
@@ -325,6 +363,7 @@ internal sealed class TitleBarClickLayer : Window
         var wasDragging = _isDragging;
         _pressedButton = null;
         _isDragging = false;
+        ShowPressed(null, keepBriefly: screenPoint is not null);
         if (IsMouseCaptured)
         {
             ReleaseMouseCapture();
@@ -339,6 +378,49 @@ internal sealed class TitleBarClickLayer : Window
         {
             // 标题栏按钮的处理都挂在 Click 事件上（不用 Command），直接引发 Click
             button.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, button));
+        }
+    }
+
+    /// <summary>
+    /// 把 <paramref name="button"/> 显示成按下（null 表示都不显示），之前显示按下的按钮复原。
+    /// <paramref name="keepBriefly"/>：松手时用，按下效果显示不足 <see cref="MinPressedVisual"/> 的补足了再复原。
+    /// </summary>
+    private void ShowPressed(ButtonBase? button, bool keepBriefly = false)
+    {
+        _pressedVisualTimer?.Stop();
+        if (button is null && keepBriefly && _shownPressed is not null)
+        {
+            var remaining = MinPressedVisual - Stopwatch.GetElapsedTime(_shownPressedSince);
+            if (remaining > TimeSpan.Zero)
+            {
+                if (_pressedVisualTimer is null)
+                {
+                    _pressedVisualTimer = new DispatcherTimer();
+                    _pressedVisualTimer.Tick += (_, _) => ShowPressed(null);
+                }
+
+                _pressedVisualTimer.Interval = remaining;
+                _pressedVisualTimer.Start();
+                return;
+            }
+        }
+
+        if (ReferenceEquals(_shownPressed, button))
+        {
+            return;
+        }
+
+        SetIsPressed(_shownPressed, false);
+        _shownPressed = button;
+        _shownPressedSince = Stopwatch.GetTimestamp();
+        SetIsPressed(button, true);
+
+        static void SetIsPressed(ButtonBase? target, bool pressed)
+        {
+            if (target is not null)
+            {
+                IsPressedSetter?.Invoke(target, [pressed]);
+            }
         }
     }
 
