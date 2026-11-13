@@ -9,6 +9,7 @@ public sealed class WindowModeService
 {
     private const int GwlExStyle = -20;
     private const int WsExTransparent = 0x20;
+    internal const int WsExNoActivate = 0x08000000;
 
     private readonly Window _window;
 
@@ -43,6 +44,21 @@ public sealed class WindowModeService
         }
 
         UpdateExtendedStyle(handle, set: enabled ? WsExTransparent : 0, clear: enabled ? 0 : WsExTransparent);
+    }
+
+    /// <summary>
+    /// WS_EX_NOACTIVATE：点窗口不激活，前台也不转过来。光对 WM_MOUSEACTIVATE 回答不激活还不够：前台会转到本程序、
+    /// 却没有活动窗口，原来的前台程序（游戏）照样丢焦点（2026-11-14 实测）。窗口句柄尚未创建时跳过。
+    /// </summary>
+    public void SetNoActivate(bool enabled)
+    {
+        var handle = new WindowInteropHelper(_window).Handle;
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        UpdateExtendedStyle(handle, set: enabled ? WsExNoActivate : 0, clear: enabled ? 0 : WsExNoActivate);
     }
 
     /// <summary>置位 / 清除窗口扩展样式的若干位；结果不变时不写。</summary>

@@ -198,6 +198,21 @@ public sealed class KeyboardHookService : IDisposable
     private volatile bool _acceptInjectedInput;
     // 开关关着时注入的按键命中热键：每次运行只记一条日志（只在钩子线程读写），用来确认远程软件发的是不是注入的键
     private bool _hasLoggedIgnoredInjectedKey;
+    // 报下一次实体按键（见 WatchPhysicalKeys），报过就自己关掉
+    private volatile bool _watchPhysicalKeys;
+
+    /// <summary>
+    /// 为 true 时，下一次实体键盘按键（不是注入的）按下发一次 <see cref="PhysicalKeyPressed"/>，随即自己关掉。
+    /// 触屏模式开着时由 MainWindow 打开，据此问要不要切回键鼠模式；任何窗口在前台都算。
+    /// </summary>
+    public bool WatchPhysicalKeys
+    {
+        get => _watchPhysicalKeys;
+        set => _watchPhysicalKeys = value;
+    }
+
+    /// <summary>实体键盘按键按下（见 <see cref="WatchPhysicalKeys"/>；在钩子安装线程上触发，订阅方须尽快返回）。</summary>
+    public event EventHandler? PhysicalKeyPressed;
 
     /// <summary>
     /// 为 true 时注入的按键（SendInput / keybd_event 合成：远程控制软件、按键映射工具）也触发热键；
@@ -484,6 +499,22 @@ public sealed class KeyboardHookService : IDisposable
             _lastHookEventUtc = DateTime.UtcNow;
 
             var vkCode = Marshal.ReadInt32(lParam);
+            var flags = Marshal.ReadInt32(lParam, 8);
+            var isInjected = (flags & (LlkhfInjected | LlkhfLowerIlInjected)) != 0;
+            if (_watchPhysicalKeys && !isInjected && (wParam == (IntPtr)WmKeyDown || wParam == (IntPtr)WmSysKeyDown))
+            {
+                // 触屏模式开着时有人用实体键盘：只报这一下，之后等 MainWindow 重新打开
+                _watchPhysicalKeys = false;
+                try
+                {
+                    PhysicalKeyPressed?.Invoke(this, EventArgs.Empty);
+                }
+                catch
+                {
+                    // Global hook callbacks must return quickly and never propagate.
+                }
+            }
+
             var snapshot = Volatile.Read(ref _hotkeySnapshot);
             if (!snapshot.ByVirtualKey.TryGetValue(vkCode, out var registrations))
             {
@@ -493,8 +524,7 @@ public sealed class KeyboardHookService : IDisposable
             // 注入事件（SendInput/keybd_event 合成）默认不触发热键，只认实际按下的键：密码管理器自动输入、
             // 输入法合成的同名键不该触发。远程控制软件（UU 远程、Parsec 等）和按键映射工具发的键也是注入的，
             // 用户打开「远程按键」（AcceptInjectedInput）后照常处理。
-            var flags = Marshal.ReadInt32(lParam, 8);
-            if ((flags & (LlkhfInjected | LlkhfLowerIlInjected)) != 0 && !_acceptInjectedInput)
+            if (isInjected && !_acceptInjectedInput)
             {
                 if (!_hasLoggedIgnoredInjectedKey && (wParam == (IntPtr)WmKeyDown || wParam == (IntPtr)WmSysKeyDown))
                 {

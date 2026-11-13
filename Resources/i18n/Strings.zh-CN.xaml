@@ -272,6 +272,12 @@
   <sys:String x:Key="TouchPrompt.Accept">切到触屏</sys:String>
   <sys:String x:Key="TouchPrompt.Decline">继续用键鼠</sys:String>
   <sys:String x:Key="TouchHint.Browse">检测到触屏操作。要用触屏玩，点右上角的触屏按钮：进浮窗后自动穿透，标题栏显示控制按钮。</sys:String>
+  <!-- 触屏模式下收到实体键盘按键或鼠标点按：浮窗弹询问卡片（询问期间暂停穿透），浏览模式在控制台提示 -->
+  <sys:String x:Key="KeyMousePrompt.Title">检测到键鼠操作</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Body">切回键鼠模式？浮窗会按设置里的鼠标穿透、隐藏标题栏，标题栏换回标题。</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Accept">切回键鼠</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Decline">继续用触屏</sys:String>
+  <sys:String x:Key="KeyMouseHint.Browse">检测到键鼠操作。触屏模式还开着：进浮窗后仍会穿透，标题栏显示控制按钮。要改回键鼠，点右上角的触屏按钮。</sys:String>
   <!-- 任务栏跳转列表：右键（触屏长按）任务栏里的程序图标出现的菜单项 -->
   <sys:String x:Key="JumpList.ToggleMode">切换 浏览 / 浮窗</sys:String>
   <sys:String x:Key="JumpList.ToggleTouchMode">触屏模式 开 / 关</sys:String>

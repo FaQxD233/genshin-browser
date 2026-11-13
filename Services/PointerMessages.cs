@@ -11,9 +11,15 @@ namespace GenshinBrowser.Services;
 internal static class PointerMessages
 {
     public const int WmMouseActivate = 0x0021;
+    public const int WmNcLButtonDown = 0x00A1;
     public const int WmMouseMove = 0x0200;
     public const int WmLButtonDown = 0x0201;
     public const int WmLButtonUp = 0x0202;
+    public const int WmRButtonDown = 0x0204;
+    public const int WmMButtonDown = 0x0207;
+    public const int WmMouseWheel = 0x020A;
+    public const int WmXButtonDown = 0x020B;
+    public const int WmMouseHWheel = 0x020E;
     public const int WmCaptureChanged = 0x0215;
     public const int WmPointerDown = 0x0246;
     public const int WmPointerActivate = 0x024B;

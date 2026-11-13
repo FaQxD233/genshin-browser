@@ -195,9 +195,10 @@
       </StackPanel>
     </Border>
 
-    <!-- 浮窗模式收到手指触摸时的询问卡片：切到触屏模式？（键鼠浮窗没开穿透时才收得到触摸）
-         按钮做大，串流到手机上也好点 -->
-    <Border x:Name="TouchPromptCard"
+    <!-- 浮窗中间的询问卡片：收到手指触摸时问要不要切到触屏模式（键鼠浮窗没开穿透时才收得到触摸），
+         触屏模式下收到实体键鼠操作时问要不要切回键鼠模式（询问期间暂停穿透）。图标与文案由代码按种类设置。
+         按钮做大，串流到手机上也好点；按钮不可聚焦，点卡片不激活浮窗、游戏不丢焦点 -->
+    <Border x:Name="ModePromptCard"
             Grid.Row="0"
             Grid.RowSpan="2"
             HorizontalAlignment="Center"
@@ -212,20 +213,20 @@
             Visibility="Collapsed">
       <StackPanel MaxWidth="440">
         <StackPanel Orientation="Horizontal">
-          <TextBlock Style="{StaticResource Mdl2IconText}" Text="&#xE7C9;" FontSize="18" Margin="0,0,10,0"
+          <TextBlock x:Name="ModePromptIcon" Style="{StaticResource Mdl2IconText}" Text="&#xE7C9;" FontSize="18" Margin="0,0,10,0"
                      Foreground="{DynamicResource AccentPrimary}"/>
-          <TextBlock Text="{DynamicResource TouchPrompt.Title}" FontSize="14" FontWeight="SemiBold"
+          <TextBlock x:Name="ModePromptTitle" Text="{DynamicResource TouchPrompt.Title}" FontSize="14" FontWeight="SemiBold"
                      Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
         </StackPanel>
-        <TextBlock Text="{DynamicResource TouchPrompt.Body}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,14"
+        <TextBlock x:Name="ModePromptBody" Text="{DynamicResource TouchPrompt.Body}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,14"
                    Foreground="{DynamicResource TextSecondary}"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-          <Button x:Name="TouchPromptDeclineButton" Style="{StaticResource ModernButton}"
+          <Button x:Name="ModePromptDeclineButton" Style="{StaticResource ModernButton}" Focusable="False"
                   MinWidth="112" Height="40" Margin="0,0,10,0" FontSize="13"
-                  Content="{DynamicResource TouchPrompt.Decline}" Click="TouchPromptDeclineButton_OnClick"/>
-          <Button x:Name="TouchPromptAcceptButton" Style="{StaticResource PrimaryButton}"
+                  Content="{DynamicResource TouchPrompt.Decline}" Click="ModePromptDeclineButton_OnClick"/>
+          <Button x:Name="ModePromptAcceptButton" Style="{StaticResource PrimaryButton}" Focusable="False"
                   MinWidth="112" Height="40" FontSize="13"
-                  Content="{DynamicResource TouchPrompt.Accept}" Click="TouchPromptAcceptButton_OnClick"/>
+                  Content="{DynamicResource TouchPrompt.Accept}" Click="ModePromptAcceptButton_OnClick"/>
         </StackPanel>
       </StackPanel>
     </Border>

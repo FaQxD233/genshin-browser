@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows.Input;
 using GenshinBrowser.Models;
 using GenshinBrowser.Services;
@@ -341,6 +342,41 @@ public sealed class KeyboardHookServiceTests
 
 
     [Fact]
+    public void WatchPhysicalKeys_ReportsFirstPhysicalKeyDownOnceAndIgnoresInjectedKeys()
+    {
+        // 触屏模式开着时据此问要不要切回键鼠：远程软件注入的键、抬起都不算，第一下实体按下报一次后自己关掉
+        using var service = new KeyboardHookService();
+        var reports = 0;
+        service.PhysicalKeyPressed += (_, _) => reports++;
+        const int wmKeyDown = 0x0100;
+        const int wmKeyUp = 0x0101;
+        const int wmSysKeyDown = 0x0104;
+        const int vkA = 0x41;
+
+        InvokeHookCallback(service, wmKeyDown, vkA, flags: 0);
+        Assert.Equal(0, reports);
+
+        service.WatchPhysicalKeys = true;
+        InvokeHookCallback(service, wmKeyDown, vkA, flags: 0x10); // LLKHF_INJECTED
+        InvokeHookCallback(service, wmKeyDown, vkA, flags: 0x02); // LLKHF_LOWER_IL_INJECTED
+        InvokeHookCallback(service, wmKeyUp, vkA, flags: 0);
+        Assert.Equal(0, reports);
+        Assert.True(service.WatchPhysicalKeys);
+
+        InvokeHookCallback(service, wmKeyDown, vkA, flags: 0);
+        Assert.Equal(1, reports);
+        Assert.False(service.WatchPhysicalKeys);
+
+        InvokeHookCallback(service, wmKeyDown, vkA, flags: 0);
+        Assert.Equal(1, reports);
+
+        // 重新打开后 Alt 等系统键的按下同样算
+        service.WatchPhysicalKeys = true;
+        InvokeHookCallback(service, wmSysKeyDown, 0x12, flags: 0x20); // VK_MENU，LLKHF_ALTDOWN
+        Assert.Equal(2, reports);
+    }
+
+    [Fact]
     public void HotkeyFormatter_DisplaysPrintableOemKeysAsCharacters()
     {
         // OEM 键显示 US 布局主字符而非枚举名（OemSemicolon/OemQuotes 等）
@@ -367,6 +403,27 @@ public sealed class KeyboardHookServiceTests
             [HotkeySlot.SeekBackward] = seekBackward,
             [HotkeySlot.SeekForward] = seekForward,
         };
+
+    /// <summary>直接调钩子回调：按 KBDLLHOOKSTRUCT 布局（vkCode、scanCode、flags、time 各 4 字节，dwExtraInfo 指针）造一条按键。</summary>
+    private static void InvokeHookCallback(KeyboardHookService service, int message, int virtualKey, int flags)
+    {
+        var method = typeof(KeyboardHookService).GetMethod("HookCallback", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        var data = Marshal.AllocHGlobal(32);
+        try
+        {
+            Marshal.WriteInt32(data, 0, virtualKey);
+            Marshal.WriteInt32(data, 4, 0);
+            Marshal.WriteInt32(data, 8, flags);
+            Marshal.WriteInt32(data, 12, 0);
+            Marshal.WriteIntPtr(data, 16, IntPtr.Zero);
+            method!.Invoke(service, new object[] { 0, new IntPtr(message), data });
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(data);
+        }
+    }
 
     private static string? InvokeGetCachedForegroundProcessName(KeyboardHookService service, uint pid)
     {

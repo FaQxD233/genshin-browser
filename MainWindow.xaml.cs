@@ -111,13 +111,26 @@ public partial class MainWindow : Window, IControlBrowser
     // 穿透时盖在标题栏上接收点击的不激活窗口，按需创建
     private TitleBarClickLayer? _titleBarClickLayer;
 
-    // 收到手指触摸时提示切触屏模式：浏览模式在控制台提示一次，浮窗模式弹询问卡片一次（每次运行各一次，拒绝或超时后不再问）
-    private readonly List<TouchInputWatcher> _touchWatchers = new();
+    // 触屏 / 键鼠模式的提示：键鼠模式收到手指触摸时问要不要切到触屏，触屏模式收到实体键鼠操作时问要不要切回键鼠。
+    // 浏览模式在控制台提示，浮窗模式弹询问卡片；每次在触屏和键鼠之间切换后各重新问一次，拒绝或超时后到下次切换前不再问
     private bool _touchHintShownInBrowse;
     private bool _touchPromptShownInFloat;
-    private DispatcherTimer? _touchPromptTimer;
-    private static readonly TimeSpan TouchPromptTimeout = TimeSpan.FromSeconds(12);
-    private static readonly TimeSpan TouchHintDuration = TimeSpan.FromSeconds(6);
+    private bool _keyMouseHintShownInBrowse;
+    private bool _keyMousePromptShownInFloat;
+    private ModePromptKind _modePromptKind;
+    private DispatcherTimer? _modePromptTimer;
+    private static readonly TimeSpan ModePromptTimeout = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan ModeHintDuration = TimeSpan.FromSeconds(6);
+
+    /// <summary>浮窗询问卡片问的是哪种切换。</summary>
+    private enum ModePromptKind
+    {
+        /// <summary>收到手指触摸：切到触屏模式？</summary>
+        Touch,
+
+        /// <summary>触屏模式下收到实体键鼠操作：切回键鼠模式？</summary>
+        KeyMouse,
+    }
     private DispatcherTimer? _mainToastTimer;
     private bool _isApplyingZoom;
 
@@ -189,7 +202,8 @@ public partial class MainWindow : Window, IControlBrowser
         SizeChanged += MainWindow_OnLocationOrSizeChanged;
         SourceInitialized += MainWindow_OnSourceInitialized;
         ContentRendered += MainWindow_OnContentRendered;
-        _touchWatchers.Add(new TouchInputWatcher(this, OnTouchInputDetected));
+        // 看收到的是手指还是鼠标（钩子由窗口的 HwndSource 持有，不用另存）
+        _ = new PointerInputWatcher(this, OnTouchInputDetected, OnKeyMouseInputDetected);
     }
 
     public WindowMode CurrentMode => _settings.WindowMode;
@@ -296,8 +310,12 @@ public partial class MainWindow : Window, IControlBrowser
         RestoreWindowBounds();
         // 鼠标穿透是 Win32 扩展样式，构造函数里句柄未创建时应用不上，这里补一次
         ApplyWindowMode();
-        // 任务栏跳转列表的菜单项：新起的进程把命令转到主窗
-        System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle)?.AddHook(AppCommandHook);
+        // 任务栏跳转列表的菜单项：新起的进程把命令转到主窗；询问卡片显示时点浮窗不激活
+        if (System.Windows.Interop.HwndSource.FromHwnd(new System.Windows.Interop.WindowInteropHelper(this).Handle) is { } source)
+        {
+            source.AddHook(AppCommandHook);
+            source.AddHook(ModePromptActivationHook);
+        }
     }
 
     private void MainWindow_OnContentRendered(object? sender, EventArgs e)
@@ -366,7 +384,7 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _controlWindow = new ControlWindow(this);
-            _touchWatchers.Add(new TouchInputWatcher(_controlWindow, OnTouchInputDetected));
+            _ = new PointerInputWatcher(_controlWindow, OnTouchInputDetected, OnKeyMouseInputDetected);
             UpdateControlWindowVisibility();
             NotifyBrowserState(BrowserStateChangeKind.All);
 
@@ -379,7 +397,9 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _keyboardHookService.HotkeyPressed += KeyboardHookService_OnHotkeyPressed;
+            _keyboardHookService.PhysicalKeyPressed += KeyboardHookService_OnPhysicalKeyPressed;
             StartKeyboardHook();
+            UpdatePhysicalKeyWatch();
             EnsureMouseLeaveWatchStarted();
             EnsurePlaybackSamplingStarted();
 
@@ -2090,6 +2110,7 @@ public partial class MainWindow : Window, IControlBrowser
     private const string OsdGlyphInfo = "\uE946";
     // TouchPointer 字形：触屏模式切换的 OSD 用
     private const string OsdGlyphTouch = "\uE7C9";
+    private const string OsdGlyphMouse = "\uE962";
     private static readonly TimeSpan OsdShortDuration = TimeSpan.FromSeconds(0.9);
     private static readonly TimeSpan OsdNoticeDuration = TimeSpan.FromSeconds(1.2);
     private static readonly TimeSpan OsdWarningDuration = TimeSpan.FromSeconds(2);
@@ -2632,6 +2653,7 @@ public partial class MainWindow : Window, IControlBrowser
 
         // 置顶、穿透与标题栏（浏览常驻；浮窗按状态表，向下延长策略不改内容区高度）
         ApplyWindowMode();
+        UpdatePhysicalKeyWatch();
         _keyboardHookService.IsGamingMode = _settings.WindowMode == WindowMode.Fixed;
         UpdateBrowserAcceleratorKeys();
         UpdateTitleBarButtons();
@@ -3159,7 +3181,11 @@ public partial class MainWindow : Window, IControlBrowser
             }
 
             _settings.TouchMode = value;
+            // 在触屏和键鼠之间切换了：两边的询问 / 提示各重新问一次
+            _touchHintShownInBrowse = _touchPromptShownInFloat = false;
+            _keyMouseHintShownInBrowse = _keyMousePromptShownInFloat = false;
             ApplyWindowMode();
+            UpdatePhysicalKeyWatch();
             if (_settings.WindowMode == WindowMode.Fixed && WindowState != WindowState.Minimized)
             {
                 ShowMainToast(
@@ -3191,8 +3217,9 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    /// <summary>浮窗要不要穿透：键鼠看「鼠标穿透」设置，触屏模式固定穿透。</summary>
-    private bool EffectiveClickThrough => _settings.FloatingClickThrough || _settings.TouchMode;
+    /// <summary>浮窗要不要穿透：键鼠看「鼠标穿透」设置，触屏模式固定穿透；问要不要切回键鼠时暂停穿透，鼠标才点得到卡片。</summary>
+    private bool EffectiveClickThrough =>
+        (_settings.FloatingClickThrough || _settings.TouchMode) && !IsModePromptShowing(ModePromptKind.KeyMouse);
 
     /// <summary>当前是否鼠标穿透中（浮窗模式且穿透）：窗口收不到鼠标，悬停相关逻辑一律按「光标不在窗口上」处理。</summary>
     private bool IsClickThroughActive =>
@@ -3204,15 +3231,15 @@ public partial class MainWindow : Window, IControlBrowser
     /// </summary>
     private void ApplyWindowMode()
     {
-        // 模式或穿透变了，浮窗的触屏询问卡片不再适用
-        HideTouchPrompt();
+        // 模式或穿透变了，浮窗的询问卡片不再适用（收起时键鼠询问暂停的穿透也一并恢复）
+        HideModePrompt();
         _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
         ApplyTitleBarForCurrentMode(forceHideInFixed: true);
     }
 
     /// <summary>
-    /// 主窗或控制窗收到手指触摸（在窗口过程里调用，只改标记、把界面改动投递出去）：还不是触屏模式时，
-    /// 浮窗模式弹询问卡片，浏览模式在控制台提示，每次运行各一次。键鼠浮窗开着穿透时收不到触摸，不会走到这里。
+    /// 主窗、控制窗或标题栏点击层收到手指触摸（在窗口过程里调用，只改标记、把界面改动投递出去）：还不是触屏模式时，
+    /// 浮窗模式弹询问卡片，浏览模式在控制台提示，切换触屏 / 键鼠模式前各一次。键鼠浮窗开着穿透时收不到触摸，不会走到这里。
     /// </summary>
     private void OnTouchInputDetected()
     {
@@ -3226,47 +3253,145 @@ public partial class MainWindow : Window, IControlBrowser
             if (!_touchPromptShownInFloat)
             {
                 _touchPromptShownInFloat = true;
-                _ = Dispatcher.InvokeAsync(ShowTouchPrompt, DispatcherPriority.Background);
+                _ = Dispatcher.InvokeAsync(() => ShowModePrompt(ModePromptKind.Touch), DispatcherPriority.Background);
             }
         }
         else if (!_touchHintShownInBrowse)
         {
             _touchHintShownInBrowse = true;
-            _ = Dispatcher.InvokeAsync(
-                () => _controlWindow?.ShowNotice(LocalizationService.Get("TouchHint.Browse"), StatusLevel.Info, TouchHintDuration),
-                DispatcherPriority.Background);
+            ShowModeHint("TouchHint.Browse");
         }
     }
 
-    /// <summary>浮窗模式的询问卡片：切到触屏模式？一段时间没回应按「继续用键鼠」处理。</summary>
-    private void ShowTouchPrompt()
+    /// <summary>
+    /// 触屏模式开着时有人用实体键鼠：键盘钩子报的实体按键（任何窗口在前台都算），或者用鼠标点了本程序的窗口
+    /// （钩子回调 / 窗口过程里调用，只改标记、把界面改动投递出去）。浮窗模式弹询问卡片，浏览模式在控制台提示，切换前各一次。
+    /// </summary>
+    private void OnKeyMouseInputDetected()
     {
-        if (_isShuttingDown || _settings.TouchMode || _settings.WindowMode != WindowMode.Fixed ||
+        if (_isShuttingDown || !_settings.TouchMode)
+        {
+            return;
+        }
+
+        if (_settings.WindowMode == WindowMode.Fixed)
+        {
+            // F7 隐藏（最小化）时先不问：卡片看不到，留到窗口恢复后的下一次操作
+            if (!_keyMousePromptShownInFloat && WindowState != WindowState.Minimized)
+            {
+                _keyMousePromptShownInFloat = true;
+                _ = Dispatcher.InvokeAsync(() => ShowModePrompt(ModePromptKind.KeyMouse), DispatcherPriority.Background);
+            }
+        }
+        else if (!_keyMouseHintShownInBrowse)
+        {
+            _keyMouseHintShownInBrowse = true;
+            ShowModeHint("KeyMouseHint.Browse");
+        }
+
+        UpdatePhysicalKeyWatch();
+    }
+
+    private void KeyboardHookService_OnPhysicalKeyPressed(object? sender, EventArgs e) => OnKeyMouseInputDetected();
+
+    /// <summary>触屏模式开着、当前模式（浮窗 / 浏览）这次还没问过要不要切回键鼠时，让键盘钩子报下一次实体按键。</summary>
+    private void UpdatePhysicalKeyWatch() =>
+        _keyboardHookService.WatchPhysicalKeys = !_isShuttingDown && _settings.TouchMode &&
+            !(_settings.WindowMode == WindowMode.Fixed ? _keyMousePromptShownInFloat : _keyMouseHintShownInBrowse);
+
+    /// <summary>浏览模式在控制台提示可以切换触屏 / 键鼠模式（投递出去执行）。</summary>
+    private void ShowModeHint(string key) =>
+        _ = Dispatcher.InvokeAsync(
+            () => _controlWindow?.ShowNotice(LocalizationService.Get(key), StatusLevel.Info, ModeHintDuration),
+            DispatcherPriority.Background);
+
+    private bool IsModePromptShowing(ModePromptKind kind) =>
+        ModePromptCard.Visibility == Visibility.Visible && _modePromptKind == kind;
+
+    /// <summary>
+    /// 浮窗中间的询问卡片：切到触屏模式（<see cref="ModePromptKind.Touch"/>）或切回键鼠模式（<see cref="ModePromptKind.KeyMouse"/>），
+    /// 一段时间没回应按拒绝处理。触屏浮窗整窗穿透，问要不要切回键鼠时暂停穿透（见 <see cref="EffectiveClickThrough"/>），
+    /// 鼠标才点得到卡片；卡片显示时点浮窗不激活（见 <see cref="ModePromptActivationHook"/>）。
+    /// </summary>
+    private void ShowModePrompt(ModePromptKind kind)
+    {
+        var toTouch = kind == ModePromptKind.Touch;
+        if (_isShuttingDown || _settings.TouchMode == toTouch || _settings.WindowMode != WindowMode.Fixed ||
             WindowState == WindowState.Minimized)
         {
             return;
         }
 
-        TouchPromptCard.Visibility = Visibility.Visible;
-        if (_touchPromptTimer is null)
+        var keyPrefix = toTouch ? "TouchPrompt" : "KeyMousePrompt";
+        ModePromptIcon.Text = toTouch ? OsdGlyphTouch : OsdGlyphMouse;
+        // 文案按种类挂资源引用：卡片显示时切换界面语言也跟着变
+        ModePromptTitle.SetResourceReference(System.Windows.Controls.TextBlock.TextProperty, keyPrefix + ".Title");
+        ModePromptBody.SetResourceReference(System.Windows.Controls.TextBlock.TextProperty, keyPrefix + ".Body");
+        ModePromptDeclineButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, keyPrefix + ".Decline");
+        ModePromptAcceptButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, keyPrefix + ".Accept");
+        _modePromptKind = kind;
+        ModePromptCard.Visibility = Visibility.Visible;
+        _windowModeService.SetNoActivate(true);
+        if (!toTouch)
         {
-            _touchPromptTimer = new DispatcherTimer { Interval = TouchPromptTimeout };
-            _touchPromptTimer.Tick += (_, _) => HideTouchPrompt();
+            _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
         }
 
-        _touchPromptTimer.Stop();
-        _touchPromptTimer.Start();
+        if (_modePromptTimer is null)
+        {
+            _modePromptTimer = new DispatcherTimer { Interval = ModePromptTimeout };
+            _modePromptTimer.Tick += (_, _) => HideModePrompt();
+        }
+
+        _modePromptTimer.Stop();
+        _modePromptTimer.Start();
     }
 
-    private void HideTouchPrompt()
+    private void HideModePrompt()
     {
-        _touchPromptTimer?.Stop();
-        TouchPromptCard.Visibility = Visibility.Collapsed;
+        _modePromptTimer?.Stop();
+        if (ModePromptCard.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var resumeClickThrough = _modePromptKind == ModePromptKind.KeyMouse;
+        ModePromptCard.Visibility = Visibility.Collapsed;
+        _windowModeService.SetNoActivate(false);
+        if (resumeClickThrough)
+        {
+            _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
+        }
     }
 
-    private void TouchPromptAcceptButton_OnClick(object sender, RoutedEventArgs e) => TouchMode = true;
+    /// <summary>
+    /// 询问卡片显示时点浮窗不激活：游戏不丢焦点。卡片显示期间主窗还带 WS_EX_NOACTIVATE（前台不转过来），
+    /// 触摸挡不住，要在这里回答不激活；卡片按钮不可聚焦（见 MainWindow.xaml），点它也不会去抢焦点。
+    /// </summary>
+    private IntPtr ModePromptActivationHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (ModePromptCard.Visibility != Visibility.Visible)
+        {
+            return IntPtr.Zero;
+        }
 
-    private void TouchPromptDeclineButton_OnClick(object sender, RoutedEventArgs e) => HideTouchPrompt();
+        switch (msg)
+        {
+            case PointerMessages.WmMouseActivate:
+                handled = true;
+                return PointerMessages.MaNoActivate;
+            case PointerMessages.WmPointerActivate:
+                handled = true;
+                return PointerMessages.PaNoActivate;
+            default:
+                return IntPtr.Zero;
+        }
+    }
+
+    private void ModePromptAcceptButton_OnClick(object sender, RoutedEventArgs e) =>
+        TouchMode = _modePromptKind == ModePromptKind.Touch;
+
+    private void ModePromptDeclineButton_OnClick(object sender, RoutedEventArgs e) => HideModePrompt();
 
     public string ThemeMode
     {
@@ -4056,6 +4181,7 @@ public partial class MainWindow : Window, IControlBrowser
         }
 
         _keyboardHookService.HotkeyPressed -= KeyboardHookService_OnHotkeyPressed;
+        _keyboardHookService.PhysicalKeyPressed -= KeyboardHookService_OnPhysicalKeyPressed;
 
         if (_windowBoundsUiDebounceTimer is not null)
         {
@@ -4071,7 +4197,8 @@ public partial class MainWindow : Window, IControlBrowser
             _titleBarHideTimer = null;
         }
 
-        _touchPromptTimer?.Stop();
+        _modePromptTimer?.Stop();
+        _keyboardHookService.WatchPhysicalKeys = false;
 
         if (_mainToastTimer is not null)
         {
@@ -4569,6 +4696,8 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _titleBarClickLayer = new TitleBarClickLayer(this, DragBar, ToggleMaximize, () => !_isMaximized);
             _titleBarClickLayer.Closed += (_, _) => _titleBarClickLayer = null;
+            // 触屏浮窗只有标题栏（点击层）收得到鼠标：用鼠标点它也算键鼠操作
+            _ = new PointerInputWatcher(_titleBarClickLayer, OnTouchInputDetected, OnKeyMouseInputDetected);
         }
 
         _titleBarClickLayer.ShowOverTitleBar();

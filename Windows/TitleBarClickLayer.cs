@@ -21,7 +21,6 @@ namespace GenshinBrowser.Windows;
 internal sealed class TitleBarClickLayer : Window
 {
     private const int WsExToolWindow = 0x00000080;
-    private const int WsExNoActivate = 0x08000000;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
@@ -90,7 +89,7 @@ internal sealed class TitleBarClickLayer : Window
         base.OnSourceInitialized(e);
         // 点它不激活（游戏不丢焦点），也不进 Alt-Tab
         var handle = new WindowInteropHelper(this).Handle;
-        WindowModeService.UpdateExtendedStyle(handle, set: WsExNoActivate | WsExToolWindow, clear: 0);
+        WindowModeService.UpdateExtendedStyle(handle, set: WindowModeService.WsExNoActivate | WsExToolWindow, clear: 0);
         // 按句柄取 HwndSource：这时 PresentationSource.FromVisual 还取不到（根视觉在 SourceInitialized 之后才挂上）
         HwndSource.FromHwnd(handle)?.AddHook(_hook);
     }

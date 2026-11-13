@@ -272,6 +272,12 @@
   <sys:String x:Key="TouchPrompt.Accept">Use touch</sys:String>
   <sys:String x:Key="TouchPrompt.Decline">Keep mouse</sys:String>
   <sys:String x:Key="TouchHint.Browse">Touch input detected. To play by touch, use the touch button at the top right: Floating will let clicks through and show control buttons in its title bar.</sys:String>
+  <!-- Touch mode on and a physical key press or mouse click arrives: Floating shows a prompt card (click-through paused meanwhile), Browsing shows a notice in the control panel -->
+  <sys:String x:Key="KeyMousePrompt.Title">Mouse or keyboard detected</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Body">Switch back to mouse and keyboard? The Floating window will follow Click-through and Hide title bar in Settings again, and its title bar will show the title.</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Accept">Use mouse</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Decline">Keep touch</sys:String>
+  <sys:String x:Key="KeyMouseHint.Browse">Mouse or keyboard input detected. Touch mode is still on: Floating will let clicks through and show control buttons in its title bar. To switch back, use the touch button at the top right.</sys:String>
   <!-- Taskbar jump list: menu items shown when right-clicking (long-pressing on touch) the program's taskbar icon -->
   <sys:String x:Key="JumpList.ToggleMode">Switch Browsing / Floating</sys:String>
   <sys:String x:Key="JumpList.ToggleTouchMode">Touch mode on / off</sys:String>
