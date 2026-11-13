@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using System.Windows.Threading;
 using GenshinBrowser.Services;
 
 namespace GenshinBrowser.Windows;
@@ -36,6 +37,17 @@ internal sealed class TitleBarClickLayer : Window
     private NativeRect _dragStartOwnerRect;
     // 这次按下来自触摸 / 笔、由窗口过程处理，并用 SetCapture 接住之后的移动与抬起
     private bool _isTouchPress;
+
+    // 触摸点按钮：松开后先不执行，等 WPF 自己那份触摸事件（比系统转出的鼠标消息晚几十毫秒）在这层上走完、被忽略，
+    // 期间这层保持显示。先执行的话，点击切走模式、这层隐藏，晚到的触摸事件会落到下面主窗同一个按钮上再点一次
+    // （2026-11-12 实测：手指点模式按钮，切到浏览又切回浮窗）。这次触摸 WPF 不产生事件（进程里第一次触摸）时等满 WispArrivalWait。
+    private static readonly TimeSpan WispArrivalWait = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan WispContactWait = TimeSpan.FromSeconds(1);
+    private DispatcherTimer? _touchReleaseTimer;
+    private bool _hasPendingTouchRelease;
+    private Point _pendingTouchPoint;
+    // WPF 的这份触摸已经开始（StylusDown 到了、StylusUp 还没到）
+    private bool _wispContactOpen;
 
     public TitleBarClickLayer(Window owner, FrameworkElement titleBar, Action onDoubleClick, Func<bool> canDrag)
     {
@@ -72,7 +84,8 @@ internal sealed class TitleBarClickLayer : Window
     /// 窗口过程：
     /// 1. 激活一律拒绝：WS_EX_NOACTIVATE 挡不住触摸带来的激活（2026-11-12 实测，手指点一下点击层就成了前台，游戏丢焦点）。
     /// 2. 触摸 / 笔用系统转出来的鼠标消息处理：WPF 的触摸栈会漏掉进程里的第一次触摸（第一下点控制按钮没反应），
-    ///    转出来的鼠标消息每次都有。WPF 那边由触摸产生的鼠标事件在下面的重写里忽略，免得同一下处理两次。
+    ///    转出来的鼠标消息每次都有。WPF 那边由触摸产生的鼠标事件在下面的重写里忽略，免得同一下处理两次；
+    ///    点按钮时等 WPF 那份事件走完再执行（见 <see cref="WispArrivalWait"/>）。
     /// </summary>
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -86,7 +99,8 @@ internal sealed class TitleBarClickLayer : Window
                 return PointerMessages.MaNoActivate;
             case PointerMessages.WmLButtonDown when PointerMessages.IsPromotedFromPenOrTouch():
                 handled = true;
-                // 触摸不认双击（双击空白处最大化只给鼠标）
+                // 上一下还在等就先执行掉；触摸不认双击（双击空白处最大化只给鼠标）
+                CompletePendingTouchRelease();
                 if (BeginPress(PointerMessages.ClientToScreen(hwnd, lParam), clickCount: 1))
                 {
                     _isTouchPress = true;
@@ -100,23 +114,83 @@ internal sealed class TitleBarClickLayer : Window
                 break;
             case PointerMessages.WmLButtonUp when _isTouchPress:
                 handled = true;
-                EndTouchPress(PointerMessages.ClientToScreen(hwnd, lParam));
+                ReleaseTouchCapture();
+                var releasePoint = PointerMessages.ClientToScreen(hwnd, lParam);
+                if (_isDragging)
+                {
+                    // 拖动结束不切换任何东西，直接收尾
+                    EndPress(releasePoint);
+                }
+                else
+                {
+                    DeferTouchRelease(releasePoint, _wispContactOpen ? WispContactWait : WispArrivalWait);
+                }
+
                 break;
             case PointerMessages.WmCaptureChanged when _isTouchPress:
                 // 捕获被收走（切窗口等）：结束这次按下，不算点击
-                EndTouchPress(screenPoint: null);
+                ReleaseTouchCapture();
+                EndPress(screenPoint: null);
                 break;
         }
 
         return IntPtr.Zero;
     }
 
-    private void EndTouchPress(Point? screenPoint)
+    private void ReleaseTouchCapture()
     {
         // 先清标记再释放捕获：ReleaseCapture 会同步发 WM_CAPTURECHANGED
         _isTouchPress = false;
         ReleaseCapture();
-        EndPress(screenPoint);
+    }
+
+    private void DeferTouchRelease(Point screenPoint, TimeSpan wait)
+    {
+        _pendingTouchPoint = screenPoint;
+        _hasPendingTouchRelease = true;
+        if (_touchReleaseTimer is null)
+        {
+            _touchReleaseTimer = new DispatcherTimer();
+            _touchReleaseTimer.Tick += (_, _) => CompletePendingTouchRelease();
+        }
+
+        _touchReleaseTimer.Stop();
+        _touchReleaseTimer.Interval = wait;
+        _touchReleaseTimer.Start();
+    }
+
+    private void CompletePendingTouchRelease()
+    {
+        _touchReleaseTimer?.Stop();
+        if (!_hasPendingTouchRelease)
+        {
+            return;
+        }
+
+        _hasPendingTouchRelease = false;
+        _wispContactOpen = false;
+        EndPress(_pendingTouchPoint);
+    }
+
+    // WPF 自己那份触摸事件：开始了就等它抬起（最多 WispContactWait），抬起后执行等着的点击
+    protected override void OnPreviewStylusDown(StylusDownEventArgs e)
+    {
+        base.OnPreviewStylusDown(e);
+        if (_isTouchPress || _hasPendingTouchRelease)
+        {
+            _wispContactOpen = true;
+            if (_hasPendingTouchRelease)
+            {
+                DeferTouchRelease(_pendingTouchPoint, WispContactWait);
+            }
+        }
+    }
+
+    protected override void OnPreviewStylusUp(StylusEventArgs e)
+    {
+        base.OnPreviewStylusUp(e);
+        _wispContactOpen = false;
+        CompletePendingTouchRelease();
     }
 
     /// <summary>对齐到标题栏后显示：先建句柄、定好位置再显示，不会在默认位置闪一下。</summary>
