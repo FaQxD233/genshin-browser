@@ -375,7 +375,8 @@
                         AutomationProperties.Name="{DynamicResource Settings.MoveBottomRight}"/>
               </Grid>
 
-              <!-- 浮窗鼠标穿透（键鼠用）：布尔项用开关；触屏模式下浮窗固定穿透，这里置灰 -->
+              <!-- 浮窗三项（键鼠用）：鼠标穿透、控制按钮、隐藏标题栏并列、各自独立，布尔项用开关；
+                   触屏模式下浮窗固定为 穿透 + 控制按钮 + 常驻，三项一起置灰 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
@@ -393,7 +394,25 @@
                           AutomationProperties.Name="{DynamicResource Settings.ClickThrough}"/>
               </Grid>
 
-              <!-- 浮窗标题栏自动隐藏（键鼠用，默认开）；关闭后浮窗标题栏常驻；触屏模式下标题栏固定常驻，这里置灰 -->
+              <!-- 浮窗标题栏的控制按钮（键鼠用，默认关）：标题换成倒退 / 播放暂停 / 快进 -->
+              <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{DynamicResource Settings.TitleBarControls}" Foreground="{DynamicResource TextSecondary}"
+                           FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                           ToolTip="{Binding TitleBarControlsTooltip}"/>
+                <CheckBox Grid.Column="1" Style="{StaticResource ToggleSwitch}"
+                          HorizontalAlignment="Left"
+                          IsChecked="{Binding IsTitleBarControlsOn}"
+                          IsEnabled="{Binding IsKeyMouseFloatOptionsEnabled}"
+                          ToolTip="{Binding TitleBarControlsTooltip}"
+                          ToolTipService.ShowOnDisabled="True"
+                          AutomationProperties.Name="{DynamicResource Settings.TitleBarControls}"/>
+              </Grid>
+
+              <!-- 浮窗标题栏自动隐藏（键鼠用，默认开）；关闭后浮窗标题栏常驻 -->
               <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto" MinWidth="68" SharedSizeGroup="SettingsLabel"/>

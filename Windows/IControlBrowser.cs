@@ -143,7 +143,7 @@ public interface IControlBrowser
 
     /// <summary>
     /// 触屏模式（默认关）：浮窗固定为鼠标穿透、标题栏常驻并换成三个视频控制按钮（整条标题栏可点）；
-    /// 不改键鼠用的鼠标穿透与隐藏标题栏设置。
+    /// 不改键鼠用的鼠标穿透、控制按钮、隐藏标题栏设置。
     /// </summary>
     bool TouchMode { get; set; }
 
@@ -151,6 +151,11 @@ public interface IControlBrowser
     /// 浮窗模式自动隐藏标题栏（默认开）；关闭后浮窗标题栏常驻。
     /// </summary>
     bool FloatingAutoHideTitleBar { get; set; }
+
+    /// <summary>
+    /// 浮窗标题栏的控制按钮（默认关）：标题换成倒退 / 播放暂停 / 快进三个按钮，和鼠标穿透、隐藏标题栏各自独立。
+    /// </summary>
+    bool FloatingTitleBarControls { get; set; }
 
     /// <summary>
     /// 浏览器主窗当前宽度（逻辑像素）。

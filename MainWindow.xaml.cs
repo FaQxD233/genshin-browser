@@ -2857,6 +2857,7 @@ public partial class MainWindow : Window, IControlBrowser
         FloatingClickThrough = defaults.FloatingClickThrough;
         TouchMode = defaults.TouchMode;
         FloatingAutoHideTitleBar = defaults.FloatingAutoHideTitleBar;
+        FloatingTitleBarControls = defaults.FloatingTitleBarControls;
         // 生效范围、远程按键与热键同属「快捷键」设置，一并恢复默认
         HotkeyScope = defaults.HotkeyScope;
         HotkeysAcceptInjectedInput = defaults.HotkeysAcceptInjectedInput;
@@ -3020,6 +3021,7 @@ public partial class MainWindow : Window, IControlBrowser
         SetZoom(imported.ZoomFactor);
         FloatingClickThrough = imported.FloatingClickThrough;
         FloatingAutoHideTitleBar = imported.FloatingAutoHideTitleBar;
+        FloatingTitleBarControls = imported.FloatingTitleBarControls;
         HotkeyScope = imported.HotkeyScope;
         HotkeysAcceptInjectedInput = imported.HotkeysAcceptInjectedInput;
         ApplyHotkeys(imported);
@@ -3168,7 +3170,7 @@ public partial class MainWindow : Window, IControlBrowser
 
     /// <summary>
     /// 触屏模式（默认关）：浮窗固定为鼠标穿透、标题栏常驻并换成三个视频控制按钮（经点击层整条标题栏可点）；
-    /// 不改键鼠用的鼠标穿透与隐藏标题栏，关掉即回到它们。浮窗模式下切换时用 OSD 提示。
+    /// 不改键鼠用的鼠标穿透、控制按钮、隐藏标题栏，关掉即回到它们。浮窗模式下切换时用 OSD 提示。
     /// </summary>
     public bool TouchMode
     {
@@ -3217,9 +3219,33 @@ public partial class MainWindow : Window, IControlBrowser
         }
     }
 
-    /// <summary>浮窗要不要穿透：键鼠看「鼠标穿透」设置，触屏模式固定穿透；问要不要切回键鼠时暂停穿透，鼠标才点得到卡片。</summary>
+    /// <summary>
+    /// 浮窗标题栏的控制按钮（默认关）：标题换成倒退 / 播放暂停 / 快进三个按钮，和鼠标穿透、隐藏标题栏各自独立
+    /// （穿透且标题栏常驻时经点击层可点，见 <see cref="TitleBarLayout"/>）。
+    /// </summary>
+    public bool FloatingTitleBarControls
+    {
+        get => _settings.FloatingTitleBarControls;
+        set
+        {
+            if (_settings.FloatingTitleBarControls == value)
+            {
+                return;
+            }
+
+            _settings.FloatingTitleBarControls = value;
+            ApplyTitleBarForCurrentMode(forceHideInFixed: true);
+            QueueSettingsSave();
+            NotifyBrowserState(BrowserStateChangeKind.Mode);
+        }
+    }
+
+    /// <summary>
+    /// 浮窗要不要穿透：键鼠看「鼠标穿透」设置，触屏模式固定穿透；浮窗中间的询问卡片显示期间暂停穿透，
+    /// 鼠标、手指才点得到卡片（触屏浮窗问要不要切回键鼠；键鼠浮窗穿透时手指点了标题栏点击层，问要不要切到触屏）。
+    /// </summary>
     private bool EffectiveClickThrough =>
-        (_settings.FloatingClickThrough || _settings.TouchMode) && !IsModePromptShowing(ModePromptKind.KeyMouse);
+        (_settings.FloatingClickThrough || _settings.TouchMode) && !IsModePromptShowing;
 
     /// <summary>当前是否鼠标穿透中（浮窗模式且穿透）：窗口收不到鼠标，悬停相关逻辑一律按「光标不在窗口上」处理。</summary>
     private bool IsClickThroughActive =>
@@ -3239,7 +3265,8 @@ public partial class MainWindow : Window, IControlBrowser
 
     /// <summary>
     /// 主窗、控制窗或标题栏点击层收到手指触摸（在窗口过程里调用，只改标记、把界面改动投递出去）：还不是触屏模式时，
-    /// 浮窗模式弹询问卡片，浏览模式在控制台提示，切换触屏 / 键鼠模式前各一次。键鼠浮窗开着穿透时收不到触摸，不会走到这里。
+    /// 浮窗模式弹询问卡片，浏览模式在控制台提示，切换触屏 / 键鼠模式前各一次。键鼠浮窗开着穿透时只有点击层
+    /// （控制按钮开、标题栏常驻时才有）收得到触摸，卡片显示期间暂停穿透。
     /// </summary>
     private void OnTouchInputDetected()
     {
@@ -3305,13 +3332,12 @@ public partial class MainWindow : Window, IControlBrowser
             () => _controlWindow?.ShowNotice(LocalizationService.Get(key), StatusLevel.Info, ModeHintDuration),
             DispatcherPriority.Background);
 
-    private bool IsModePromptShowing(ModePromptKind kind) =>
-        ModePromptCard.Visibility == Visibility.Visible && _modePromptKind == kind;
+    private bool IsModePromptShowing => ModePromptCard.Visibility == Visibility.Visible;
 
     /// <summary>
     /// 浮窗中间的询问卡片：切到触屏模式（<see cref="ModePromptKind.Touch"/>）或切回键鼠模式（<see cref="ModePromptKind.KeyMouse"/>），
-    /// 一段时间没回应按拒绝处理。触屏浮窗整窗穿透，问要不要切回键鼠时暂停穿透（见 <see cref="EffectiveClickThrough"/>），
-    /// 鼠标才点得到卡片；卡片显示时点浮窗不激活（见 <see cref="ModePromptActivationHook"/>）。
+    /// 一段时间没回应按拒绝处理。卡片显示期间暂停穿透（见 <see cref="EffectiveClickThrough"/>），鼠标、手指才点得到卡片；
+    /// 卡片显示时点浮窗不激活（见 <see cref="ModePromptActivationHook"/>）。
     /// </summary>
     private void ShowModePrompt(ModePromptKind kind)
     {
@@ -3332,10 +3358,7 @@ public partial class MainWindow : Window, IControlBrowser
         _modePromptKind = kind;
         ModePromptCard.Visibility = Visibility.Visible;
         _windowModeService.SetNoActivate(true);
-        if (!toTouch)
-        {
-            _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
-        }
+        _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
 
         if (_modePromptTimer is null)
         {
@@ -3355,13 +3378,10 @@ public partial class MainWindow : Window, IControlBrowser
             return;
         }
 
-        var resumeClickThrough = _modePromptKind == ModePromptKind.KeyMouse;
         ModePromptCard.Visibility = Visibility.Collapsed;
         _windowModeService.SetNoActivate(false);
-        if (resumeClickThrough)
-        {
-            _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
-        }
+        // 恢复询问期间暂停的穿透
+        _windowModeService.ApplyMode(_settings.WindowMode, EffectiveClickThrough);
     }
 
     /// <summary>
@@ -4635,6 +4655,8 @@ public partial class MainWindow : Window, IControlBrowser
     /// <summary>标题栏当前该怎么显示（常驻 / 换成控制按钮 / 要不要点击层），按模式与设置算出。</summary>
     private TitleBarLayout CurrentTitleBarLayout => TitleBarLayout.For(
         _settings.WindowMode,
+        _settings.FloatingClickThrough,
+        _settings.FloatingTitleBarControls,
         _settings.FloatingAutoHideTitleBar,
         _settings.TouchMode);
 
@@ -4674,8 +4696,8 @@ public partial class MainWindow : Window, IControlBrowser
     }
 
     /// <summary>
-    /// 触屏模式的浮窗（整窗穿透、标题栏又要能点）显示盖在标题栏上的点击层（标题栏本身收不到点击）；
-    /// 其余情况、最小化（含 F7 隐藏）或窗口还没出现时隐藏。
+    /// 浮窗整窗穿透、标题栏常驻又换成控制按钮时（触屏模式，或键鼠开了穿透 + 控制按钮、关了隐藏标题栏）
+    /// 显示盖在标题栏上的点击层（标题栏本身收不到点击）；其余情况、最小化（含 F7 隐藏）或窗口还没出现时隐藏。
     /// </summary>
     private void UpdateTitleBarClickLayer()
     {
@@ -4696,7 +4718,7 @@ public partial class MainWindow : Window, IControlBrowser
         {
             _titleBarClickLayer = new TitleBarClickLayer(this, DragBar, ToggleMaximize, () => !_isMaximized);
             _titleBarClickLayer.Closed += (_, _) => _titleBarClickLayer = null;
-            // 触屏浮窗只有标题栏（点击层）收得到鼠标：用鼠标点它也算键鼠操作
+            // 穿透的浮窗只有标题栏（点击层）收得到鼠标和触摸：触屏模式下用鼠标点它算键鼠操作，键鼠模式下用手指点它算触屏操作
             _ = new PointerInputWatcher(_titleBarClickLayer, OnTouchInputDetected, OnKeyMouseInputDetected);
         }
 

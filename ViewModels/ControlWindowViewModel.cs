@@ -244,6 +244,10 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     public string AutoHideTitleBarTooltip => LocalizationService.Get(
         _browser.TouchMode ? "Settings.TouchModeOverrides" : "Settings.AutoHideTitleBarTooltip");
 
+    /// <summary>控制按钮说明 tooltip；触屏模式下说明这项不生效。</summary>
+    public string TitleBarControlsTooltip => LocalizationService.Get(
+        _browser.TouchMode ? "Settings.TouchModeOverrides" : "Settings.TitleBarControlsTooltip");
+
     public string StatusMessage
     {
         get => _statusMessage;
@@ -1525,7 +1529,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     /// <summary>触屏模式（右上角第五个按钮，按下态 = 开）。</summary>
     public bool IsTouchModeOn => _browser.TouchMode;
 
-    /// <summary>键鼠浮窗的鼠标穿透、隐藏标题栏只在键鼠模式生效：触屏模式下置灰。</summary>
+    /// <summary>键鼠浮窗的鼠标穿透、控制按钮、隐藏标题栏只在键鼠模式生效：触屏模式下置灰。</summary>
     public bool IsKeyMouseFloatOptionsEnabled => !_browser.TouchMode;
 
     public RelayCommand ToggleTouchModeCommand { get; }
@@ -1540,6 +1544,18 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
             enabled => _browser.FloatingAutoHideTitleBar = enabled,
             "Toast.AutoHideTitleBarOn",
             "Toast.AutoHideTitleBarOff");
+    }
+
+    /// <summary>浮窗标题栏控制按钮开关；写入含 Toast。</summary>
+    public bool IsTitleBarControlsOn
+    {
+        get => _browser.FloatingTitleBarControls;
+        set => SetToggle(
+            _browser.FloatingTitleBarControls,
+            value,
+            enabled => _browser.FloatingTitleBarControls = enabled,
+            "Toast.TitleBarControlsOn",
+            "Toast.TitleBarControlsOff");
     }
 
     public bool IsLanguageZh => string.Equals(_browser.UiLanguage, LocalizationService.ZhCn, StringComparison.OrdinalIgnoreCase);
@@ -1619,10 +1635,12 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
     private void RefreshClickThroughFlags()
     {
         OnPropertyChanged(nameof(IsClickThroughOn));
+        OnPropertyChanged(nameof(IsTitleBarControlsOn));
         OnPropertyChanged(nameof(IsAutoHideTitleBarOn));
         OnPropertyChanged(nameof(IsTouchModeOn));
         OnPropertyChanged(nameof(IsKeyMouseFloatOptionsEnabled));
         OnPropertyChanged(nameof(ClickThroughTooltip));
+        OnPropertyChanged(nameof(TitleBarControlsTooltip));
         OnPropertyChanged(nameof(AutoHideTitleBarTooltip));
     }
 
@@ -1689,6 +1707,7 @@ public sealed class ControlWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(PlaybackTooltip));
         OnPropertyChanged(nameof(ClickThroughTooltip));
         // 不含快捷键，但和上面一样随语言切换刷新
+        OnPropertyChanged(nameof(TitleBarControlsTooltip));
         OnPropertyChanged(nameof(AutoHideTitleBarTooltip));
     }
 

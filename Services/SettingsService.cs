@@ -118,6 +118,7 @@ public sealed class SettingsService : IDisposable
             FloatingClickThrough = settings.FloatingClickThrough,
             TouchMode = settings.TouchMode,
             FloatingAutoHideTitleBar = settings.FloatingAutoHideTitleBar,
+            FloatingTitleBarControls = settings.FloatingTitleBarControls,
             HasSeenFloatingModeHint = settings.HasSeenFloatingModeHint,
             LastWebView2CacheCheckUtc = settings.LastWebView2CacheCheckUtc,
             HotkeyCorruptionRepairAttempted = settings.HotkeyCorruptionRepairAttempted,

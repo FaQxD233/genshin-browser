@@ -53,7 +53,7 @@
   <sys:String x:Key="Toolbar.KeysTooltip">按键绑定（快捷键与生效范围）</sys:String>
   <sys:String x:Key="Toolbar.KeysName">按键绑定</sys:String>
   <sys:String x:Key="Toolbar.TouchModeName">触屏模式</sys:String>
-  <sys:String x:Key="Toolbar.TouchModeTooltip">触屏模式：浮窗自动穿透，标题栏常驻并换成倒退、播放 / 暂停、快进按钮（整条标题栏可以点）。设置里的鼠标穿透、隐藏标题栏不受影响，关掉触屏模式就回到它们。</sys:String>
+  <sys:String x:Key="Toolbar.TouchModeTooltip">触屏模式：浮窗自动穿透，标题栏常驻并换成倒退、播放 / 暂停、快进按钮（整条标题栏可以点）。设置里的鼠标穿透、控制按钮、隐藏标题栏不受影响，关掉触屏模式就回到它们。</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeTooltip">全局热键（K、F8、F7、;、' 等）在哪些前台程序中响应</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklist">黑名单外</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklistTooltip">除黑名单软件（微信、QQ、浏览器、编辑器等）外均响应</sys:String>
@@ -107,9 +107,11 @@
   <!-- 通用开关状态文字（ToggleSwitch 右侧） -->
   <sys:String x:Key="Toggle.Off">关闭</sys:String>
   <sys:String x:Key="Toggle.On">开启</sys:String>
-  <sys:String x:Key="Settings.ClickThroughTooltip">浮窗模式下点击直接落到下层窗口（如游戏）。开启后浮窗内无法点击和拖动，按 {0} 回到浏览模式调整。</sys:String>
-  <!-- 触屏模式下鼠标穿透、隐藏标题栏置灰时的说明 -->
+  <sys:String x:Key="Settings.ClickThroughTooltip">浮窗模式下点击直接落到下层窗口（如游戏）。开启后浮窗内无法点击和拖动（开着控制按钮、标题栏常驻时，标题栏除外），按 {0} 回到浏览模式调整。</sys:String>
+  <!-- 触屏模式下浮窗三项（鼠标穿透、控制按钮、隐藏标题栏）置灰时的说明 -->
   <sys:String x:Key="Settings.TouchModeOverrides">触屏模式下不生效：浮窗固定穿透，标题栏常驻并显示控制按钮。关掉触屏模式（右上角）后按这里的设置。</sys:String>
+  <sys:String x:Key="Settings.TitleBarControls">控制按钮</sys:String>
+  <sys:String x:Key="Settings.TitleBarControlsTooltip">浮窗标题栏的标题换成倒退 5 秒、播放 / 暂停、快进 5 秒三个按钮。开着鼠标穿透时，要关掉隐藏标题栏才点得到：标题栏常驻、整条可点，视频区照旧穿透。</sys:String>
   <sys:String x:Key="Settings.AutoHideTitleBar">隐藏标题栏</sys:String>
   <sys:String x:Key="Settings.AutoHideTitleBarTooltip">浮窗模式下标题栏自动隐藏，鼠标移到窗口顶部时出现；关闭后浮窗标题栏常驻。</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">已移动到左上角</sys:String>
@@ -222,9 +224,11 @@
   <sys:String x:Key="Toast.ClickThroughOn">浮窗鼠标穿透：已开启（按 {0} 回浏览模式调整）</sys:String>
   <sys:String x:Key="Toast.ClickThroughOff">浮窗鼠标穿透：已关闭</sys:String>
   <sys:String x:Key="Toast.TouchModeOn">已切到触屏模式：进浮窗后自动穿透，标题栏显示控制按钮</sys:String>
-  <sys:String x:Key="Toast.TouchModeOff">已切回键鼠模式：浮窗按设置里的鼠标穿透、隐藏标题栏</sys:String>
+  <sys:String x:Key="Toast.TouchModeOff">已切回键鼠模式：浮窗按设置里的鼠标穿透、控制按钮、隐藏标题栏</sys:String>
   <sys:String x:Key="Toast.AutoHideTitleBarOn">浮窗标题栏：自动隐藏</sys:String>
   <sys:String x:Key="Toast.AutoHideTitleBarOff">浮窗标题栏：常驻</sys:String>
+  <sys:String x:Key="Toast.TitleBarControlsOn">浮窗标题栏：显示控制按钮</sys:String>
+  <sys:String x:Key="Toast.TitleBarControlsOff">浮窗标题栏：显示标题</sys:String>
   <sys:String x:Key="Toast.RemoteKeysOn">远程按键：已开启</sys:String>
   <sys:String x:Key="Toast.RemoteKeysOff">远程按键：已关闭</sys:String>
   <sys:String x:Key="Toast.ThemeDark">已切换到暗色主题</sys:String>
@@ -274,7 +278,7 @@
   <sys:String x:Key="TouchHint.Browse">检测到触屏操作。要用触屏玩，点右上角的触屏按钮：进浮窗后自动穿透，标题栏显示控制按钮。</sys:String>
   <!-- 触屏模式下收到实体键盘按键或鼠标点按：浮窗弹询问卡片（询问期间暂停穿透），浏览模式在控制台提示 -->
   <sys:String x:Key="KeyMousePrompt.Title">检测到键鼠操作</sys:String>
-  <sys:String x:Key="KeyMousePrompt.Body">切回键鼠模式？浮窗会按设置里的鼠标穿透、隐藏标题栏，标题栏换回标题。</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Body">切回键鼠模式？浮窗会改按设置里的鼠标穿透、控制按钮、隐藏标题栏。</sys:String>
   <sys:String x:Key="KeyMousePrompt.Accept">切回键鼠</sys:String>
   <sys:String x:Key="KeyMousePrompt.Decline">继续用触屏</sys:String>
   <sys:String x:Key="KeyMouseHint.Browse">检测到键鼠操作。触屏模式还开着：进浮窗后仍会穿透，标题栏显示控制按钮。要改回键鼠，点右上角的触屏按钮。</sys:String>

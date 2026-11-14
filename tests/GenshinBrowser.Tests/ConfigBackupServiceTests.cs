@@ -32,6 +32,7 @@ public sealed class ConfigBackupServiceTests
             FloatingClickThrough = true,
             TouchMode = true,
             FloatingAutoHideTitleBar = false,
+            FloatingTitleBarControls = true,
             LastUrl = "https://www.bilibili.com/video/BV1keqing01",
             WindowMode = WindowMode.Fixed,
             HasSeenFloatingModeHint = true,
@@ -60,6 +61,7 @@ public sealed class ConfigBackupServiceTests
         Assert.True(imported.HotkeysAcceptInjectedInput);
         Assert.True(imported.FloatingClickThrough);
         Assert.False(imported.FloatingAutoHideTitleBar);
+        Assert.True(imported.FloatingTitleBarControls);
         Assert.Equal("https://www.bilibili.com/video/BV1keqing01", imported.LastUrl);
         // 本机运行状态不随配置迁移
         Assert.Equal(WindowMode.Free, imported.WindowMode);

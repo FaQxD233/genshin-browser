@@ -99,7 +99,7 @@ public sealed class AppSettings
 
     /// <summary>
     /// 触屏模式：开启后浮窗固定为鼠标穿透、标题栏常驻并把标题换成倒退 / 播放暂停 / 快进三个按钮（整条标题栏可点，
-    /// 视频区穿透）。不改键鼠用的「鼠标穿透」「隐藏标题栏」，关掉即回到它们。属于本机运行状态，不随配置导出。默认关闭。
+    /// 视频区穿透）。不改键鼠用的「鼠标穿透」「控制按钮」「隐藏标题栏」，关掉即回到它们。属于本机运行状态，不随配置导出。默认关闭。
     /// </summary>
     public bool TouchMode { get; set; }
 
@@ -107,6 +107,12 @@ public sealed class AppSettings
     /// 浮窗模式自动隐藏标题栏（鼠标移到窗口顶部时出现）。默认开启；关闭后浮窗标题栏常驻。
     /// </summary>
     public bool FloatingAutoHideTitleBar { get; set; } = true;
+
+    /// <summary>
+    /// 浮窗标题栏的控制按钮：标题换成倒退 / 播放暂停 / 快进三个按钮。和「鼠标穿透」「隐藏标题栏」各自独立：
+    /// 不穿透时直接点；穿透且标题栏常驻时经点击层可点（视频区照旧穿透）；穿透又隐藏标题栏时标题栏唤不出来（按设计）。默认关闭。
+    /// </summary>
+    public bool FloatingTitleBarControls { get; set; }
 
     /// <summary>
     /// 是否已展示过「首次进入浮窗」引导 toast。

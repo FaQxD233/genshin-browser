@@ -53,7 +53,7 @@
   <sys:String x:Key="Toolbar.KeysTooltip">Key bindings (shortcuts &amp; scope)</sys:String>
   <sys:String x:Key="Toolbar.KeysName">Key bindings</sys:String>
   <sys:String x:Key="Toolbar.TouchModeName">Touch mode</sys:String>
-  <sys:String x:Key="Toolbar.TouchModeTooltip">Touch mode: the Floating window lets clicks through and keeps its title bar visible with Back, Play / Pause and Forward buttons (the whole title bar can be tapped). Click-through and Hide title bar in Settings stay as they are and apply again when you turn touch mode off.</sys:String>
+  <sys:String x:Key="Toolbar.TouchModeTooltip">Touch mode: the Floating window lets clicks through and keeps its title bar visible with Back, Play / Pause and Forward buttons (the whole title bar can be tapped). Click-through, Controls and Hide title bar in Settings stay as they are and apply again when you turn touch mode off.</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeTooltip">Where global hotkeys (K, F8, F7, ;, ', …) respond</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklist">Not blacklist</sys:String>
   <sys:String x:Key="Settings.HotkeyScopeBlacklistTooltip">Respond everywhere except blacklisted apps (WeChat, QQ, browsers, editors, …)</sys:String>
@@ -107,9 +107,11 @@
   <!-- Generic switch state text (right of ToggleSwitch) -->
   <sys:String x:Key="Toggle.Off">Off</sys:String>
   <sys:String x:Key="Toggle.On">On</sys:String>
-  <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged; press {0} to return to Browsing and adjust.</sys:String>
-  <!-- Shown on click-through and Hide title bar while they're greyed out in touch mode -->
+  <sys:String x:Key="Settings.ClickThroughTooltip">In Floating mode, clicks go straight to the window below (e.g. the game). While on, the overlay can't be clicked or dragged (except its title bar while Controls is on and the title bar stays visible); press {0} to return to Browsing and adjust.</sys:String>
+  <!-- Shown on Click-through, Controls and Hide title bar while they're greyed out in touch mode -->
   <sys:String x:Key="Settings.TouchModeOverrides">Not in effect in touch mode: the Floating window always lets clicks through and keeps its title bar with control buttons. Turn off touch mode (top right) to use these settings.</sys:String>
+  <sys:String x:Key="Settings.TitleBarControls">Controls</sys:String>
+  <sys:String x:Key="Settings.TitleBarControlsTooltip">The Floating title bar's title is replaced by Back 5s, Play / Pause and Forward 5s buttons. With click-through on, turn off Hide title bar to use them: the title bar stays visible and can be clicked, while the video area still lets clicks through.</sys:String>
   <sys:String x:Key="Settings.AutoHideTitleBar">Hide title bar</sys:String>
   <sys:String x:Key="Settings.AutoHideTitleBarTooltip">In Floating mode the title bar hides and appears when the mouse reaches the top of the window; turn off to keep it visible.</sys:String>
   <sys:String x:Key="Toast.MovedTopLeft">Moved to top-left</sys:String>
@@ -222,9 +224,11 @@
   <sys:String x:Key="Toast.ClickThroughOn">Floating click-through: on (press {0} to return to Browsing and adjust)</sys:String>
   <sys:String x:Key="Toast.ClickThroughOff">Floating click-through: off</sys:String>
   <sys:String x:Key="Toast.TouchModeOn">Touch mode on: Floating lets clicks through and shows control buttons in the title bar</sys:String>
-  <sys:String x:Key="Toast.TouchModeOff">Back to mouse and keyboard: Floating follows Click-through and Hide title bar in Settings</sys:String>
+  <sys:String x:Key="Toast.TouchModeOff">Back to mouse and keyboard: Floating follows Click-through, Controls and Hide title bar in Settings</sys:String>
   <sys:String x:Key="Toast.AutoHideTitleBarOn">Floating title bar: auto-hide</sys:String>
   <sys:String x:Key="Toast.AutoHideTitleBarOff">Floating title bar: always shown</sys:String>
+  <sys:String x:Key="Toast.TitleBarControlsOn">Floating title bar: control buttons</sys:String>
+  <sys:String x:Key="Toast.TitleBarControlsOff">Floating title bar: title</sys:String>
   <sys:String x:Key="Toast.RemoteKeysOn">Remote keys: on</sys:String>
   <sys:String x:Key="Toast.RemoteKeysOff">Remote keys: off</sys:String>
   <sys:String x:Key="Toast.ThemeDark">Switched to dark theme</sys:String>
@@ -274,7 +278,7 @@
   <sys:String x:Key="TouchHint.Browse">Touch input detected. To play by touch, use the touch button at the top right: Floating will let clicks through and show control buttons in its title bar.</sys:String>
   <!-- Touch mode on and a physical key press or mouse click arrives: Floating shows a prompt card (click-through paused meanwhile), Browsing shows a notice in the control panel -->
   <sys:String x:Key="KeyMousePrompt.Title">Mouse or keyboard detected</sys:String>
-  <sys:String x:Key="KeyMousePrompt.Body">Switch back to mouse and keyboard? The Floating window will follow Click-through and Hide title bar in Settings again, and its title bar will show the title.</sys:String>
+  <sys:String x:Key="KeyMousePrompt.Body">Switch back to mouse and keyboard? The Floating window will follow Click-through, Controls and Hide title bar in Settings again.</sys:String>
   <sys:String x:Key="KeyMousePrompt.Accept">Use mouse</sys:String>
   <sys:String x:Key="KeyMousePrompt.Decline">Keep touch</sys:String>
   <sys:String x:Key="KeyMouseHint.Browse">Mouse or keyboard input detected. Touch mode is still on: Floating will let clicks through and show control buttons in its title bar. To switch back, use the touch button at the top right.</sys:String>

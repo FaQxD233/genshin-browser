@@ -82,7 +82,7 @@
                    VerticalAlignment="Center"
                    TextTrimming="CharacterEllipsis"
                    MaxWidth="360"/>
-        <!-- 触屏模式的控制按钮：浮窗在触屏模式下替换标题文字，点按经 TitleBarClickLayer 转发；
+        <!-- 浮窗的控制按钮（设置里开「控制按钮」，或触屏模式）：替换标题文字；主窗穿透时点按经 TitleBarClickLayer 转发；
              比右侧窗口按钮宽一些，方便触屏点按 -->
         <StackPanel x:Name="TitleBarControls"
                     Grid.Column="1"
